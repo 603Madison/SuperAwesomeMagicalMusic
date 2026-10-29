@@ -1,0 +1,96 @@
+package com.music.player.settings
+
+import com.music.player.model.SourceType
+import com.music.player.quality.NetworkClass
+import com.music.player.quality.StreamQuality
+
+data class JellyfinConfig(
+    val serverUrl: String = "",
+    val username: String = "",
+    val userId: String = "",
+    val accessToken: String = "",
+) {
+    val isConfigured: Boolean get() = serverUrl.isNotBlank() && userId.isNotBlank() && accessToken.isNotBlank()
+}
+
+data class QobuzConfig(
+    val appId: String = "",
+    val appSecret: String = "",
+    val username: String = "",
+    val userAuthToken: String = "",
+) {
+    val isConfigured: Boolean get() = appId.isNotBlank() && appSecret.isNotBlank() && userAuthToken.isNotBlank()
+}
+
+data class LidarrConfig(
+    val serverUrl: String = "",
+    val apiKey: String = "",
+    /** Add an artist to Lidarr when one of their songs is played from outside Jellyfin. */
+    val autoAddArtists: Boolean = true,
+    /** Null means "use the root folder's default, else the first profile on the server". */
+    val qualityProfileId: Int? = null,
+    val metadataProfileId: Int? = null,
+    val rootFolderPath: String? = null,
+    val searchForMissingAlbums: Boolean = true,
+) {
+    val isConfigured: Boolean get() = serverUrl.isNotBlank() && apiKey.isNotBlank()
+}
+
+data class NextcloudConfig(
+    val serverUrl: String = "",
+    /** The login name used with the app password. */
+    val username: String = "",
+    /** Nextcloud's internal user id (used in WebDAV paths); may differ from the login, e.g. for e-mail logins. */
+    val userId: String = "",
+    val appPassword: String = "",
+    val folder: String = DEFAULT_FOLDER,
+    val autoSync: Boolean = true,
+) {
+    val isConfigured: Boolean get() = serverUrl.isNotBlank() && username.isNotBlank() && appPassword.isNotBlank()
+
+    val davUser: String get() = userId.ifBlank { username }
+
+    companion object {
+        const val DEFAULT_FOLDER = "Music/Playlists"
+    }
+}
+
+data class QualitySettings(
+    val wifi: StreamQuality = StreamQuality.Original,
+    val cellular: StreamQuality = StreamQuality.Capped(192),
+    val satellite: StreamQuality = StreamQuality.Capped(64),
+    val download: StreamQuality = StreamQuality.Original,
+) {
+    fun forNetwork(networkClass: NetworkClass): StreamQuality = when (networkClass) {
+        NetworkClass.WIFI -> wifi
+        NetworkClass.CELLULAR -> cellular
+        NetworkClass.SATELLITE -> satellite
+        // Offline only plays downloads; the value is irrelevant but keep it conservative.
+        NetworkClass.NONE -> satellite
+    }
+}
+
+enum class TranscodeCodec(val label: String, val container: String, val codec: String) {
+    MP3("MP3 (most compatible)", "mp3", "mp3"),
+    AAC("AAC (better at low bitrates)", "aac", "aac"),
+}
+
+data class DownloadSettings(
+    val allowCellular: Boolean = false,
+    val allowSatellite: Boolean = false,
+)
+
+data class AppSettings(
+    val deviceId: String = "",
+    val jellyfin: JellyfinConfig = JellyfinConfig(),
+    val qobuz: QobuzConfig = QobuzConfig(),
+    val youTubeMusicEnabled: Boolean = true,
+    /** Order in which streaming services are tried when Jellyfin does not have a song. */
+    val fallbackOrder: List<SourceType> = listOf(SourceType.QOBUZ, SourceType.YOUTUBE_MUSIC),
+    val lidarr: LidarrConfig = LidarrConfig(),
+    val nextcloud: NextcloudConfig = NextcloudConfig(),
+    val quality: QualitySettings = QualitySettings(),
+    val jellyfinTranscodeCodec: TranscodeCodec = TranscodeCodec.MP3,
+    val downloads: DownloadSettings = DownloadSettings(),
+    val loadArtworkOnSatellite: Boolean = false,
+)
