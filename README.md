@@ -151,8 +151,9 @@ with the same key, so new versions install over old ones and keep your settings 
 
 Needs JDK 17+ and the Android SDK (platform 36).
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`, which tests, builds and publishes the
-signed APK as a GitHub release. It needs two repository secrets: `RELEASE_KEYSTORE_BASE64` (the
+The **Release APK** workflow (`.github/workflows/release.yml`) tests, builds and publishes the
+signed APK as a GitHub release. Run it from the Actions tab with the version (e.g. `v1.1.0`), or
+push a `v*` tag; notes come from `release-notes/<version>.md`. It needs two repository secrets: `RELEASE_KEYSTORE_BASE64` (the
 release keystore, base64-encoded) and `RELEASE_KEYSTORE_PASSWORD`.
 
 ```sh

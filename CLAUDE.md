@@ -8,10 +8,11 @@ when the request doesn't mention one:
 1. Bump `versionCode` (+1) and `versionName` in `app/build.gradle.kts`. Android won't install an
    update whose `versionCode` isn't higher than the installed one.
 2. Run `./gradlew testDebugUnitTest lintDebug assembleRelease`; all must pass.
-3. Commit and push. Then push an annotated tag whose message is the release notes:
-   `git tag -a vX.Y.Z -m "<notes>" && git push origin vX.Y.Z`. The tag triggers
-   `.github/workflows/release.yml`, which runs the tests, builds the signed APK and publishes the
-   GitHub release `vX.Y.Z` with `Music-vX.Y.Z.apk` attached. Check that the run succeeds.
+3. Write the release notes to `release-notes/vX.Y.Z.md`, then commit and push. Start the
+   **Release APK** workflow (`.github/workflows/release.yml`, workflow_dispatch) on the branch
+   with `version: vX.Y.Z`. It runs the tests, builds the signed APK, creates the tag and publishes
+   the GitHub release with `Music-vX.Y.Z.apk` attached. Check that the run succeeds. (Claude
+   sessions can't push tags; pushing a `v*` tag also triggers the workflow.)
 4. Copy `app/build/outputs/apk/release/app-release.apk` to `Music-vX.Y.Z.apk` in the scratchpad
    and send it to the owner in chat.
 

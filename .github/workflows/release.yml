@@ -1,15 +1,19 @@
 name: Release APK
 
-# Push a version tag (e.g. `git tag -a v1.0.1 -m "notes" && git push origin v1.0.1`) to test,
-# build the signed APK and publish it as a GitHub release. The tag message becomes the notes.
+# Builds the signed APK and publishes it as a GitHub release, with notes from
+# release-notes/<version>.md. Start it from the Actions tab ("Run workflow") with the version,
+# or push a v* tag. The release's tag is created on the built commit if it doesn't exist yet.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
-      tag:
-        description: Existing tag to (re)build and publish
+      version:
+        description: Version to release, e.g. v1.1.0 (must match versionName in app/build.gradle.kts)
         required: true
+      commit:
+        description: Commit to build (defaults to the selected branch's latest commit)
+        required: false
 
 permissions:
   contents: write
@@ -18,11 +22,20 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      TAG: ${{ inputs.version || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ inputs.commit || github.sha }}
+
+      - name: Check version
+        run: |
+          VERSION_NAME=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
+          if [ "v$VERSION_NAME" != "$TAG" ]; then
+            echo "::error::$TAG doesn't match versionName $VERSION_NAME in app/build.gradle.kts"
+            exit 1
+          fi
+          echo "COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
         with:
@@ -30,9 +43,6 @@ jobs:
           java-version: "17"
 
       - uses: gradle/actions/setup-gradle@v4
-
-      - name: Unit tests
-        run: ./gradlew --no-daemon testDebugUnitTest
 
       - name: Restore signing key
         env:
@@ -44,6 +54,9 @@ jobs:
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
 
       - name: Build signed release APK
         env:
@@ -57,9 +70,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          # Notes come from the latest branch so older releases can be (re)published too.
+          git fetch --depth=1 origin "${{ github.sha }}"
+          git show "${{ github.sha }}:release-notes/$TAG.md" > notes.md 2>/dev/null || echo "Music $TAG" > notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "Music-$TAG.apk" --clobber
           else
-            gh release create "$TAG" "Music-$TAG.apk" --title "Music $TAG" --notes-from-tag
+            gh release create "$TAG" "Music-$TAG.apk" --target "$COMMIT" --title "Music $TAG" --notes-file notes.md
           fi
