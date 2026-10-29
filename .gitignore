@@ -11,3 +11,6 @@
 .cxx/
 *.keystore
 *.jks
+
+# Release signing key: never commit it (see CLAUDE.md).
+/keystore/

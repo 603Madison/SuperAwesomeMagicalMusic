@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -18,10 +20,30 @@ android {
         versionName = "1.0.0"
     }
 
+    // Release APKs are signed with one permanent key, so each release installs as an update over
+    // the last. Locally it comes from keystore/release.properties (git-ignored); in CI from the
+    // RELEASE_KEYSTORE_* environment variables. Without either, release builds are unsigned.
+    val localKey = rootProject.file("keystore/release.properties").takeIf { it.exists() }
+        ?.let { file -> Properties().apply { file.inputStream().use(::load) } }
+    fun signingValue(property: String, env: String): String? = localKey?.getProperty(property) ?: System.getenv(env)
+    val keystorePath = signingValue("storeFile", "RELEASE_KEYSTORE_FILE")
+    if (keystorePath != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = rootProject.file(keystorePath)
+                storePassword = signingValue("storePassword", "RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "RELEASE_KEY_ALIAS") ?: "music"
+                keyPassword = signingValue("keyPassword", "RELEASE_KEY_PASSWORD") ?: storePassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            if (keystorePath != null) signingConfig = signingConfigs.getByName("release")
+            // R8 shrinking stays off until a shrunk build has been tested on a device: NewPipe's
+            // Rhino JavaScript engine loads classes reflectively. Rules are in proguard-rules.pro.
+            isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

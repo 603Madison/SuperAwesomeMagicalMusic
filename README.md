@@ -103,9 +103,19 @@ Open **Settings** in the app:
 
 Plain-HTTP server URLs are allowed, because home servers often run without TLS on the LAN.
 
+## Installing
+
+Download `Music-vX.Y.Z.apk` from the repository's **Releases** page and open it on your phone
+(allow installing from your browser or file manager when Android asks). Every release is signed
+with the same key, so new versions install over old ones and keep your settings and downloads.
+
 ## Building
 
 Needs JDK 17+ and the Android SDK (platform 36).
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which tests, builds and publishes the
+signed APK as a GitHub release. It needs two repository secrets: `RELEASE_KEYSTORE_BASE64` (the
+release keystore, base64-encoded) and `RELEASE_KEYSTORE_PASSWORD`.
 
 ```sh
 ./gradlew assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
