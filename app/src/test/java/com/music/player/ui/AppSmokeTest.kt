@@ -51,14 +51,19 @@ class AppSmokeTest {
         openTab("Playlists")
         compose.onNodeWithText("New playlist", useUnmergedTree = true).assertIsDisplayed()
 
+        openTab("Radio")
+        compose.onNodeWithText("Sign in to SiriusXM in Settings", substring = true).assertIsDisplayed()
+
         openTab("Downloads")
         compose.onNodeWithText("Nothing downloaded yet", substring = true).assertIsDisplayed()
 
         openTab("Settings")
-        compose.onNodeWithText("Streaming quality").assertIsDisplayed()
+        compose.onNodeWithText("Account (authentik)").assertIsDisplayed()
+        compose.onNodeWithText("Streaming quality").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Satellite").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Jellyfin (preferred source)").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Lidarr").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("SiriusXM").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Nextcloud playlist sync").performScrollTo().assertIsDisplayed()
     }
 

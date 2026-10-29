@@ -16,8 +16,10 @@ android {
         applicationId = "com.music.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
+        // authentik (OIDC) redirects back to com.music.player:/oauth2redirect.
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.music.player"
     }
 
     // Release APKs are signed with one permanent key, so each release installs as an update over
@@ -70,6 +72,11 @@ android {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
     }
+
+    sourceSets {
+        // Room schemas for the migration tests (Robolectric reads the debug variant's assets).
+        getByName("debug").assets.srcDir("$projectDir/schemas")
+    }
 }
 
 kotlin {
@@ -101,6 +108,8 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
     implementation(libs.media3.datasource.okhttp)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.appauth)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
@@ -120,6 +129,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.robolectric)
+    testImplementation(libs.room.testing)
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
     debugImplementation(libs.compose.ui.test.manifest)

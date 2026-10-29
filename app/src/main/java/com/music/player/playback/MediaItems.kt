@@ -4,6 +4,7 @@ import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import com.music.player.model.Track
 import com.music.player.net.AppJson
 
@@ -14,6 +15,8 @@ fun Track.toMediaItem(): MediaItem {
     return MediaItem.Builder()
         .setMediaId(key)
         .setUri(uri)
+        // SiriusXM channels are live HLS streams; the type can't be sniffed from the URI.
+        .setMimeType(if (isSiriusXmChannel) MimeTypes.APPLICATION_M3U8 else null)
         // The URI is dropped when items cross from a MediaController to the session; the
         // request metadata survives, and the session rebuilds the URI from it.
         .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(uri).build())
@@ -26,6 +29,7 @@ fun Track.toMediaItem(): MediaItem {
                 .setDurationMs(durationMs)
                 .setIsPlayable(true)
                 .setIsBrowsable(false)
+                .setMediaType(if (isSiriusXmChannel) MediaMetadata.MEDIA_TYPE_RADIO_STATION else MediaMetadata.MEDIA_TYPE_MUSIC)
                 .setExtras(bundleOf(EXTRA_TRACK to AppJson.encodeToString(Track.serializer(), this)))
                 .build(),
         )
@@ -38,9 +42,8 @@ fun MediaItem.toTrack(): Track? =
         ?: requestMetadata.mediaUri?.let(TrackUri::decode)
         ?: localConfiguration?.uri?.let(TrackUri::decode)
 
-/** Restores the playback URI on items received from a controller. */
-fun MediaItem.withPlaybackUri(): MediaItem {
+/** Restores the playback URI (and stream type) on items received from a controller. */
+fun MediaItem.withPlaybackUri(): MediaItem? {
     if (localConfiguration != null) return this
-    val uri = requestMetadata.mediaUri ?: toTrack()?.let(TrackUri::encode) ?: return this
-    return buildUpon().setUri(uri).build()
+    return toTrack()?.toMediaItem()
 }

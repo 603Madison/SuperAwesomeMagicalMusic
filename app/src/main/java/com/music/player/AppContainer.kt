@@ -5,7 +5,12 @@ import android.util.Log
 import com.music.player.data.AppDatabase
 import com.music.player.downloads.DownloadRepository
 import com.music.player.lidarr.LidarrClient
+import com.music.player.lidarr.LidarrQueueWorker
 import com.music.player.lidarr.LidarrService
+import com.music.player.quality.NetworkClass
+import com.music.player.sources.siriusxm.HeardSongs
+import com.music.player.sources.siriusxm.SiriusXmClient
+import com.music.player.auth.AuthentikAuth
 import com.music.player.net.Http
 import com.music.player.net.NetworkMonitor
 import com.music.player.nextcloud.NextcloudClient
@@ -29,10 +34,13 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 
 /** Hand-rolled dependency graph; one instance lives in [MusicApp]. */
 class AppContainer(private val context: Context) {
@@ -52,15 +60,31 @@ class AppContainer(private val context: Context) {
     val youtube = YouTubeMusicSource(httpClient, settings)
     val catalog = Catalog(jellyfin, qobuz, youtube, settings)
 
-    val lidarrClient = LidarrClient(httpClient)
-    val lidarr = LidarrService(lidarrClient, settings, appScope)
+    // Lidarr is usually LAN-only: give up quickly when it can't be reached, and queue instead.
+    val lidarrClient = LidarrClient(
+        httpClient.newBuilder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build(),
+    )
+    val lidarr = LidarrService(lidarrClient, { settings.current().lidarr }, database.lidarrRequests(), appScope)
+
+    val siriusXm = SiriusXmClient(
+        http = httpClient,
+        credentials = { settings.current().siriusXm },
+        loadSession = { settings.siriusXmSession() },
+        saveSession = { settings.setSiriusXmSession(it) },
+    )
 
     val downloads = DownloadRepository(context, database.downloads(), settings)
-    val resolver = StreamResolver(catalog, database.downloads(), networkMonitor, settings, lidarr)
+    val resolver = StreamResolver(catalog, database.downloads(), networkMonitor, settings, lidarr, siriusXm)
 
     val nextcloud = NextcloudClient(httpClient)
     val playlistSync = PlaylistSyncService(database.playlists(), nextcloud, settings)
-    val playlists = PlaylistRepository(database.playlists(), onChanged = ::requestPlaylistSync)
+    val playlists = PlaylistRepository(
+        dao = database.playlists(),
+        owner = settings.settings.map { it.account?.subject },
+        onChanged = ::requestPlaylistSync,
+    )
+    val heardSongs = HeardSongs(jellyfin, lidarr, playlists)
+    val authentik = AuthentikAuth(context, settings, database.playlists())
 
     val player = PlayerController(context, MainScope())
 
@@ -74,6 +98,24 @@ class AppContainer(private val context: Context) {
             settings.settings.map { it.nextcloud.isConfigured && it.nextcloud.autoSync }.distinctUntilChanged().collect { enabled ->
                 PlaylistSyncWorker.schedulePeriodic(context, enabled)
                 if (enabled) PlaylistSyncWorker.enqueue(context)
+            }
+        }
+        // Signing in or out switches whose playlists are shown and synced.
+        appScope.launch {
+            settings.settings.map { it.account?.subject }.distinctUntilChanged().drop(1).collect { requestPlaylistSync() }
+        }
+        appScope.launch {
+            settings.settings.map { it.lidarr.isConfigured }.distinctUntilChanged().collect { configured ->
+                LidarrQueueWorker.schedule(context, configured)
+            }
+        }
+        // Queued Lidarr requests go out when the network changes, e.g. on arriving home.
+        appScope.launch {
+            networkMonitor.state.map { it.networkClass }.distinctUntilChanged().collect { networkClass ->
+                if (networkClass != NetworkClass.NONE) {
+                    delay(3_000)
+                    lidarr.processInBackground()
+                }
             }
         }
     }

@@ -13,6 +13,9 @@ import com.music.player.sources.Catalog
 import com.music.player.sources.SelectedStream
 import com.music.player.sources.SourceSelector
 import com.music.player.sources.SourceStream
+import com.music.player.sources.SourceUnavailableException
+import com.music.player.sources.siriusxm.SiriusXmClient
+import com.music.player.sources.siriusxm.SxmChannel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,6 +42,7 @@ class StreamResolver(
     private val network: NetworkMonitor,
     private val settings: SettingsRepository,
     private val lidarr: LidarrService,
+    private val siriusXm: SiriusXmClient,
 ) {
     private sealed interface Pin {
         data class Local(val path: String) : Pin
@@ -55,6 +59,12 @@ class StreamResolver(
 
     /** Returns the URI and HTTP headers ExoPlayer should load for [track]. */
     suspend fun resolveForPlayback(track: Track): Pair<String, Map<String, String>> {
+        SxmChannel.idOf(track)?.let { (type, channelId) ->
+            if (!network.state.value.isOnline) throw OfflineException("SiriusXM needs a connection")
+            val url = siriusXm.streamUrl(type, channelId)
+            publishOrigin(track.key, PlaybackOrigin(SourceType.SIRIUSXM, "SiriusXM · Live"))
+            return url to mapOf("User-Agent" to SiriusXmClient.USER_AGENT)
+        }
         when (val pin = pins.get(track.key)) {
             is Pin.Local -> if (File(pin.path).exists()) return localUri(pin.path)
             is Pin.Remote -> {
@@ -84,8 +94,10 @@ class StreamResolver(
     }
 
     /** Picks the stream to save for offline listening at the download quality. */
-    suspend fun resolveForDownload(track: Track): SelectedStream =
-        select(track, settings.current().quality.download)
+    suspend fun resolveForDownload(track: Track): SelectedStream {
+        if (track.isSiriusXmChannel) throw SourceUnavailableException("Live radio can't be downloaded")
+        return select(track, settings.current().quality.download)
+    }
 
     /**
      * Forgets source and quality choices for everything except [keepKey] (the item playing now)

@@ -14,6 +14,8 @@ data class PlaylistDocument(
     val createdAt: Long,
     val updatedAt: Long,
     val tracks: List<Track>,
+    /** The authentik user (OIDC `sub`) the playlist belongs to, if any. */
+    val owner: String? = null,
 ) {
     companion object {
         const val FORMAT = "music-app-playlist"

@@ -15,10 +15,20 @@ interface PlaylistDao {
         SELECT p.id, p.name, p.description, p.updatedAt,
                (SELECT COUNT(*) FROM playlist_entries e WHERE e.playlistId = p.id) AS trackCount,
                (p.syncedUpdatedAt IS NULL OR p.updatedAt > p.syncedUpdatedAt) AS needsUpload
-        FROM playlists p WHERE p.deleted = 0 ORDER BY p.name COLLATE NOCASE
+        FROM playlists p WHERE p.deleted = 0 AND p.ownerId IS :owner ORDER BY p.name COLLATE NOCASE
         """,
     )
-    fun observeSummaries(): Flow<List<PlaylistSummary>>
+    fun observeSummaries(owner: String?): Flow<List<PlaylistSummary>>
+
+    @Query("SELECT * FROM playlists WHERE deleted = 0 AND ownerId IS :owner ORDER BY name COLLATE NOCASE")
+    suspend fun active(owner: String?): List<PlaylistEntity>
+
+    @Query("SELECT * FROM playlists WHERE deleted = 0 AND ownerId IS :owner AND name = :name LIMIT 1")
+    suspend fun findByName(owner: String?, name: String): PlaylistEntity?
+
+    /** Gives playlists made before anyone signed in to [owner]. */
+    @Query("UPDATE playlists SET ownerId = :owner WHERE ownerId IS NULL")
+    suspend fun adoptUnowned(owner: String)
 
     @Query("SELECT * FROM playlists WHERE id = :id")
     fun observe(id: String): Flow<PlaylistEntity?>
@@ -29,8 +39,8 @@ interface PlaylistDao {
     @Query("SELECT * FROM playlists WHERE id = :id")
     suspend fun get(id: String): PlaylistEntity?
 
-    @Query("SELECT * FROM playlists")
-    suspend fun all(): List<PlaylistEntity>
+    @Query("SELECT * FROM playlists WHERE ownerId IS :owner")
+    suspend fun all(owner: String?): List<PlaylistEntity>
 
     @Query("SELECT * FROM playlist_entries WHERE playlistId = :id ORDER BY position")
     suspend fun entries(id: String): List<PlaylistEntryEntity>
@@ -48,11 +58,11 @@ interface PlaylistDao {
     suspend fun purge(id: String)
 
     /** Forget everything known about the Nextcloud copies, e.g. after switching server or folder. */
-    @Query("UPDATE playlists SET remoteFileName = NULL, remoteEtag = NULL, syncedUpdatedAt = NULL")
-    suspend fun resetSyncState()
+    @Query("UPDATE playlists SET remoteFileName = NULL, remoteEtag = NULL, syncedUpdatedAt = NULL WHERE ownerId IS :owner")
+    suspend fun resetSyncState(owner: String?)
 
-    @Query("DELETE FROM playlists WHERE deleted = 1")
-    suspend fun purgeTombstones()
+    @Query("DELETE FROM playlists WHERE deleted = 1 AND ownerId IS :owner")
+    suspend fun purgeTombstones(owner: String?)
 
     @Transaction
     suspend fun replace(playlist: PlaylistEntity, entries: List<PlaylistEntryEntity>) {
@@ -60,6 +70,25 @@ interface PlaylistDao {
         clearEntries(playlist.id)
         insertEntries(entries)
     }
+}
+
+@Dao
+interface LidarrRequestDao {
+    @Query("SELECT * FROM lidarr_requests ORDER BY requestedAt")
+    fun observeAll(): Flow<List<LidarrRequestEntity>>
+
+    @Query("SELECT * FROM lidarr_requests ORDER BY requestedAt")
+    suspend fun all(): List<LidarrRequestEntity>
+
+    /** Queues an artist unless it is already waiting. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun enqueue(request: LidarrRequestEntity)
+
+    @Query("UPDATE lidarr_requests SET attempts = attempts + 1, lastAttemptAt = :at, lastError = :error WHERE artistKey = :key")
+    suspend fun recordFailure(key: String, error: String, at: Long)
+
+    @Query("DELETE FROM lidarr_requests WHERE artistKey = :key")
+    suspend fun delete(key: String)
 }
 
 @Dao

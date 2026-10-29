@@ -55,6 +55,33 @@ data class NextcloudConfig(
     }
 }
 
+data class SiriusXmConfig(
+    val username: String = "",
+    /** Kept so the app can sign in again when SiriusXM's session expires. */
+    val password: String = "",
+) {
+    val isConfigured: Boolean get() = username.isNotBlank() && password.isNotBlank()
+}
+
+/** An authentik OAuth2/OpenID provider used to sign in to the app. */
+data class AuthentikConfig(
+    /** e.g. https://auth.example.com/application/o/music/ */
+    val issuerUrl: String = "",
+    val clientId: String = "",
+) {
+    val isConfigured: Boolean get() = issuerUrl.isNotBlank() && clientId.isNotBlank()
+}
+
+/** The signed-in authentik user. [subject] (the OIDC `sub`) owns the user's playlists. */
+data class Account(
+    val subject: String,
+    val username: String? = null,
+    val email: String? = null,
+    val name: String? = null,
+) {
+    val displayName: String get() = name ?: username ?: email ?: subject
+}
+
 data class QualitySettings(
     val wifi: StreamQuality = StreamQuality.Original,
     val cellular: StreamQuality = StreamQuality.Capped(192),
@@ -85,6 +112,9 @@ data class AppSettings(
     val jellyfin: JellyfinConfig = JellyfinConfig(),
     val qobuz: QobuzConfig = QobuzConfig(),
     val youTubeMusicEnabled: Boolean = true,
+    val siriusXm: SiriusXmConfig = SiriusXmConfig(),
+    val authentik: AuthentikConfig = AuthentikConfig(),
+    val account: Account? = null,
     /** Order in which streaming services are tried when Jellyfin does not have a song. */
     val fallbackOrder: List<SourceType> = listOf(SourceType.QOBUZ, SourceType.YOUTUBE_MUSIC),
     val lidarr: LidarrConfig = LidarrConfig(),

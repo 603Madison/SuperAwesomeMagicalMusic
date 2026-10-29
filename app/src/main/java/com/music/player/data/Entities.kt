@@ -21,6 +21,8 @@ data class PlaylistEntity(
     val remoteEtag: String? = null,
     /** The [updatedAt] value that was last uploaded to or downloaded from Nextcloud. */
     val syncedUpdatedAt: Long? = null,
+    /** The authentik user (OIDC `sub`) the playlist belongs to; null when nobody is signed in. */
+    val ownerId: String? = null,
 ) {
     val needsUpload: Boolean get() = syncedUpdatedAt == null || updatedAt > syncedUpdatedAt
 }
@@ -51,6 +53,20 @@ data class PlaylistSummary(
     val updatedAt: Long,
     val trackCount: Int,
     val needsUpload: Boolean,
+)
+
+/** An artist waiting to be checked in (and if needed added to) Lidarr once it is reachable. */
+@Entity(tableName = "lidarr_requests")
+data class LidarrRequestEntity(
+    /** Normalized artist name, so the same artist is only queued once. */
+    @PrimaryKey val artistKey: String,
+    val artistName: String,
+    /** The song that triggered the request, for display. */
+    val trackTitle: String? = null,
+    val requestedAt: Long,
+    val attempts: Int = 0,
+    val lastAttemptAt: Long? = null,
+    val lastError: String? = null,
 )
 
 enum class DownloadStatus { QUEUED, DOWNLOADING, COMPLETED, FAILED }

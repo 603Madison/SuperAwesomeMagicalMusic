@@ -1,10 +1,12 @@
 # Music
 
 An Android music player for self-hosters. It plays from your **Jellyfin** library first and fills
-the gaps from **Qobuz** or **YouTube Music**. Songs Jellyfin doesn't have get their artist added
-to **Lidarr**. Bitrates are set separately for Wi-Fi, cellular and **satellite** (T-Satellite and
-other direct-to-cell services). Every song can be **downloaded** for offline listening, and
-playlists are kept in your **Nextcloud**.
+the gaps from **Qobuz** or **YouTube Music**. It also plays **SiriusXM** live radio, and songs you
+hear there can be saved to a playlist. Songs Jellyfin doesn't have get their artist added to
+**Lidarr**, queued until your Lidarr server is reachable. Bitrates are set separately for Wi-Fi,
+cellular and **satellite** (T-Satellite and other direct-to-cell services). Every song can be
+**downloaded** for offline listening. Playlists belong to your **authentik** account and are kept
+in your **Nextcloud**. Works in **Android Auto**.
 
 Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Android 8.0+ (API 26).
 
@@ -22,12 +24,38 @@ Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Andro
 - **When Jellyfin doesn't have a song**, it streams from the track's own service and then from the
   other services, in the order you choose in Settings. If a service fails (not signed in, track
   removed, blocked), the next one is tried.
-- **Lidarr:** when you play or download a song that isn't in Jellyfin, its artist is looked up in
-  your Lidarr library. If the artist is missing, they are
-  found on MusicBrainz through Lidarr and added. New artists are monitored and their albums are
-  searched for by default. You can pick the root folder and the quality and metadata profiles, or
-  use the server defaults. Artists are matched by exact name only, so the wrong artist is never
-  added.
+- **Lidarr:** when you play, download or save a song that isn't in Jellyfin, its artist is looked
+  up in your Lidarr library. If the artist is missing, they are found on MusicBrainz through Lidarr
+  and added. New artists are monitored and their albums are searched for by default. You can pick
+  the root folder and the quality and metadata profiles, or use the server defaults. Artists are
+  matched by exact name only, so the wrong artist is never added.
+- **Lidarr queue:** Lidarr usually only answers on your home network, so requests are saved and
+  sent when the server can be reached: right away if it can, otherwise when the network changes
+  (e.g. you get home), every 30 minutes, or when you tap "Send now". Settings › Lidarr lists what's
+  waiting.
+
+### SiriusXM
+
+- Sign in with your SiriusXM account and the **Radio** tab lists your channels. Live channels
+  play like anything else, including over satellite: the stream's bitrate rounds down to your
+  cap for the current network.
+- While a channel plays, the app shows the song you're actually hearing (the live edge runs ahead
+  of the audio). It appears in the player, the notification and Android Auto.
+- **Save** adds that song to a playlist using the usual rules: the Jellyfin copy if your library
+  has it. Otherwise the artist goes to Lidarr and the song is saved as a SiriusXM entry, which
+  plays from Qobuz or YouTube Music until Lidarr has brought the album into Jellyfin.
+- SiriusXM has no public API. The app uses the private API of SiriusXM's web player, following
+  the open-source [sxm-player](https://github.com/yob15662/sxm-player) /
+  [omarchy-siriusxm](https://github.com/onesastr/omarchy-siriusxm) clients. SiriusXM can change or
+  block it at any time.
+
+### Android Auto
+
+The app appears as a media source in Android Auto. You can browse **Playlists**, **Downloads**
+and **SiriusXM** channels by category, search, and ask the Assistant to "play … on Music": a
+SiriusXM channel name plays that channel, anything else searches Jellyfin first. The
+**Save song** (heart) button adds the SiriusXM song you're hearing to a "Heard on SiriusXM"
+playlist (or, for other music, the current song to "Saved songs").
 
 ### 2. Bitrates per network, including satellite
 
@@ -63,7 +91,11 @@ player. Downloads run in the background (WorkManager) at the download quality. L
 fetched in 4 MB chunks, and a dropped connection retries only the current chunk. Downloaded copies
 always play first. When offline, search looks through your downloads.
 
-### 4. Playlists synced to Nextcloud
+### 4. Playlists synced to Nextcloud, per authentik user
+
+When you sign in with **authentik**, playlists belong to your authentik user id (the OIDC `sub`):
+only your playlists are shown, and they sync to their own Nextcloud subfolder named after that id.
+Playlists made before signing in become yours the first time you sign in.
 
 You can create, rename, reorder, shuffle, download and delete playlists. Connect Nextcloud with an
 **app password** (Nextcloud › Settings › Security) and each playlist is stored as a JSON file in a
@@ -98,8 +130,14 @@ Open **Settings** in the app:
   secret** issued to you. Then sign in with your e-mail/username and password, or paste a user
   auth token. Full-length streaming needs a paid subscription.
 - **YouTube Music**: on by default, no account needed.
+- **SiriusXM**: your SiriusXM e-mail and password. The password is kept, so the app can sign in
+  again when SiriusXM's session expires.
 - **Lidarr**: server URL and API key (Lidarr › Settings › General).
 - **Nextcloud**: server URL, username, app password and folder.
+- **authentik**: in authentik, create an **OAuth2/OpenID provider** with client type **Public**
+  and redirect URI `com.music.player:/oauth2redirect`, then an application that uses it. In the
+  app, enter the issuer URL (`https://<authentik>/application/o/<application slug>/`) and the
+  client ID, then tap **Sign in with authentik**. authentik must be reachable over HTTPS.
 
 Plain-HTTP server URLs are allowed, because home servers often run without TLS on the LAN.
 
@@ -127,17 +165,18 @@ release keystore, base64-encoded) and `RELEASE_KEYSTORE_PASSWORD`.
 
 ```
 app/src/main/java/com/music/player/
-├── sources/        Jellyfin, Qobuz, YouTube Music clients; TrackMatcher; SourceSelector (source rules)
+├── sources/        Jellyfin, Qobuz, YouTube Music, SiriusXM clients; TrackMatcher; SourceSelector (source rules)
+├── auth/           authentik sign-in (OpenID Connect via AppAuth)
 ├── quality/        StreamQuality and the round-down tier selection
 ├── net/            NetworkMonitor (Wi-Fi / cellular / satellite), OkHttp helpers
-├── lidarr/         Lidarr API client and the auto-add-artist service
-├── playback/       Media3 PlaybackService, StreamResolver (download → Jellyfin → fallbacks), PlayerController
+├── lidarr/         Lidarr API client, auto-add-artist service and its request queue
+├── playback/       Media3 PlaybackService + Android Auto library, StreamResolver (download → Jellyfin → fallbacks)
 ├── downloads/      DownloadRepository, DownloadWorker, chunked downloader
 ├── nextcloud/      WebDAV client and two-way playlist sync
 ├── playlists/      Playlist repository
 ├── data/           Room database
 ├── settings/       DataStore-backed settings
-└── ui/             Compose screens: search, playlists, downloads, settings, now playing
+└── ui/             Compose screens: search, playlists, radio, downloads, settings, now playing
 ```
 
 The queue holds `music://track?d=…` URIs. The real stream URL is chosen only when ExoPlayer opens

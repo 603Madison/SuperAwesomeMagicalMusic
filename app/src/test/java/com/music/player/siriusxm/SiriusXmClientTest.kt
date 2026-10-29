@@ -1,0 +1,124 @@
+package com.music.player.siriusxm
+
+import com.music.player.settings.SiriusXmConfig
+import com.music.player.sources.siriusxm.SiriusXmAuthException
+import com.music.player.sources.siriusxm.SiriusXmClient
+import kotlinx.coroutines.test.runTest
+import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
+import org.junit.After
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
+import org.junit.Before
+import org.junit.Test
+import java.util.Base64
+
+class SiriusXmClientTest {
+    private lateinit var server: MockWebServer
+    private var savedSession: String? = null
+    private val requests = mutableListOf<RecordedRequest>()
+    private var rejectPassword = false
+    private var expireNextKeyRequest = false
+
+    @Before
+    fun setUp() {
+        server = MockWebServer()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                requests += request
+                val path = request.path!!.substringBefore('?')
+                return when (path) {
+                    "/device/v1/devices" -> json("""{"deviceId":"dev-1","grant":"device-grant"}""")
+                    "/session/v1/sessions/anonymous" -> json("""{"accessToken":"anon-token","accessTokenExpiresAt":"2099-01-01T00:00:00Z"}""")
+                    "/identity/v1/identities/authenticate/password" ->
+                        if (rejectPassword) MockResponse().setResponseCode(401) else json("""{"grant":"identity-grant"}""")
+                    "/session/v1/sessions/authenticated" -> json("""{"accessToken":"access-token","accessTokenExpiresAt":"2099-01-01T00:00:00Z"}""")
+                    "/relationship/v1/container/all-channels" ->
+                        json("""{"container":{"sets":[{"items":[{"entity":{"id":"c1","texts":{"title":"Octane"}}}]}]}}""")
+                    "/playback/key/v1/12345678-1234-1234-1234-123456789abc" ->
+                        if (expireNextKeyRequest) {
+                            expireNextKeyRequest = false
+                            MockResponse().setResponseCode(401)
+                        } else {
+                            json("""{"key":"${Base64.getEncoder().encodeToString(ByteArray(16) { it.toByte() })}"}""")
+                        }
+                    else -> MockResponse().setResponseCode(404)
+                }
+            }
+        }
+        server.start()
+    }
+
+    @After
+    fun tearDown() = server.shutdown()
+
+    private fun json(body: String) = MockResponse().setBody(body).addHeader("Content-Type", "application/json")
+
+    private fun client(config: SiriusXmConfig = SiriusXmConfig("me@example.com", "secret")) = SiriusXmClient(
+        http = OkHttpClient(),
+        credentials = { config },
+        loadSession = { savedSession },
+        saveSession = { savedSession = it },
+        baseUrl = server.url("/").toString(),
+    )
+
+    @Test
+    fun `sign-in walks the device, anonymous, identity and authenticated steps`() = runTest {
+        val channels = client().verify(SiriusXmConfig("me@example.com", "secret"))
+        assertEquals(1, channels)
+        assertEquals(
+            listOf(
+                "/device/v1/devices",
+                "/session/v1/sessions/anonymous",
+                "/identity/v1/identities/authenticate/password",
+                "/session/v1/sessions/authenticated",
+                "/relationship/v1/container/all-channels",
+            ),
+            requests.map { it.path!!.substringBefore('?') },
+        )
+        assertEquals(null, requests[0].getHeader("Authorization"))
+        assertEquals("Bearer device-grant", requests[1].getHeader("Authorization"))
+        assertEquals("Bearer anon-token", requests[2].getHeader("Authorization"))
+        assertTrue(requests[2].body.readUtf8().contains("\"handle\":\"me@example.com\""))
+        assertEquals("Bearer identity-grant", requests[3].getHeader("Authorization"))
+        assertEquals("Bearer access-token", requests[4].getHeader("Authorization"))
+        assertEquals("sxm", requests[4].getHeader("x-sxm-tenant"))
+        assertTrue(savedSession!!.contains("access-token"))
+    }
+
+    @Test
+    fun `a saved session is reused without signing in again`() = runTest {
+        client().channels()
+        requests.clear()
+        client().channels(refresh = true)
+        assertEquals(listOf("/relationship/v1/container/all-channels"), requests.map { it.path!!.substringBefore('?') })
+    }
+
+    @Test
+    fun `an expired session is renewed once and the request retried`() = runTest {
+        val client = client()
+        client.channels()
+        requests.clear()
+        expireNextKeyRequest = true
+        val key = client.key("12345678-1234-1234-1234-123456789abc")
+        assertArrayEquals(ByteArray(16) { it.toByte() }, key)
+        assertTrue(requests.any { it.path == "/identity/v1/identities/authenticate/password" })
+        assertEquals("/playback/key/v1/12345678-1234-1234-1234-123456789abc", requests.last().path)
+    }
+
+    @Test
+    fun `wrong password is reported clearly`() = runTest {
+        rejectPassword = true
+        try {
+            client().verify(SiriusXmConfig("me@example.com", "wrong"))
+            fail("Expected SiriusXmAuthException")
+        } catch (e: SiriusXmAuthException) {
+            assertTrue(e.message!!.contains("rejected"))
+        }
+    }
+}

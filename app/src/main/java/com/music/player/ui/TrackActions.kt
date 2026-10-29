@@ -2,6 +2,7 @@ package com.music.player.ui
 
 import com.music.player.AppContainer
 import com.music.player.model.Track
+import com.music.player.sources.siriusxm.SxmCut
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -32,6 +33,22 @@ class TrackActions(
         scope.launch {
             container.downloads.enqueue(tracks)
             showMessage(if (tracks.size == 1) "Downloading \"${tracks.first().title}\"" else "Downloading ${tracks.size} songs")
+        }
+    }
+
+    /**
+     * Saves a song heard on SiriusXM: the Jellyfin copy if the library has it, otherwise the
+     * artist is requested from Lidarr and the song is saved to play from a streaming service.
+     */
+    fun saveHeardSong(cut: SxmCut) {
+        scope.launch {
+            val captured = container.heardSongs.capture(cut)
+            showAddToPlaylist(listOf(captured.track))
+            when {
+                captured.inLibrary -> showMessage("\"${cut.title}\" is in your Jellyfin library")
+                captured.requestedFromLidarr && container.settingsState.value.lidarr.isConfigured ->
+                    showMessage("Not in Jellyfin yet — requested ${cut.artist} from Lidarr")
+            }
         }
     }
 

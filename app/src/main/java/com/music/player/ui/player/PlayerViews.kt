@@ -55,6 +55,7 @@ import com.music.player.ui.LocalTrackActions
 import com.music.player.ui.components.Artwork
 import com.music.player.ui.components.NetworkStatusRow
 import com.music.player.ui.components.SourceBadge
+import com.music.player.ui.radio.NowPlayingCard
 
 @Composable
 fun MiniPlayer(onExpand: () -> Unit) {
@@ -135,7 +136,7 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
                         )
                     }
                     NetworkStatusRow()
-                    SeekBar(state.positionMs, state.durationMs, player::seekTo)
+                    if (!track.isSiriusXmChannel) SeekBar(state.positionMs, state.durationMs, player::seekTo)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         IconButton(onClick = player::toggleShuffle) {
                             Icon(
@@ -170,7 +171,8 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
                             )
                         }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    if (track.isSiriusXmChannel) NowPlayingCard()
+                    if (!track.isSiriusXmChannel) Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         IconButton(onClick = { actions.addToPlaylist(listOf(track)) }) {
                             Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Add to playlist")
                         }

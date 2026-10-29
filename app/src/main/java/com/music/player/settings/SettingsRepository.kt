@@ -47,6 +47,33 @@ class SettingsRepository(context: Context) {
         it[Keys.QOBUZ_TOKEN] = config.userAuthToken
     }
 
+    suspend fun setSiriusXm(config: SiriusXmConfig) = store.edit {
+        it[Keys.SXM_USERNAME] = config.username
+        it[Keys.SXM_PASSWORD] = config.password
+        if (!config.isConfigured) it.remove(Keys.SXM_SESSION)
+    }
+
+    /** SiriusXM's device grant and session tokens, as JSON. */
+    suspend fun siriusXmSession(): String? = store.data.first()[Keys.SXM_SESSION]
+
+    suspend fun setSiriusXmSession(json: String?) = store.edit { it.putOrRemove(Keys.SXM_SESSION, json) }
+
+    suspend fun setAuthentik(config: AuthentikConfig) = store.edit {
+        it[Keys.AK_ISSUER] = config.issuerUrl
+        it[Keys.AK_CLIENT_ID] = config.clientId
+    }
+
+    /** Stores the signed-in account and AppAuth's serialized auth state; null signs out. */
+    suspend fun setAccount(account: Account?, authState: String?) = store.edit {
+        it.putOrRemove(Keys.ACCOUNT_SUBJECT, account?.subject)
+        it.putOrRemove(Keys.ACCOUNT_USERNAME, account?.username)
+        it.putOrRemove(Keys.ACCOUNT_EMAIL, account?.email)
+        it.putOrRemove(Keys.ACCOUNT_NAME, account?.name)
+        it.putOrRemove(Keys.AK_AUTH_STATE, authState)
+    }
+
+    suspend fun authState(): String? = store.data.first()[Keys.AK_AUTH_STATE]
+
     suspend fun setYouTubeMusicEnabled(enabled: Boolean) = store.edit { it[Keys.YTM_ENABLED] = enabled }
 
     suspend fun setFallbackOrder(order: List<SourceType>) = store.edit {
@@ -110,6 +137,22 @@ class SettingsRepository(context: Context) {
                 userAuthToken = this[Keys.QOBUZ_TOKEN].orEmpty(),
             ),
             youTubeMusicEnabled = this[Keys.YTM_ENABLED] ?: defaults.youTubeMusicEnabled,
+            siriusXm = SiriusXmConfig(
+                username = this[Keys.SXM_USERNAME].orEmpty(),
+                password = this[Keys.SXM_PASSWORD].orEmpty(),
+            ),
+            authentik = AuthentikConfig(
+                issuerUrl = this[Keys.AK_ISSUER].orEmpty(),
+                clientId = this[Keys.AK_CLIENT_ID].orEmpty(),
+            ),
+            account = this[Keys.ACCOUNT_SUBJECT]?.let { subject ->
+                Account(
+                    subject = subject,
+                    username = this[Keys.ACCOUNT_USERNAME],
+                    email = this[Keys.ACCOUNT_EMAIL],
+                    name = this[Keys.ACCOUNT_NAME],
+                )
+            },
             fallbackOrder = parseFallbackOrder(this[Keys.FALLBACK_ORDER]) ?: defaults.fallbackOrder,
             lidarr = LidarrConfig(
                 serverUrl = this[Keys.LIDARR_URL].orEmpty(),
@@ -147,11 +190,11 @@ class SettingsRepository(context: Context) {
 
     private fun parseFallbackOrder(raw: String?): List<SourceType>? {
         val parsed = raw?.split(",")?.mapNotNull { name -> SourceType.entries.firstOrNull { it.name == name } }
-            ?.filter { it != SourceType.JELLYFIN }
+            ?.filter { it != SourceType.JELLYFIN && it.onDemand }
             ?.distinct()
         if (parsed.isNullOrEmpty()) return null
         // Keep any service missing from an older stored value at the end of the list.
-        return parsed + SourceType.entries.filter { it != SourceType.JELLYFIN && it !in parsed }
+        return parsed + SourceType.entries.filter { it != SourceType.JELLYFIN && it.onDemand && it !in parsed }
     }
 
     private fun <T> MutablePreferences.putOrRemove(key: Preferences.Key<T>, value: T?) {
@@ -170,6 +213,16 @@ class SettingsRepository(context: Context) {
         val QOBUZ_USERNAME = stringPreferencesKey("qobuz_username")
         val QOBUZ_TOKEN = stringPreferencesKey("qobuz_token")
         val YTM_ENABLED = booleanPreferencesKey("ytm_enabled")
+        val SXM_USERNAME = stringPreferencesKey("sxm_username")
+        val SXM_PASSWORD = stringPreferencesKey("sxm_password")
+        val SXM_SESSION = stringPreferencesKey("sxm_session")
+        val AK_ISSUER = stringPreferencesKey("authentik_issuer")
+        val AK_CLIENT_ID = stringPreferencesKey("authentik_client_id")
+        val AK_AUTH_STATE = stringPreferencesKey("authentik_auth_state")
+        val ACCOUNT_SUBJECT = stringPreferencesKey("account_subject")
+        val ACCOUNT_USERNAME = stringPreferencesKey("account_username")
+        val ACCOUNT_EMAIL = stringPreferencesKey("account_email")
+        val ACCOUNT_NAME = stringPreferencesKey("account_name")
         val FALLBACK_ORDER = stringPreferencesKey("fallback_order")
         val LIDARR_URL = stringPreferencesKey("lidarr_url")
         val LIDARR_API_KEY = stringPreferencesKey("lidarr_api_key")

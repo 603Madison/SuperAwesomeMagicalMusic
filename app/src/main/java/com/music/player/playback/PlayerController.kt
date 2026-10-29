@@ -3,6 +3,7 @@ package com.music.player.playback
 import android.content.ComponentName
 import android.content.Context
 import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -72,6 +73,17 @@ class PlayerController(private val context: Context, private val scope: Coroutin
         it.shuffleModeEnabled = shuffle
         val start = if (shuffle) tracks.indices.random() else startIndex.coerceIn(tracks.indices)
         it.setMediaItems(tracks.map(Track::toMediaItem), start, 0L)
+        it.prepare()
+        it.play()
+    }
+
+    /** Voice requests: the session's library callback turns the query into a queue. */
+    fun playFromSearch(query: String) = withController {
+        it.setMediaItem(
+            MediaItem.Builder()
+                .setRequestMetadata(MediaItem.RequestMetadata.Builder().setSearchQuery(query).build())
+                .build(),
+        )
         it.prepare()
         it.play()
     }

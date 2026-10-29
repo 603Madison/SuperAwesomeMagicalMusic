@@ -3,10 +3,16 @@ package com.music.player.model
 import kotlinx.serialization.Serializable
 
 @Serializable
-enum class SourceType(val label: String) {
+enum class SourceType(val label: String, val onDemand: Boolean = true) {
     JELLYFIN("Jellyfin"),
     QOBUZ("Qobuz"),
     YOUTUBE_MUSIC("YouTube Music"),
+
+    /**
+     * Live radio. A SiriusXM track is either a channel (`channel:<type>:<id>`, played live) or a
+     * song heard on a channel (`song:<id>`), which plays from Jellyfin or a streaming service.
+     */
+    SIRIUSXM("SiriusXM", onDemand = false),
 }
 
 /**
@@ -26,4 +32,10 @@ data class Track(
     val isrc: String? = null,
 ) {
     val key: String get() = "${source.name}:$sourceId"
+
+    val isSiriusXmChannel: Boolean get() = source == SourceType.SIRIUSXM && sourceId.startsWith(CHANNEL_PREFIX)
+
+    companion object {
+        const val CHANNEL_PREFIX = "channel:"
+    }
 }

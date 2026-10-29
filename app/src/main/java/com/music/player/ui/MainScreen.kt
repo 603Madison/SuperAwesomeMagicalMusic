@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -48,6 +49,7 @@ import com.music.player.ui.player.MiniPlayer
 import com.music.player.ui.player.NowPlayingSheet
 import com.music.player.ui.playlists.PlaylistDetailScreen
 import com.music.player.ui.playlists.PlaylistsScreen
+import com.music.player.ui.radio.RadioScreen
 import com.music.player.ui.search.SearchScreen
 import com.music.player.ui.settings.SettingsScreen
 import kotlinx.coroutines.flow.map
@@ -57,6 +59,7 @@ import kotlinx.coroutines.launch
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     SEARCH("search", "Search", Icons.Default.Search),
     PLAYLISTS("playlists", "Playlists", Icons.AutoMirrored.Filled.QueueMusic),
+    RADIO("radio", "Radio", Icons.Default.Radio),
     DOWNLOADS("downloads", "Downloads", Icons.Default.Download),
     SETTINGS("settings", "Settings", Icons.Default.Settings),
 }
@@ -128,6 +131,7 @@ fun MusicAppUi() {
                         onBack = { navController.popBackStack() },
                     )
                 }
+                composable(Tab.RADIO.route) { RadioScreen() }
                 composable(Tab.DOWNLOADS.route) { DownloadsScreen() }
                 composable(Tab.SETTINGS.route) { SettingsScreen() }
             }

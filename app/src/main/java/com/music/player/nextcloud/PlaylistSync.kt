@@ -65,14 +65,20 @@ class PlaylistSyncService(
     }
 
     private suspend fun runSync(): SyncResult {
-        val config = settings.current().nextcloud
+        val current = settings.current()
+        val owner = current.account?.subject
+        // Signed-in users get their own subfolder, named after their authentik user id.
+        val config = current.nextcloud.let { nc ->
+            if (owner == null) nc else nc.copy(folder = "${nc.folder.trim('/')}/${folderNameFor(owner)}")
+        }
         check(config.isConfigured) { "Nextcloud is not set up" }
-        val target = listOf(Http.normalizeBaseUrl(config.serverUrl), config.davUser, config.folder.trim('/')).joinToString("|")
+        val target = listOf(Http.normalizeBaseUrl(config.serverUrl), config.davUser, config.folder.trim('/'), owner.orEmpty())
+            .joinToString("|")
         if (settings.lastSyncTarget() != target) {
-            // A different server or folder: treat every playlist as never synced, so nothing is
-            // mistaken for "deleted on another device".
-            dao.resetSyncState()
-            dao.purgeTombstones()
+            // A different server, folder or user: treat this user's playlists as never synced, so
+            // nothing is mistaken for "deleted on another device".
+            dao.resetSyncState(owner)
+            dao.purgeTombstones(owner)
             settings.setLastSyncTarget(target)
         }
         client.ensureFolder(config)
@@ -83,7 +89,7 @@ class PlaylistSyncService(
         var deletedRemotely = 0
 
         // 1. Pull files that are new or changed since we last saw them.
-        val byFileName = dao.all().filter { it.remoteFileName != null }.associateBy { it.remoteFileName!! }
+        val byFileName = dao.all(owner).filter { it.remoteFileName != null }.associateBy { it.remoteFileName!! }
         for (file in remote.values) {
             val known = byFileName[file.name]
             if (known != null && file.etag != null && known.remoteEtag == file.etag) continue
@@ -104,6 +110,7 @@ class PlaylistSyncService(
                             remoteFileName = file.name,
                             remoteEtag = remoteEtag,
                             syncedUpdatedAt = doc.updatedAt,
+                            ownerId = owner,
                         ),
                         doc.tracks.mapIndexed { index, track -> PlaylistEntryEntity(doc.id, index, track) },
                     )
@@ -118,7 +125,7 @@ class PlaylistSyncService(
 
         // 2. Push local changes; drop playlists whose file was deleted on another device.
         val takenNames = remote.keys.toMutableSet()
-        for (playlist in dao.all().filter { !it.deleted }) {
+        for (playlist in dao.all(owner).filter { !it.deleted }) {
             val onServer = playlist.remoteFileName != null && playlist.remoteFileName in remote
             if (playlist.remoteFileName != null && !onServer && !playlist.needsUpload) {
                 dao.purge(playlist.id)
@@ -135,6 +142,7 @@ class PlaylistSyncService(
                 createdAt = playlist.createdAt,
                 updatedAt = playlist.updatedAt,
                 tracks = dao.entries(playlist.id).map { it.track },
+                owner = owner,
             )
             val etag = client.upload(config, fileName, AppJson.encodeToString(PlaylistDocument.serializer(), document))
             val previous = playlist.remoteFileName
@@ -148,7 +156,7 @@ class PlaylistSyncService(
         }
 
         // 3. Push local deletions.
-        for (playlist in dao.all().filter { it.deleted }) {
+        for (playlist in dao.all(owner).filter { it.deleted }) {
             playlist.remoteFileName?.takeIf { it in remote }?.let {
                 client.delete(config, it)
                 deletedRemotely++
@@ -160,6 +168,9 @@ class PlaylistSyncService(
 
     companion object {
         private val ILLEGAL_CHARS = Regex("[\\\\/:*?\"<>|\\p{Cntrl}]")
+
+        /** authentik ids are usually hex hashes; keep anything else safe as a folder name. */
+        fun folderNameFor(owner: String): String = owner.replace(Regex("[^A-Za-z0-9._-]"), "_")
 
         fun decide(local: PlaylistEntity?, remoteUpdatedAt: Long): RemoteAction = when {
             local == null -> RemoteAction.IMPORT

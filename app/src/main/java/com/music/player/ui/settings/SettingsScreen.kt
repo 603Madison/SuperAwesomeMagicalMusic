@@ -1,5 +1,7 @@
 package com.music.player.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.SatelliteAlt
 import androidx.compose.material.icons.filled.SignalCellularAlt
@@ -29,6 +32,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -39,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +58,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.player.data.LidarrRequestEntity
+import com.music.player.lidarr.LidarrReachability
 import com.music.player.model.SourceType
 import com.music.player.quality.StreamQuality
 import com.music.player.settings.AppSettings
@@ -75,13 +82,71 @@ fun SettingsScreen() {
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            AccountSection(settings, viewModel)
             QualitySection(settings, viewModel)
             JellyfinSection(settings, viewModel)
             StreamingServicesSection(settings, viewModel)
+            SiriusXmSection(settings, viewModel)
             LidarrSection(settings, viewModel)
             NextcloudSection(settings, viewModel)
             Spacer(Modifier.size(24.dp))
         }
+    }
+}
+
+@Composable
+private fun AccountSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    val status by viewModel.accountStatus.collectAsStateWithLifecycle()
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        viewModel.finishAuthentikSignIn(result.data)
+    }
+    LaunchedEffect(viewModel) { viewModel.signInIntents.collect { launcher.launch(it) } }
+    val account = settings.account
+    Section("Account (authentik)") {
+        if (account != null) {
+            Text("Signed in as ${account.displayName}")
+            Hint("Your playlists are saved under your authentik user id (${account.subject}).")
+            OutlinedButton(onClick = viewModel::signOutAuthentik) { Text("Sign out") }
+        } else {
+            Hint(
+                "Sign in with authentik to keep playlists under your own account, including on Nextcloud. " +
+                    "In authentik, create an OAuth2/OpenID provider (client type: Public) with the redirect URI " +
+                    "com.music.player:/oauth2redirect.",
+            )
+            var issuer by rememberSaveable(settings.authentik.issuerUrl) { mutableStateOf(settings.authentik.issuerUrl) }
+            var clientId by rememberSaveable(settings.authentik.clientId) { mutableStateOf(settings.authentik.clientId) }
+            Field("Issuer URL", issuer, { issuer = it }, keyboardType = KeyboardType.Uri, placeholder = "https://auth.example.com/application/o/music/")
+            Field("Client ID", clientId, { clientId = it })
+            ActionButton("Sign in with authentik", status, enabled = issuer.isNotBlank() && clientId.isNotBlank()) {
+                viewModel.startAuthentikSignIn(issuer, clientId)
+            }
+        }
+        StatusText(status)
+    }
+}
+
+@Composable
+private fun SiriusXmSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    val status by viewModel.siriusXmStatus.collectAsStateWithLifecycle()
+    val config = settings.siriusXm
+    Section("SiriusXM") {
+        Hint(
+            "Listen to SiriusXM channels in the Radio tab and save songs you hear to a playlist. " +
+                "This uses SiriusXM's unofficial web API, which can stop working without notice.",
+        )
+        if (config.isConfigured) {
+            Text("Signed in as ${config.username}")
+            OutlinedButton(onClick = viewModel::signOutSiriusXm) { Text("Sign out of SiriusXM") }
+        } else {
+            var username by rememberSaveable { mutableStateOf("") }
+            var password by rememberSaveable { mutableStateOf("") }
+            Field("E-mail or username", username, { username = it }, keyboardType = KeyboardType.Email)
+            Field("Password", password, { password = it }, secret = true)
+            ActionButton("Sign in to SiriusXM", status, enabled = username.isNotBlank() && password.isNotBlank()) {
+                viewModel.signInSiriusXm(username, password)
+            }
+        }
+        StatusText(status)
     }
 }
 
@@ -246,11 +311,14 @@ private fun StreamingServicesSection(settings: AppSettings, viewModel: SettingsV
 private fun LidarrSection(settings: AppSettings, viewModel: SettingsViewModel) {
     val status by viewModel.lidarrStatus.collectAsStateWithLifecycle()
     val options by viewModel.lidarrOptions.collectAsStateWithLifecycle()
+    val queue by viewModel.lidarrQueue.collectAsStateWithLifecycle()
+    val reachability by viewModel.lidarrReachability.collectAsStateWithLifecycle()
     val config = settings.lidarr
     Section("Lidarr") {
         Hint(
-            "When you play a song that isn't in Jellyfin, its artist is looked up in Lidarr and added " +
-                "(monitored) if Lidarr doesn't have them yet, so the music lands in your library.",
+            "When you play or save a song that isn't in Jellyfin, its artist is looked up in Lidarr and " +
+                "added (monitored) if Lidarr doesn't have them yet. Requests wait in a queue until " +
+                "Lidarr can be reached, e.g. when you're back on your home network.",
         )
         var url by rememberSaveable(config.serverUrl) { mutableStateOf(config.serverUrl) }
         var apiKey by rememberSaveable(config.apiKey) { mutableStateOf(config.apiKey) }
@@ -270,6 +338,7 @@ private fun LidarrSection(settings: AppSettings, viewModel: SettingsViewModel) {
             ToggleRow("Search for albums when adding", null, config.searchForMissingAlbums) { enabled ->
                 viewModel.updateLidarr { it.copy(searchForMissingAlbums = enabled) }
             }
+            LidarrQueue(queue, reachability, viewModel)
             options?.let { server ->
                 Picker(
                     "Root folder",
@@ -289,6 +358,30 @@ private fun LidarrSection(settings: AppSettings, viewModel: SettingsViewModel) {
             }
         }
     }
+}
+
+@Composable
+private fun LidarrQueue(queue: List<LidarrRequestEntity>, reachability: LidarrReachability, viewModel: SettingsViewModel) {
+    HorizontalDivider()
+    Text(
+        if (queue.isEmpty()) "No requests waiting" else "Waiting for Lidarr (${queue.size})",
+        style = MaterialTheme.typography.labelLarge,
+    )
+    if (reachability is LidarrReachability.Unreachable) {
+        Hint("Lidarr wasn't reachable when last tried: ${reachability.reason}")
+    }
+    queue.forEach { request ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(request.artistName, style = MaterialTheme.typography.bodyMedium)
+                Hint(listOfNotNull(request.trackTitle?.let { "from “$it”" }, request.lastError).joinToString(" · "))
+            }
+            IconButton(onClick = { viewModel.removeLidarrRequest(request.artistKey) }) {
+                Icon(Icons.Default.Close, contentDescription = "Remove from queue")
+            }
+        }
+    }
+    if (queue.isNotEmpty()) TextButton(onClick = viewModel::retryLidarrQueue) { Text("Send now") }
 }
 
 @Composable

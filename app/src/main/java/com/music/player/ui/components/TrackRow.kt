@@ -109,6 +109,8 @@ fun ColumnScope.StandardTrackMenuItems(track: Track, downloaded: Boolean, dismis
     val actions = LocalTrackActions.current
     MenuItem("Play next", Icons.Default.SkipNext) { dismiss(); actions.playNext(track) }
     MenuItem("Add to queue", Icons.AutoMirrored.Filled.QueueMusic) { dismiss(); actions.addToQueue(listOf(track)) }
+    // Live channels can't be saved or downloaded; their songs can (see the radio screen).
+    if (track.isSiriusXmChannel) return
     MenuItem("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) { dismiss(); actions.addToPlaylist(listOf(track)) }
     if (downloaded) {
         MenuItem("Remove download", Icons.Default.DeleteOutline) { dismiss(); actions.removeDownload(track) }
@@ -132,6 +134,7 @@ fun SourceBadge(source: SourceType) {
         SourceType.JELLYFIN -> "Jellyfin" to MaterialTheme.colorScheme.primaryContainer
         SourceType.QOBUZ -> "Qobuz" to MaterialTheme.colorScheme.tertiaryContainer
         SourceType.YOUTUBE_MUSIC -> "YouTube" to MaterialTheme.colorScheme.errorContainer
+        SourceType.SIRIUSXM -> "SiriusXM" to MaterialTheme.colorScheme.secondaryContainer
     }
     Surface(color = color, shape = RoundedCornerShape(4.dp)) {
         Text(
