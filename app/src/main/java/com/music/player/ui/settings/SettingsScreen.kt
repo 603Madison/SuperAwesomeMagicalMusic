@@ -1,7 +1,6 @@
 package com.music.player.ui.settings
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import android.content.ClipData
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,12 +46,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -60,12 +63,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.player.data.LidarrRequestEntity
 import com.music.player.lidarr.LidarrReachability
+import com.music.player.nextcloud.SignInState
 import com.music.player.model.SourceType
 import com.music.player.quality.StreamQuality
 import com.music.player.settings.AppSettings
 import com.music.player.settings.TranscodeCodec
 import com.music.player.ui.appViewModel
 import com.music.player.ui.components.NetworkStatusRow
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,7 +87,6 @@ fun SettingsScreen() {
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            AccountSection(settings, viewModel)
             QualitySection(settings, viewModel)
             JellyfinSection(settings, viewModel)
             StreamingServicesSection(settings, viewModel)
@@ -91,37 +95,6 @@ fun SettingsScreen() {
             NextcloudSection(settings, viewModel)
             Spacer(Modifier.size(24.dp))
         }
-    }
-}
-
-@Composable
-private fun AccountSection(settings: AppSettings, viewModel: SettingsViewModel) {
-    val status by viewModel.accountStatus.collectAsStateWithLifecycle()
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        viewModel.finishAuthentikSignIn(result.data)
-    }
-    LaunchedEffect(viewModel) { viewModel.signInIntents.collect { launcher.launch(it) } }
-    val account = settings.account
-    Section("Account (authentik)") {
-        if (account != null) {
-            Text("Signed in as ${account.displayName}")
-            Hint("Your playlists are saved under your authentik user id (${account.subject}).")
-            OutlinedButton(onClick = viewModel::signOutAuthentik) { Text("Sign out") }
-        } else {
-            Hint(
-                "Sign in with authentik to keep playlists under your own account, including on Nextcloud. " +
-                    "In authentik, create an OAuth2/OpenID provider (client type: Public) with the redirect URI " +
-                    "com.music.player:/oauth2redirect.",
-            )
-            var issuer by rememberSaveable(settings.authentik.issuerUrl) { mutableStateOf(settings.authentik.issuerUrl) }
-            var clientId by rememberSaveable(settings.authentik.clientId) { mutableStateOf(settings.authentik.clientId) }
-            Field("Issuer URL", issuer, { issuer = it }, keyboardType = KeyboardType.Uri, placeholder = "https://auth.example.com/application/o/music/")
-            Field("Client ID", clientId, { clientId = it })
-            ActionButton("Sign in with authentik", status, enabled = issuer.isNotBlank() && clientId.isNotBlank()) {
-                viewModel.startAuthentikSignIn(issuer, clientId)
-            }
-        }
-        StatusText(status)
     }
 }
 
@@ -136,7 +109,17 @@ private fun SiriusXmSection(settings: AppSettings, viewModel: SettingsViewModel)
         )
         if (config.isConfigured) {
             Text("Signed in as ${config.username}")
-            OutlinedButton(onClick = viewModel::signOutSiriusXm) { Text("Sign out of SiriusXM") }
+            val clipboard = LocalClipboard.current
+            val scope = rememberCoroutineScope()
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = viewModel::signOutSiriusXm) { Text("Sign out of SiriusXM") }
+                TextButton(onClick = {
+                    scope.launch {
+                        clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("SiriusXM diagnostics", viewModel.siriusXmDiagnostics())))
+                    }
+                }) { Text("Copy diagnostics") }
+            }
+            Hint("If a channel misbehaves, play it, then copy the diagnostics and send them to whoever maintains the app.")
         } else {
             var username by rememberSaveable { mutableStateOf("") }
             var password by rememberSaveable { mutableStateOf("") }
@@ -368,7 +351,7 @@ private fun LidarrQueue(queue: List<LidarrRequestEntity>, reachability: LidarrRe
         style = MaterialTheme.typography.labelLarge,
     )
     if (reachability is LidarrReachability.Unreachable) {
-        Hint("Lidarr wasn't reachable when last tried: ${reachability.reason}")
+        Hint("Last try: ${reachability.reason}. They'll be sent when Lidarr can be reached.")
     }
     queue.forEach { request ->
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -387,35 +370,53 @@ private fun LidarrQueue(queue: List<LidarrRequestEntity>, reachability: LidarrRe
 @Composable
 private fun NextcloudSection(settings: AppSettings, viewModel: SettingsViewModel) {
     val status by viewModel.nextcloudStatus.collectAsStateWithLifecycle()
+    val signIn by viewModel.nextcloudSignIn.collectAsStateWithLifecycle()
+    val uriHandler = LocalUriHandler.current
     val config = settings.nextcloud
-    Section("Nextcloud playlist sync") {
+    // Open the login page as soon as Nextcloud provides it.
+    LaunchedEffect(signIn) {
+        (signIn as? SignInState.WaitingForBrowser)?.let { runCatching { uriHandler.openUri(it.loginUrl) } }
+    }
+    Section("Nextcloud") {
         Hint(
-            "Playlists are saved as JSON files in a folder of your Nextcloud, and kept in sync across " +
-                "devices. Create an app password in Nextcloud under Settings › Security.",
+            "Your playlists belong to your Nextcloud account and are saved as JSON files in a folder of " +
+                "your Nextcloud, kept in sync across devices. You sign in on Nextcloud's own page in the " +
+                "browser, so single sign-on (e.g. authentik) works.",
         )
-        var url by rememberSaveable(config.serverUrl) { mutableStateOf(config.serverUrl) }
-        var username by rememberSaveable(config.username) { mutableStateOf(config.username) }
-        var password by rememberSaveable(config.appPassword) { mutableStateOf(config.appPassword) }
         var folder by rememberSaveable(config.folder) { mutableStateOf(config.folder) }
-        Field("Server URL", url, { url = it }, keyboardType = KeyboardType.Uri, placeholder = "https://cloud.example.com")
-        Field("Username", username, { username = it })
-        Field("App password", password, { password = it }, secret = true)
-        Field("Folder", folder, { folder = it })
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            ActionButton(
-                if (config.isConfigured) "Save & sync" else "Connect",
-                status,
-                enabled = url.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
-            ) { viewModel.connectNextcloud(url, username, password, folder) }
-            if (config.isConfigured) {
+        if (config.isConfigured) {
+            Text("Signed in as ${config.davUser} on ${config.serverUrl.substringAfter("://")}")
+            Field("Folder", folder, { folder = it })
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (folder.trim('/') != config.folder.trim('/')) {
+                    ActionButton("Save folder", status, enabled = true) { viewModel.setNextcloudFolder(folder) }
+                }
                 TextButton(onClick = viewModel::syncNow, enabled = !status.running) { Text("Sync now") }
-                TextButton(onClick = viewModel::disconnectNextcloud) { Text("Disconnect") }
+                TextButton(onClick = viewModel::disconnectNextcloud) { Text("Sign out") }
+            }
+            ToggleRow("Sync automatically", "After every change, and every few hours", config.autoSync, viewModel::setNextcloudAutoSync)
+        } else {
+            var url by rememberSaveable(config.serverUrl) { mutableStateOf(config.serverUrl) }
+            Field("Server URL", url, { url = it }, keyboardType = KeyboardType.Uri, placeholder = "https://cloud.example.com")
+            Field("Folder", folder, { folder = it })
+            when (val state = signIn) {
+                is SignInState.WaitingForBrowser -> {
+                    Hint("Finish signing in in the browser, then come back here.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { uriHandler.openUri(state.loginUrl) }) { Text("Open sign-in page") }
+                        TextButton(onClick = viewModel::cancelNextcloudSignIn) { Text("Cancel") }
+                    }
+                }
+                SignInState.Starting -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                else -> Button(onClick = { viewModel.signInToNextcloud(url, folder) }, enabled = url.isNotBlank()) {
+                    Text("Sign in with browser")
+                }
+            }
+            (signIn as? SignInState.Failed)?.let {
+                Text(it.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
         StatusText(status)
-        if (config.isConfigured) {
-            ToggleRow("Sync automatically", "After every change, and every few hours", config.autoSync, viewModel::setNextcloudAutoSync)
-        }
     }
 }
 

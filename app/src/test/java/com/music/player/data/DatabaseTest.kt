@@ -26,7 +26,7 @@ class DatabaseTest {
         migrations.createDatabase(DB, 1).use { db ->
             db.execSQL("INSERT INTO playlists (id, name, createdAt, updatedAt, deleted) VALUES ('p1', 'Road Trip', 1, 2, 0)")
         }
-        migrations.runMigrationsAndValidate(DB, 2, true, AppDatabase.MIGRATION_1_2).use { db ->
+        migrations.runMigrationsAndValidate(DB, 3, true, AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3).use { db ->
             db.query("SELECT name, ownerId FROM playlists").use { cursor ->
                 cursor.moveToFirst()
                 assertEquals("Road Trip", cursor.getString(0))
@@ -35,6 +35,26 @@ class DatabaseTest {
             db.query("SELECT COUNT(*) FROM lidarr_requests").use { cursor ->
                 cursor.moveToFirst()
                 assertEquals(0, cursor.getInt(0))
+            }
+        }
+    }
+
+    @Test
+    fun `version 2 downloads keep their files and playlists start not kept`() {
+        migrations.createDatabase(DB, 2).use { db ->
+            db.execSQL("INSERT INTO playlists (id, name, createdAt, updatedAt, deleted, ownerId) VALUES ('p1', 'Mix', 1, 2, 0, NULL)")
+            db.execSQL(
+                "INSERT INTO downloads (trackKey, track_source, track_sourceId, track_title, track_artist, status, progress, " +
+                    "filePath, sizeBytes, createdAt) VALUES ('YOUTUBE_MUSIC:1', 'YOUTUBE_MUSIC', '1', 'Song', 'Artist', 'COMPLETED', 1.0, '/f.webm', 10, 1)",
+            )
+        }
+        migrations.runMigrationsAndValidate(DB, 3, true, AppDatabase.MIGRATION_2_3).use { db ->
+            db.query("SELECT keepDownloaded FROM playlists").use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+            db.query("SELECT filePath, autoDownloaded, kbps FROM downloads").use {
+                it.moveToFirst()
+                assertEquals("/f.webm", it.getString(0))
+                assertEquals(0, it.getInt(1))
+                assertEquals(true, it.isNull(2))
             }
         }
     }

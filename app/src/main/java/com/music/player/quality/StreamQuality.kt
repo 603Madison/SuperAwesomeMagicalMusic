@@ -16,6 +16,14 @@ sealed interface StreamQuality {
             is Capped -> "$kbps kbps"
         }
 
+    /** Whether this allows a higher bitrate than [other]. */
+    fun isHigherThan(other: StreamQuality): Boolean = when {
+        this == other -> false
+        this == Original -> true
+        other == Original -> false
+        else -> (this as Capped).kbps > (other as Capped).kbps
+    }
+
     /** Stored as an int in settings: 0 means original, anything else is the kbps cap. */
     fun toStored(): Int = when (this) {
         Original -> 0

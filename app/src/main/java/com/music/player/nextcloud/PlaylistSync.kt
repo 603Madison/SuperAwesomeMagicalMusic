@@ -65,13 +65,10 @@ class PlaylistSyncService(
     }
 
     private suspend fun runSync(): SyncResult {
-        val current = settings.current()
-        val owner = current.account?.subject
-        // Signed-in users get their own subfolder, named after their authentik user id.
-        val config = current.nextcloud.let { nc ->
-            if (owner == null) nc else nc.copy(folder = "${nc.folder.trim('/')}/${folderNameFor(owner)}")
-        }
+        val config = settings.current().nextcloud
         check(config.isConfigured) { "Nextcloud is not set up" }
+        // Playlists live in the signed-in user's own Nextcloud files.
+        val owner = config.owner
         val target = listOf(Http.normalizeBaseUrl(config.serverUrl), config.davUser, config.folder.trim('/'), owner.orEmpty())
             .joinToString("|")
         if (settings.lastSyncTarget() != target) {
@@ -111,6 +108,8 @@ class PlaylistSyncService(
                             remoteEtag = remoteEtag,
                             syncedUpdatedAt = doc.updatedAt,
                             ownerId = owner,
+                            // A per-device choice; it isn't part of the synced file.
+                            keepDownloaded = local?.keepDownloaded ?: false,
                         ),
                         doc.tracks.mapIndexed { index, track -> PlaylistEntryEntity(doc.id, index, track) },
                     )
@@ -168,9 +167,6 @@ class PlaylistSyncService(
 
     companion object {
         private val ILLEGAL_CHARS = Regex("[\\\\/:*?\"<>|\\p{Cntrl}]")
-
-        /** authentik ids are usually hex hashes; keep anything else safe as a folder name. */
-        fun folderNameFor(owner: String): String = owner.replace(Regex("[^A-Za-z0-9._-]"), "_")
 
         fun decide(local: PlaylistEntity?, remoteUpdatedAt: Long): RemoteAction = when {
             local == null -> RemoteAction.IMPORT

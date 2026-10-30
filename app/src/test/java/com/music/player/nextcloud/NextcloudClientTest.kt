@@ -78,6 +78,24 @@ class NextcloudClientTest {
     }
 
     @Test
+    fun `browser sign-in starts a login flow and polls until approved`() = runTest {
+        val base = server.url("/").toString().trimEnd('/')
+        server.enqueue(MockResponse().setBody("""{"poll":{"token":"tok","endpoint":"$base/login/v2/poll"},"login":"$base/login/v2/flow/xyz"}"""))
+        val flow = client.startLogin(base)
+        assertEquals("$base/login/v2/flow/xyz", flow.loginUrl)
+        assertEquals("/index.php/login/v2", server.takeRequest().path)
+
+        server.enqueue(MockResponse().setResponseCode(404))
+        assertEquals(null, client.pollLogin(flow))
+        assertEquals("token=tok", server.takeRequest().body.readUtf8())
+
+        server.enqueue(MockResponse().setBody("""{"server":"$base","loginName":"madison@example.com","appPassword":"secret"}"""))
+        val credentials = client.pollLogin(flow)!!
+        assertEquals("madison@example.com", credentials.loginName)
+        assertEquals("secret", credentials.appPassword)
+    }
+
+    @Test
     fun `user id comes from the OCS user endpoint`() = runTest {
         server.enqueue(MockResponse().setBody("""{"ocs":{"meta":{"status":"ok"},"data":{"id":"alice","displayname":"Alice"}}}"""))
         assertEquals("alice", client.fetchUserId(config().copy(userId = "")))

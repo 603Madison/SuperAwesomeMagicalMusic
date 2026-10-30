@@ -2,15 +2,15 @@ package com.music.player.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import android.content.Intent
 import com.music.player.AppContainer
 import com.music.player.data.LidarrRequestEntity
 import com.music.player.lidarr.LidarrReachability
-import com.music.player.settings.AuthentikConfig
+import com.music.player.nextcloud.SignInState
 import com.music.player.settings.SiriusXmConfig
 import com.music.player.lidarr.LidarrServerOptions
 import com.music.player.model.SourceType
 import com.music.player.net.Http
+import com.music.player.net.HttpException
 import com.music.player.settings.AppSettings
 import com.music.player.settings.DownloadSettings
 import com.music.player.settings.JellyfinConfig
@@ -20,14 +20,13 @@ import com.music.player.settings.QobuzConfig
 import com.music.player.settings.QualitySettings
 import com.music.player.settings.TranscodeCodec
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.IOException
 
 data class ActionStatus(val running: Boolean = false, val message: String? = null, val isError: Boolean = false)
 
@@ -46,12 +45,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     private val _siriusXm = MutableStateFlow(ActionStatus())
     val siriusXmStatus = _siriusXm.asStateFlow()
-    private val _account = MutableStateFlow(ActionStatus())
-    val accountStatus = _account.asStateFlow()
-
-    /** Browser intents that start authentik sign-in; the screen launches them. */
-    private val _signInIntents = MutableSharedFlow<Intent>(extraBufferCapacity = 1)
-    val signInIntents: SharedFlow<Intent> = _signInIntents
+    val nextcloudSignIn: StateFlow<SignInState> = container.nextcloudSignIn.state
 
     val lidarrQueue: StateFlow<List<LidarrRequestEntity>> =
         container.lidarr.pending.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -103,27 +97,12 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         "Signed in · $channels channels"
     }
 
+    fun siriusXmDiagnostics(): String = container.siriusXm.diagnostics().ifBlank { "Nothing recorded yet. Play a channel first." }
+
     fun signOutSiriusXm() = act(_siriusXm) {
         container.siriusXm.signOut()
         settings.setSiriusXm(SiriusXmConfig())
         "Signed out"
-    }
-
-    fun startAuthentikSignIn(issuerUrl: String, clientId: String) = act(_account) {
-        val config = AuthentikConfig(issuerUrl.trim(), clientId.trim())
-        settings.setAuthentik(config)
-        _signInIntents.emit(container.authentik.signInIntent(config))
-        "Continue in the browser…"
-    }
-
-    fun finishAuthentikSignIn(result: Intent?) = act(_account) {
-        val account = container.authentik.completeSignIn(result)
-        "Signed in as ${account.displayName}"
-    }
-
-    fun signOutAuthentik() = act(_account) {
-        container.authentik.signOut()
-        "Signed out. Your playlists stay on this device and in Nextcloud."
     }
 
     fun retryLidarrQueue() = act(_lidarr) {
@@ -153,9 +132,18 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun connectLidarr(url: String, apiKey: String) = act(_lidarr) {
         val config = settings.current().lidarr.copy(serverUrl = Http.normalizeBaseUrl(url), apiKey = apiKey.trim())
-        val version = container.lidarrClient.testConnection(config)
+        val version = try {
+            container.lidarrClient.testConnection(config)
+        } catch (e: HttpException) {
+            throw IllegalStateException(if (e.code == 401) "Lidarr rejected the API key" else "Lidarr answered HTTP ${e.code}")
+        } catch (e: IOException) {
+            // Usually just not on the home network: keep the settings, requests will wait.
+            settings.setLidarr(config)
+            return@act "Saved. Lidarr isn't reachable from this network right now; requests will wait until it is."
+        }
         _lidarrOptions.value = container.lidarrClient.serverOptions(config)
         settings.setLidarr(config)
+        container.lidarr.processInBackground()
         "Connected to Lidarr $version"
     }
 
@@ -169,19 +157,14 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         "Disconnected"
     }
 
-    fun connectNextcloud(url: String, username: String, appPassword: String, folder: String) = act(_nextcloud) {
-        val previous = settings.current().nextcloud
-        val config = NextcloudConfig(
-            serverUrl = Http.normalizeBaseUrl(url),
-            username = username.trim(),
-            appPassword = appPassword.trim(),
-            folder = folder.trim().trim('/').ifBlank { NextcloudConfig.DEFAULT_FOLDER },
-            autoSync = previous.autoSync,
-        )
-        val userId = container.nextcloud.fetchUserId(config)
-        settings.setNextcloud(config.copy(userId = userId))
-        val result = container.playlistSync.sync()
-        "Connected. Playlists synced: $result"
+    /** Opens Nextcloud's login page in the browser (works with SSO such as authentik). */
+    fun signInToNextcloud(url: String, folder: String) = container.nextcloudSignIn.start(url, folder)
+
+    fun cancelNextcloudSignIn() = container.nextcloudSignIn.cancel()
+
+    fun setNextcloudFolder(folder: String) = act(_nextcloud) {
+        settings.setNextcloud(settings.current().nextcloud.copy(folder = folder.trim().trim('/').ifBlank { NextcloudConfig.DEFAULT_FOLDER }))
+        "Synced: ${container.playlistSync.sync()}"
     }
 
     fun setNextcloudAutoSync(enabled: Boolean) = launch {
@@ -191,8 +174,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     fun syncNow() = act(_nextcloud) { "Synced: ${container.playlistSync.sync()}" }
 
     fun disconnectNextcloud() = act(_nextcloud) {
-        settings.setNextcloud(NextcloudConfig())
-        "Disconnected. Local playlists are kept."
+        container.nextcloudSignIn.signOut()
+        "Signed out. Your playlists stay on this phone and come back when you sign in again."
     }
 
     private fun launch(block: suspend () -> Unit) {

@@ -42,6 +42,15 @@ object JellyfinStreamPlanner {
         }
     }
 
+    /** The file's bitrate in kbps; lossless files without a reported bitrate count as CD quality. */
+    fun kbpsOf(source: JfMediaSource?): Int? {
+        val audio = source?.mediaStreams?.firstOrNull { it.type.equals("Audio", ignoreCase = true) }
+        val bps = audio?.bitRate ?: source?.bitrate
+        if (bps != null && bps > 0) return (bps / 1000).toInt()
+        val codec = audio?.codec?.lowercase() ?: return null
+        return if (codec == "flac" || codec == "alac" || codec.startsWith("pcm")) 1411 else null
+    }
+
     fun extensionForCodec(codec: String?): String = when (codec) {
         "mp3" -> "mp3"
         "flac" -> "flac"

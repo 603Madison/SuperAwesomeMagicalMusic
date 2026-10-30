@@ -22,9 +22,11 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
 
     override suspend fun doWork(): Result {
         val key = inputData.getString(KEY_TRACK) ?: return Result.failure()
+        val upgrade = inputData.getBoolean(KEY_UPGRADE, false)
         val container = (applicationContext as MusicApp).container
         val dao = container.database.downloads()
         val entity = dao.get(key) ?: return Result.success()
+        if (upgrade && entity.status != DownloadStatus.COMPLETED) return Result.success()
 
         val policy = container.settings.current().downloads
         when (container.networkMonitor.state.value.networkClass) {
@@ -34,13 +36,17 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
             NetworkClass.WIFI -> Unit
         }
 
-        runCatching { setForeground(foregroundInfo(entity.track.title)) }
-            .onFailure { Log.i(TAG, "Downloading without a foreground notification", it) }
-
-        dao.updateProgress(key, DownloadStatus.DOWNLOADING, 0f)
+        // An upgrade leaves the current copy in place (and playable) until the better one is saved.
+        if (!upgrade) dao.updateProgress(key, DownloadStatus.DOWNLOADING, 0f)
         var target: File? = null
         return try {
             val selected = container.resolver.resolveForDownload(entity.track)
+            if (upgrade && !Upgrades.isBetter(entity.effectiveKbps, entity.isLossless, selected.stream.kbps)) {
+                dao.upsert(entity.copy(qualityCheckedAt = System.currentTimeMillis()))
+                return Result.success()
+            }
+            runCatching { setForeground(foregroundInfo(entity.track.title)) }
+                .onFailure { Log.i(TAG, "Downloading without a foreground notification", it) }
             val file = container.downloads.fileFor(key, selected.stream.fileExtension)
             target = file
             val partial = File(file.path + ".part")
@@ -50,24 +56,29 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 target = partial,
                 useRanges = selected.stream.supportsRangeRequests,
             ) { downloaded, total ->
-                val progress = total?.let { (downloaded.toFloat() / it).coerceIn(0f, 1f) } ?: 0f
-                dao.updateProgress(key, DownloadStatus.DOWNLOADING, progress)
+                if (!upgrade) {
+                    val progress = total?.let { (downloaded.toFloat() / it).coerceIn(0f, 1f) } ?: 0f
+                    dao.updateProgress(key, DownloadStatus.DOWNLOADING, progress)
+                }
             }
-            entity.filePath?.takeIf { it != file.path }?.let { File(it).delete() }
             if (!partial.renameTo(file)) throw IOException("Couldn't save ${file.name}")
-            if (dao.get(key) == null) {
+            entity.filePath?.takeIf { it != file.path }?.let { File(it).delete() }
+            val current = dao.get(key)
+            if (current == null) {
                 // Deleted while downloading.
                 file.delete()
                 return Result.success()
             }
             dao.upsert(
-                entity.copy(
+                current.copy(
                     status = DownloadStatus.COMPLETED,
                     progress = 1f,
                     filePath = file.path,
                     sizeBytes = file.length(),
                     qualityDescription = "${selected.track.source.label} · ${selected.stream.description}",
                     error = null,
+                    kbps = selected.stream.kbps,
+                    qualityCheckedAt = System.currentTimeMillis(),
                 ),
             )
             Result.success()
@@ -77,12 +88,20 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         } catch (e: Exception) {
             target?.let { File(it.path + ".part").delete() }
             Log.w(TAG, "Download of $key failed", e)
-            if (e is IOException && runAttemptCount < MAX_RETRIES) {
-                dao.updateProgress(key, DownloadStatus.QUEUED, 0f)
-                Result.retry()
-            } else {
-                dao.upsert(entity.copy(status = DownloadStatus.FAILED, progress = 0f, error = e.message ?: e.javaClass.simpleName))
-                Result.failure()
+            when {
+                upgrade -> {
+                    // Keep the copy we have; try again at the next check.
+                    dao.get(key)?.let { dao.upsert(it.copy(qualityCheckedAt = System.currentTimeMillis())) }
+                    Result.success()
+                }
+                e is IOException && runAttemptCount < MAX_RETRIES -> {
+                    dao.updateProgress(key, DownloadStatus.QUEUED, 0f)
+                    Result.retry()
+                }
+                else -> {
+                    dao.upsert(entity.copy(status = DownloadStatus.FAILED, progress = 0f, error = e.message ?: e.javaClass.simpleName))
+                    Result.failure()
+                }
             }
         }
     }
@@ -106,6 +125,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
 
     companion object {
         const val KEY_TRACK = "track_key"
+        const val KEY_UPGRADE = "upgrade"
         private const val TAG = "DownloadWorker"
         private const val CHANNEL_ID = "downloads"
         private const val NOTIFICATION_ID = 2001

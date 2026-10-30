@@ -17,6 +17,7 @@ class SourceSelectorTest {
         private val available: Boolean = true,
         private val withinCap: Boolean = true,
         private val failure: Exception? = null,
+        private val kbps: Int? = null,
     ) : MusicSource {
         val streamed = mutableListOf<String>()
 
@@ -30,7 +31,7 @@ class SourceSelectorTest {
         override suspend fun stream(sourceId: String, quality: StreamQuality): SourceStream {
             failure?.let { throw it }
             streamed += sourceId
-            return SourceStream(url = "https://${type.name}/$sourceId", description = "test", withinCap = withinCap, fileExtension = "mp3")
+            return SourceStream(url = "https://${type.name}/$sourceId", description = "test", withinCap = withinCap, fileExtension = "mp3", kbps = kbps)
         }
 
         override suspend fun findMatch(track: Track): Track? {
@@ -111,6 +112,33 @@ class SourceSelectorTest {
         val youtube = FakeSource(SourceType.YOUTUBE_MUSIC)
         val picked = SourceSelector.select(qobuzSong, StreamQuality.Capped(64), FakeSource(SourceType.JELLYFIN), listOf(qobuz, youtube)) {}
         assertEquals(qobuzSong, picked.track)
+    }
+
+    @Test
+    fun `off satellite the best copy across services wins`() = runTest {
+        // A YouTube track: on Wi-Fi a Qobuz FLAC beats YouTube's 160 kbps Opus.
+        val qobuz = FakeSource(SourceType.QOBUZ, listOf(qobuzSong), kbps = 1411)
+        val youtube = FakeSource(SourceType.YOUTUBE_MUSIC, kbps = 160)
+        val picked = SourceSelector.select(song, StreamQuality.Original, FakeSource(SourceType.JELLYFIN), listOf(qobuz, youtube), thorough = true) {}
+        assertEquals(qobuzSong, picked.track)
+    }
+
+    @Test
+    fun `on satellite the first service that fits is used`() = runTest {
+        val qobuz = FakeSource(SourceType.QOBUZ, listOf(qobuzSong), kbps = 1411)
+        val youtube = FakeSource(SourceType.YOUTUBE_MUSIC, kbps = 70)
+        val picked = SourceSelector.select(song, StreamQuality.Capped(96), FakeSource(SourceType.JELLYFIN), listOf(qobuz, youtube), thorough = false) {}
+        assertEquals(song, picked.track)
+        assertTrue(qobuz.streamed.isEmpty())
+    }
+
+    @Test
+    fun `thorough search still respects the cap`() = runTest {
+        // On cellular at 192 kbps, Qobuz's MP3 320 is over the cap; YouTube's 160 kbps fits.
+        val qobuz = FakeSource(SourceType.QOBUZ, listOf(qobuzSong), withinCap = false, kbps = 320)
+        val youtube = FakeSource(SourceType.YOUTUBE_MUSIC, kbps = 160)
+        val picked = SourceSelector.select(song, StreamQuality.Capped(192), FakeSource(SourceType.JELLYFIN), listOf(qobuz, youtube), thorough = true) {}
+        assertEquals(song, picked.track)
     }
 
     @Test

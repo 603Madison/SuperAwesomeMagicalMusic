@@ -72,6 +72,7 @@ class JellyfinSource(
         val codec = settings.current().jellyfinTranscodeCodec
         val headers = mapOf("Authorization" to authorization(deviceId, config.accessToken))
 
+        val sourceKbps = JellyfinStreamPlanner.kbpsOf(mediaSource)
         return when (val plan = JellyfinStreamPlanner.plan(mediaSource, quality, codec)) {
             is JellyfinPlan.Direct -> SourceStream(
                 url = "${config.serverUrl}/Audio/${item.id}/stream".toHttpUrl().newBuilder()
@@ -82,6 +83,7 @@ class JellyfinSource(
                 headers = headers,
                 description = "${plan.codec?.uppercase() ?: "Original"} (original file)",
                 fileExtension = JellyfinStreamPlanner.extensionForCodec(plan.codec),
+                kbps = sourceKbps,
             )
             is JellyfinPlan.Transcode -> SourceStream(
                 url = "${config.serverUrl}/Audio/${item.id}/stream.${plan.container}".toHttpUrl().newBuilder()
@@ -103,6 +105,7 @@ class JellyfinSource(
                     ?: "${plan.codec.uppercase()} (lossless transcode)",
                 fileExtension = plan.container,
                 supportsRangeRequests = false,
+                kbps = plan.kbps ?: LOSSLESS_KBPS,
             )
         }
     }
@@ -157,6 +160,7 @@ class JellyfinSource(
 
     private companion object {
         val JSON = "application/json".toMediaType()
+        const val LOSSLESS_KBPS = 1411
         const val TICKS_PER_MS = 10_000L
     }
 }

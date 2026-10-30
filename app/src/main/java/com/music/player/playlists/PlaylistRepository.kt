@@ -14,8 +14,8 @@ import kotlinx.coroutines.flow.map
 import java.util.UUID
 
 /**
- * Playlists belong to the signed-in authentik user ([owner] is their `sub`), or to nobody when
- * no one is signed in; only the current owner's playlists are listed and synced.
+ * Playlists belong to the connected Nextcloud account ([owner]), or to nobody when Nextcloud
+ * isn't connected; only the current owner's playlists are listed and synced.
  */
 class PlaylistRepository(
     private val dao: PlaylistDao,
@@ -51,6 +51,12 @@ class PlaylistRepository(
         dao.replace(playlist, entriesFor(playlist.id, tracks.distinctBy { it.key }))
         onChanged()
         return playlist.id
+    }
+
+    /** Not synced to Nextcloud: whether a playlist stays downloaded is up to each device. */
+    suspend fun setKeepDownloaded(id: String, keep: Boolean) {
+        dao.setKeepDownloaded(id, keep)
+        onChanged()
     }
 
     suspend fun rename(id: String, name: String) {

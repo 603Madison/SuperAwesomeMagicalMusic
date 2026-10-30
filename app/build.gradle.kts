@@ -16,10 +16,8 @@ android {
         applicationId = "com.music.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.0"
-        // authentik (OIDC) redirects back to com.music.player:/oauth2redirect.
-        manifestPlaceholders["appAuthRedirectScheme"] = "com.music.player"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     // Release APKs are signed with one permanent key, so each release installs as an update over
@@ -109,7 +107,6 @@ dependencies {
     implementation(libs.media3.session)
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.media3.exoplayer.hls)
-    implementation(libs.appauth)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

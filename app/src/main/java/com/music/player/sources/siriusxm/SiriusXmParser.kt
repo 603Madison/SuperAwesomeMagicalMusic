@@ -81,6 +81,22 @@ object SiriusXmParser {
         )
     }.sortedBy { it.startMs }
 
+    /** Xtra channels list their tracks without air times; the first is the one being played. */
+    fun parseXtraItems(items: JsonArray?, nowMs: Long): List<SxmCut> = items.orEmpty().mapNotNull { element ->
+        val item = element as? JsonObject ?: return@mapNotNull null
+        val title = item["name"].string().orEmpty()
+        SxmCut(
+            id = item["id"].string() ?: "xtra-${title.hashCode()}",
+            title = title,
+            artist = item["artistName"].string().orEmpty(),
+            album = item["albumName"].string()?.takeIf { it.isNotBlank() },
+            startMs = parseTimeMs(item["timestamp"]) ?: nowMs,
+            durationMs = (item["duration"] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toLong() ?: 0L,
+            artworkUrl = pickImage(item["images"] as? JsonObject, 300) ?: pickImage(item["artistImages"] as? JsonObject, 300),
+            interstitial = (item["isInterstitial"] as? JsonPrimitive)?.contentOrNull == "true",
+        )
+    }
+
     /** The cut playing at wall-clock time [positionMs] (the moment of audio being heard). */
     fun currentCut(cuts: List<SxmCut>, positionMs: Long): SxmCut? {
         if (cuts.isEmpty()) return null
@@ -89,10 +105,13 @@ object SiriusXmParser {
             ?: cuts.first()
     }
 
-    /** Points every encryption key in a media playlist at [KEY_SCHEME], keyed by its GUID. */
-    fun rewriteKeys(playlist: String): String = playlist.lineSequence().joinToString("\n") { line ->
-        if (line.startsWith("#EXT-X-KEY") && line.contains("URI=\"")) {
-            val guid = GUID.findAll(line).lastOrNull()?.value
+    /**
+     * Points every encryption key in a media playlist at [KEY_SCHEME], keyed by the GUID in the
+     * key line, or [fallbackKeyId] (from the tune response) when the line doesn't name one.
+     */
+    fun rewriteKeys(playlist: String, fallbackKeyId: String? = null): String = playlist.lineSequence().joinToString("\n") { line ->
+        if (line.startsWith("#EXT-X-KEY") && line.contains("URI=\"") && !line.contains("METHOD=NONE")) {
+            val guid = GUID.findAll(line).lastOrNull()?.value ?: fallbackKeyId
             if (guid != null) line.replace(KEY_URI, "URI=\"$KEY_SCHEME://$guid\"") else line
         } else {
             line

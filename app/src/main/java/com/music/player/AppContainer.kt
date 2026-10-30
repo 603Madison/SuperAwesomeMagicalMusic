@@ -4,16 +4,19 @@ import android.content.Context
 import android.util.Log
 import com.music.player.data.AppDatabase
 import com.music.player.downloads.DownloadRepository
+import com.music.player.downloads.OfflinePlaylistWorker
+import com.music.player.downloads.OfflinePlaylists
 import com.music.player.lidarr.LidarrClient
 import com.music.player.lidarr.LidarrQueueWorker
 import com.music.player.lidarr.LidarrService
 import com.music.player.quality.NetworkClass
 import com.music.player.sources.siriusxm.HeardSongs
 import com.music.player.sources.siriusxm.SiriusXmClient
-import com.music.player.auth.AuthentikAuth
 import com.music.player.net.Http
 import com.music.player.net.NetworkMonitor
 import com.music.player.nextcloud.NextcloudClient
+import com.music.player.nextcloud.NextcloudSignIn
+import com.music.player.nextcloud.SyncStatus
 import com.music.player.nextcloud.PlaylistSyncService
 import com.music.player.nextcloud.PlaylistSyncWorker
 import com.music.player.playback.PlayerController
@@ -80,11 +83,12 @@ class AppContainer(private val context: Context) {
     val playlistSync = PlaylistSyncService(database.playlists(), nextcloud, settings)
     val playlists = PlaylistRepository(
         dao = database.playlists(),
-        owner = settings.settings.map { it.account?.subject },
-        onChanged = ::requestPlaylistSync,
+        owner = settings.settings.map { it.nextcloud.owner },
+        onChanged = ::onPlaylistsChanged,
     )
     val heardSongs = HeardSongs(jellyfin, lidarr, playlists)
-    val authentik = AuthentikAuth(context, settings, database.playlists())
+    val offlinePlaylists = OfflinePlaylists(database.playlists(), database.downloads(), downloads)
+    val nextcloudSignIn = NextcloudSignIn(nextcloud, settings, database.playlists(), playlistSync, appScope)
 
     val player = PlayerController(context, MainScope())
 
@@ -94,6 +98,12 @@ class AppContainer(private val context: Context) {
     fun start() {
         networkMonitor.start()
         appScope.launch { settings.ensureDeviceId() }
+        appScope.launch { migrateFromAuthentik() }
+        OfflinePlaylistWorker.schedulePeriodic(context)
+        // Songs that arrive through Nextcloud sync get downloaded too.
+        appScope.launch {
+            playlistSync.status.collect { if (it is SyncStatus.Done) OfflinePlaylistWorker.enqueue(context) }
+        }
         appScope.launch {
             settings.settings.map { it.nextcloud.isConfigured && it.nextcloud.autoSync }.distinctUntilChanged().collect { enabled ->
                 PlaylistSyncWorker.schedulePeriodic(context, enabled)
@@ -102,7 +112,7 @@ class AppContainer(private val context: Context) {
         }
         // Signing in or out switches whose playlists are shown and synced.
         appScope.launch {
-            settings.settings.map { it.account?.subject }.distinctUntilChanged().drop(1).collect { requestPlaylistSync() }
+            settings.settings.map { it.nextcloud.owner }.distinctUntilChanged().drop(1).collect { onPlaylistsChanged() }
         }
         appScope.launch {
             settings.settings.map { it.lidarr.isConfigured }.distinctUntilChanged().collect { configured ->
@@ -120,11 +130,19 @@ class AppContainer(private val context: Context) {
         }
     }
 
+    /** 1.1.0 kept playlists under an authentik user id; hand them to the Nextcloud account. */
+    private suspend fun migrateFromAuthentik() {
+        val subject = settings.legacyAuthentikSubject() ?: return
+        database.playlists().reassign(subject, settings.current().nextcloud.owner)
+        settings.clearLegacyAuthentik()
+    }
+
     fun reportPlaybackError(message: String) {
         _playbackErrors.tryEmit(message)
     }
 
-    private fun requestPlaylistSync() {
+    private fun onPlaylistsChanged() {
+        OfflinePlaylistWorker.enqueue(context)
         val nextcloud = settingsState.value.nextcloud
         if (nextcloud.isConfigured && nextcloud.autoSync) PlaylistSyncWorker.enqueue(context)
     }

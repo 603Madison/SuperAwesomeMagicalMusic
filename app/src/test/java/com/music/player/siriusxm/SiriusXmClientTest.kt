@@ -24,6 +24,8 @@ class SiriusXmClientTest {
     private val requests = mutableListOf<RecordedRequest>()
     private var rejectPassword = false
     private var expireNextKeyRequest = false
+    private var xtraTunes = 0
+    private var nextResponds = true
 
     @Before
     fun setUp() {
@@ -38,6 +40,13 @@ class SiriusXmClientTest {
                     "/identity/v1/identities/authenticate/password" ->
                         if (rejectPassword) MockResponse().setResponseCode(401) else json("""{"grant":"identity-grant"}""")
                     "/session/v1/sessions/authenticated" -> json("""{"accessToken":"access-token","accessTokenExpiresAt":"2099-01-01T00:00:00Z"}""")
+                    "/playback/play/v1/tuneSource" -> {
+                        xtraTunes++
+                        xtraTune(if (xtraTunes == 1) "intro" else "track-$xtraTunes", next = "playback/play/v1/next/abc")
+                    }
+                    "/playback/play/v1/next/abc" ->
+                        if (nextResponds) xtraTune("song-after-intro", next = null) else MockResponse().setResponseCode(404)
+                    "/playback/telemetry/v2/actions" -> json("""{"failedActions":[]}""")
                     "/relationship/v1/container/all-channels" ->
                         json("""{"container":{"sets":[{"items":[{"entity":{"id":"c1","texts":{"title":"Octane"}}}]}]}}""")
                     "/playback/key/v1/12345678-1234-1234-1234-123456789abc" ->
@@ -56,6 +65,12 @@ class SiriusXmClientTest {
 
     @After
     fun tearDown() = server.shutdown()
+
+    private fun xtraTune(trackId: String, next: String?) = json(
+        """{"streams":[{"urls":[{"url":"https://cdn.example.com/$trackId/master.m3u8","isPrimary":true}],
+            "mtc":{"next":${next?.let { "\"$it\"" } ?: "null"}},
+            "metadata":{"xtra":{"items":[{"id":"$trackId","name":"$trackId","artistName":"Artist"}]}}}]}""",
+    )
 
     private fun json(body: String) = MockResponse().setBody(body).addHeader("Content-Type", "application/json")
 
@@ -109,6 +124,27 @@ class SiriusXmClientTest {
         assertArrayEquals(ByteArray(16) { it.toByte() }, key)
         assertTrue(requests.any { it.path == "/identity/v1/identities/authenticate/password" })
         assertEquals("/playback/key/v1/12345678-1234-1234-1234-123456789abc", requests.last().path)
+    }
+
+    @Test
+    fun `xtra channels move on through the stream's next link`() = runTest {
+        val client = client()
+        assertEquals("https://cdn.example.com/intro/master.m3u8", client.streamUrl("channel-xtra", "x1"))
+        assertEquals("intro", client.cutAt("channel-xtra", "x1", 0)?.title)
+        val next = client.nextXtraTrack("channel-xtra", "x1")
+        assertEquals("https://cdn.example.com/song-after-intro/master.m3u8", next)
+        assertEquals("song-after-intro", client.cutAt("channel-xtra", "x1", 0)?.title)
+        assertTrue(requests.any { it.path == "/playback/telemetry/v2/actions" })
+        // The player re-opens the channel and gets the new track.
+        assertEquals(next, client.streamUrl("channel-xtra", "x1"))
+    }
+
+    @Test
+    fun `xtra channels tune again when the next link doesn't work`() = runTest {
+        nextResponds = false
+        val client = client()
+        client.streamUrl("channel-xtra", "x1")
+        assertEquals("https://cdn.example.com/track-2/master.m3u8", client.nextXtraTrack("channel-xtra", "x1"))
     }
 
     @Test

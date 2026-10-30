@@ -18,6 +18,8 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -92,8 +94,19 @@ fun RadioScreen() {
                             singleLine = true,
                         )
                     }
-                    items(state.visible, key = { it.id }) { channel ->
-                        ChannelRow(channel) { actions.play(listOf(channel.toTrack())) }
+                    if (state.bookmarked.isNotEmpty()) {
+                        item(key = "bookmarked-header") { Header("Bookmarked") }
+                        items(state.bookmarked, key = { "b-" + it.id }) { channel ->
+                            ChannelRow(channel, bookmarked = true, onBookmark = { viewModel.toggleBookmark(channel) }) {
+                                actions.play(listOf(channel.toTrack()))
+                            }
+                        }
+                        item(key = "all-header") { Header("All channels") }
+                    }
+                    items(state.others, key = { it.id }) { channel ->
+                        ChannelRow(channel, bookmarked = false, onBookmark = { viewModel.toggleBookmark(channel) }) {
+                            actions.play(listOf(channel.toTrack()))
+                        }
                     }
                 }
             }
@@ -102,7 +115,12 @@ fun RadioScreen() {
 }
 
 @Composable
-private fun ChannelRow(channel: SxmChannel, onPlay: () -> Unit) {
+private fun Header(title: String) {
+    Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
+}
+
+@Composable
+private fun ChannelRow(channel: SxmChannel, bookmarked: Boolean, onBookmark: () -> Unit, onPlay: () -> Unit) {
     ListItem(
         modifier = Modifier.clickable(enabled = !channel.locked, onClick = onPlay),
         leadingContent = { Artwork(channel.logoUrl, 48.dp) },
@@ -114,7 +132,17 @@ private fun ChannelRow(channel: SxmChannel, onPlay: () -> Unit) {
             )
         },
         trailingContent = {
-            if (channel.locked) Icon(Icons.Default.Lock, contentDescription = "Not in your subscription")
+            if (channel.locked) {
+                Icon(Icons.Default.Lock, contentDescription = "Not in your subscription")
+            } else {
+                IconButton(onClick = onBookmark) {
+                    Icon(
+                        if (bookmarked) Icons.Default.Star else Icons.Default.StarBorder,
+                        contentDescription = if (bookmarked) "Remove bookmark" else "Bookmark",
+                        tint = if (bookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         },
     )
 }

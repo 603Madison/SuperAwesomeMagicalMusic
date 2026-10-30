@@ -104,7 +104,7 @@ class LidarrService(
             _reachability.value = LidarrReachability.Reachable(clock())
         } catch (e: IOException) {
             // Not on the home network (or the server is down): keep everything queued.
-            _reachability.value = LidarrReachability.Unreachable(clock(), e.message ?: e.javaClass.simpleName)
+            _reachability.value = LidarrReachability.Unreachable(clock(), describe(e))
             return 0
         }
 
@@ -185,6 +185,14 @@ class LidarrService(
             cachedArtists = it
             cachedAt = now
         }
+    }
+
+    private fun describe(e: IOException): String = when (e) {
+        is HttpException -> if (e.code == 401) "the API key was rejected" else "it answered HTTP ${e.code}"
+        is java.net.ConnectException, is java.net.SocketTimeoutException, is java.net.UnknownHostException,
+        is java.net.NoRouteToHostException,
+        -> "not reachable from this network"
+        else -> e.message ?: e.javaClass.simpleName
     }
 
     private fun sameName(a: String, b: String): Boolean {

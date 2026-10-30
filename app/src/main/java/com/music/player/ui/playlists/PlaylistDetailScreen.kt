@@ -16,12 +16,15 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -82,8 +85,18 @@ fun PlaylistDetailScreen(playlistId: String, onBack: () -> Unit) {
                     Box {
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            val keep = playlist?.keepDownloaded == true
+                            DropdownMenuItem(
+                                text = { Text("Keep downloaded") },
+                                leadingIcon = { Icon(Icons.Default.DownloadForOffline, contentDescription = null) },
+                                trailingIcon = { Checkbox(checked = keep, onCheckedChange = null) },
+                                onClick = {
+                                    menuOpen = false
+                                    scope.launch { container.playlists.setKeepDownloaded(playlistId, !keep) }
+                                },
+                            )
                             MenuItem("Rename", Icons.Default.Edit) { menuOpen = false; renaming = true }
-                            MenuItem("Download all", Icons.Default.Download) { menuOpen = false; actions.download(tracks) }
+                            MenuItem("Download all now", Icons.Default.Download) { menuOpen = false; actions.download(tracks) }
                             MenuItem("Delete playlist", Icons.Default.Delete) { menuOpen = false; confirmDelete = true }
                         }
                     }
@@ -108,7 +121,8 @@ fun PlaylistDetailScreen(playlistId: String, onBack: () -> Unit) {
                 }
                 val downloadedCount = tracks.count { it.key in downloaded }
                 Text(
-                    "${tracks.size} songs · $downloadedCount downloaded",
+                    "${tracks.size} songs · $downloadedCount downloaded" +
+                        if (playlist?.keepDownloaded == true) " · kept downloaded and upgraded to better copies" else "",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp),

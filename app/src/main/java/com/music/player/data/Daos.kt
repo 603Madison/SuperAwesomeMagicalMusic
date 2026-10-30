@@ -14,7 +14,8 @@ interface PlaylistDao {
         """
         SELECT p.id, p.name, p.description, p.updatedAt,
                (SELECT COUNT(*) FROM playlist_entries e WHERE e.playlistId = p.id) AS trackCount,
-               (p.syncedUpdatedAt IS NULL OR p.updatedAt > p.syncedUpdatedAt) AS needsUpload
+               (p.syncedUpdatedAt IS NULL OR p.updatedAt > p.syncedUpdatedAt) AS needsUpload,
+               p.keepDownloaded
         FROM playlists p WHERE p.deleted = 0 AND p.ownerId IS :owner ORDER BY p.name COLLATE NOCASE
         """,
     )
@@ -29,6 +30,21 @@ interface PlaylistDao {
     /** Gives playlists made before anyone signed in to [owner]. */
     @Query("UPDATE playlists SET ownerId = :owner WHERE ownerId IS NULL")
     suspend fun adoptUnowned(owner: String)
+
+    @Query("UPDATE playlists SET keepDownloaded = :keep WHERE id = :id")
+    suspend fun setKeepDownloaded(id: String, keep: Boolean)
+
+    /** Songs in playlists marked "keep downloaded". */
+    @Query(
+        """
+        SELECT e.* FROM playlist_entries e JOIN playlists p ON p.id = e.playlistId
+        WHERE p.keepDownloaded = 1 AND p.deleted = 0
+        """,
+    )
+    suspend fun keptEntries(): List<PlaylistEntryEntity>
+
+    @Query("UPDATE playlists SET ownerId = :to WHERE ownerId = :from")
+    suspend fun reassign(from: String, to: String?)
 
     @Query("SELECT * FROM playlists WHERE id = :id")
     fun observe(id: String): Flow<PlaylistEntity?>
@@ -98,6 +114,9 @@ interface DownloadDao {
 
     @Query("SELECT * FROM downloads WHERE trackKey = :key")
     suspend fun get(key: String): DownloadEntity?
+
+    @Query("SELECT * FROM downloads")
+    suspend fun all(): List<DownloadEntity>
 
     @Query("SELECT * FROM downloads WHERE trackKey = :key AND status = 'COMPLETED'")
     suspend fun completed(key: String): DownloadEntity?

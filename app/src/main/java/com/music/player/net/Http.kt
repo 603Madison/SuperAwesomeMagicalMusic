@@ -1,6 +1,8 @@
 package com.music.player.net
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.Call
 import okhttp3.Callback
@@ -53,8 +55,15 @@ object Http {
     }
 }
 
-/** Executes the call without blocking the caller's thread; cancelling the coroutine cancels the call. */
-suspend fun OkHttpClient.execute(request: Request): Response = suspendCancellableCoroutine { cont ->
+/**
+ * Sends [request] and hands the response to [handle], both on the IO dispatcher: reading a
+ * response body is network I/O too, which Android forbids on the main thread. Cancelling the
+ * coroutine cancels the call.
+ */
+suspend fun <T> OkHttpClient.call(request: Request, handle: (Response) -> T): T =
+    withContext(Dispatchers.IO) { enqueueAndAwait(request).use(handle) }
+
+private suspend fun OkHttpClient.enqueueAndAwait(request: Request): Response = suspendCancellableCoroutine { cont ->
     val call = newCall(request)
     cont.invokeOnCancellation { call.cancel() }
     call.enqueue(object : Callback {
@@ -69,7 +78,7 @@ suspend fun OkHttpClient.execute(request: Request): Response = suspendCancellabl
 }
 
 /** Executes the request and returns the body, throwing [HttpException] for non-2xx responses. */
-suspend fun OkHttpClient.fetchString(request: Request): String = execute(request).use { response ->
+suspend fun OkHttpClient.fetchString(request: Request): String = call(request) { response ->
     val body = response.body?.string().orEmpty()
     if (!response.isSuccessful) {
         throw HttpException(response.code, "${request.method} ${request.url.encodedPath} failed: HTTP ${response.code} ${body.take(200)}")

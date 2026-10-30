@@ -69,6 +69,7 @@ class YouTubeMusicSource(
             description = "${if (format.isOpus()) "Opus" else "AAC"} ${stream.kbps()} kbps",
             withinCap = choice.withinCap,
             fileExtension = format?.suffix ?: "m4a",
+            kbps = stream.kbps(),
         )
     }
 

@@ -1,5 +1,6 @@
 package com.music.player.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -21,8 +22,10 @@ data class PlaylistEntity(
     val remoteEtag: String? = null,
     /** The [updatedAt] value that was last uploaded to or downloaded from Nextcloud. */
     val syncedUpdatedAt: Long? = null,
-    /** The authentik user (OIDC `sub`) the playlist belongs to; null when nobody is signed in. */
+    /** The Nextcloud account (`user@server`) the playlist belongs to; null when not connected. */
     val ownerId: String? = null,
+    /** Keep every song downloaded, including songs added later, upgrading to better copies. */
+    @ColumnInfo(defaultValue = "0") val keepDownloaded: Boolean = false,
 ) {
     val needsUpload: Boolean get() = syncedUpdatedAt == null || updatedAt > syncedUpdatedAt
 }
@@ -53,6 +56,7 @@ data class PlaylistSummary(
     val updatedAt: Long,
     val trackCount: Int,
     val needsUpload: Boolean,
+    val keepDownloaded: Boolean,
 )
 
 /** An artist waiting to be checked in (and if needed added to) Lidarr once it is reachable. */
@@ -83,4 +87,16 @@ data class DownloadEntity(
     val qualityDescription: String? = null,
     val error: String? = null,
     val createdAt: Long,
-)
+    /** Bitrate of the downloaded copy, to recognise better copies later. */
+    val kbps: Int? = null,
+    /** Downloaded because a kept playlist contains the song (removed when no longer needed). */
+    @ColumnInfo(defaultValue = "0") val autoDownloaded: Boolean = false,
+    /** When the services were last checked for a better copy. */
+    val qualityCheckedAt: Long? = null,
+) {
+    val isLossless: Boolean get() = filePath?.substringAfterLast('.')?.lowercase() in setOf("flac", "wav", "alac")
+
+    /** The known bitrate, or an estimate from file size and duration for older downloads. */
+    val effectiveKbps: Int?
+        get() = kbps ?: track.durationMs?.takeIf { it > 0 && sizeBytes > 0 }?.let { (sizeBytes * 8 / it).toInt() }
+}

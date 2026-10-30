@@ -92,6 +92,7 @@ class QobuzSource(
             description = delivered.label,
             withinCap = choice.withinCap,
             fileExtension = delivered.extension,
+            kbps = delivered.nominalKbps,
         )
     }
 

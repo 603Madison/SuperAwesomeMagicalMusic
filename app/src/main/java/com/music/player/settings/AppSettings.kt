@@ -50,6 +50,13 @@ data class NextcloudConfig(
 
     val davUser: String get() = userId.ifBlank { username }
 
+    /**
+     * Who playlists belong to: the signed-in Nextcloud account (which may itself sign in through
+     * an SSO provider such as authentik), or null when Nextcloud isn't connected.
+     */
+    val owner: String?
+        get() = if (isConfigured) "$davUser@${serverUrl.substringAfter("://").trimEnd('/')}" else null
+
     companion object {
         const val DEFAULT_FOLDER = "Music/Playlists"
     }
@@ -61,25 +68,6 @@ data class SiriusXmConfig(
     val password: String = "",
 ) {
     val isConfigured: Boolean get() = username.isNotBlank() && password.isNotBlank()
-}
-
-/** An authentik OAuth2/OpenID provider used to sign in to the app. */
-data class AuthentikConfig(
-    /** e.g. https://auth.example.com/application/o/music/ */
-    val issuerUrl: String = "",
-    val clientId: String = "",
-) {
-    val isConfigured: Boolean get() = issuerUrl.isNotBlank() && clientId.isNotBlank()
-}
-
-/** The signed-in authentik user. [subject] (the OIDC `sub`) owns the user's playlists. */
-data class Account(
-    val subject: String,
-    val username: String? = null,
-    val email: String? = null,
-    val name: String? = null,
-) {
-    val displayName: String get() = name ?: username ?: email ?: subject
 }
 
 data class QualitySettings(
@@ -113,8 +101,8 @@ data class AppSettings(
     val qobuz: QobuzConfig = QobuzConfig(),
     val youTubeMusicEnabled: Boolean = true,
     val siriusXm: SiriusXmConfig = SiriusXmConfig(),
-    val authentik: AuthentikConfig = AuthentikConfig(),
-    val account: Account? = null,
+    /** Ids of bookmarked SiriusXM channels, shown first. */
+    val siriusXmBookmarks: Set<String> = emptySet(),
     /** Order in which streaming services are tried when Jellyfin does not have a song. */
     val fallbackOrder: List<SourceType> = listOf(SourceType.QOBUZ, SourceType.YOUTUBE_MUSIC),
     val lidarr: LidarrConfig = LidarrConfig(),

@@ -32,6 +32,7 @@ import com.music.player.MainActivity
 import com.music.player.MusicApp
 import com.music.player.quality.NetworkClass
 import com.music.player.quality.StreamQuality
+import com.music.player.sources.siriusxm.SiriusXmClient
 import com.music.player.sources.siriusxm.SiriusXmDataSource
 import com.music.player.sources.siriusxm.SxmChannel
 import com.music.player.sources.siriusxm.SxmCut
@@ -87,6 +88,7 @@ class PlaybackService : MediaLibraryService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
         player.addListener(ErrorHandler(player))
+        player.addListener(TrackChanges(player))
 
         val openApp = PendingIntent.getActivity(
             this,
@@ -108,14 +110,18 @@ class PlaybackService : MediaLibraryService() {
 
         // On a network change (e.g. Wi-Fi -> satellite), queued songs re-pick their bitrate. The
         // current song keeps its stream so seeking within it stays consistent.
+        // If the network now allows more (e.g. satellite -> Wi-Fi), the current song also switches
+        // to a better copy, picking up where it was.
         scope.launch {
             container.networkMonitor.state.map { it.networkClass }.distinctUntilChanged().drop(1).collect {
                 container.resolver.onNetworkOrQualityChanged(player.currentMediaItem?.mediaId)
+                upgradeCurrentIfBetter(player)
             }
         }
         scope.launch {
             container.settings.settings.map { it.quality }.distinctUntilChanged().drop(1).collect {
                 container.resolver.onNetworkOrQualityChanged(player.currentMediaItem?.mediaId)
+                upgradeCurrentIfBetter(player)
             }
         }
         // Streams with several bitrates (SiriusXM's HLS) round down to the network's cap.
@@ -185,7 +191,13 @@ class PlaybackService : MediaLibraryService() {
                 else timeline.getWindow(player.currentMediaItemIndex, window).windowStartTimeMs
                 val heardAt = if (windowStart != C.TIME_UNSET) windowStart + player.currentPosition
                 else System.currentTimeMillis() - 30_000
-                val cut = runCatching { container.siriusXm.cutAt(channel.second, heardAt) }
+                if (channel.first != SiriusXmClient.LINEAR && player.isPlaying) {
+                    xtraElapsedMs += NOW_PLAYING_INTERVAL_MS
+                    if (xtraElapsedMs % XTRA_PROGRESS_INTERVAL_MS == 0L) {
+                        runCatching { container.siriusXm.onXtraProgress(channel.first, channel.second, xtraElapsedMs) }
+                    }
+                }
+                val cut = runCatching { container.siriusXm.cutAt(channel.first, channel.second, heardAt) }
                     .onFailure { Log.w(TAG, "SiriusXM now playing failed", it) }
                     .getOrNull()
                 val nowPlaying = SxmNowPlaying(track, cut)
@@ -195,6 +207,80 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
             delay(NOW_PLAYING_INTERVAL_MS)
+        }
+    }
+
+    /** Re-opens the current song at a better quality if the current network or settings allow it. */
+    private suspend fun upgradeCurrentIfBetter(player: ExoPlayer) {
+        val item = player.currentMediaItem ?: return
+        val pinned = container.resolver.pinnedQuality(item.mediaId) ?: return // downloaded, live or not started
+        val state = container.networkMonitor.state.value
+        if (!state.isOnline) return
+        val now = container.settings.current().quality.forNetwork(state.networkClass)
+        if (!now.isHigherThan(pinned)) return
+        container.resolver.release(item.mediaId)
+        reload(player)
+    }
+
+    /** Makes ExoPlayer open the current item again (re-resolving its stream) at the same position. */
+    private fun reload(player: ExoPlayer, positionMs: Long = player.currentPosition) {
+        val index = player.currentMediaItemIndex
+        val item = player.currentMediaItem ?: return
+        // A new tag makes the item differ, so ExoPlayer builds a fresh source instead of reusing it.
+        player.replaceMediaItem(index, item.buildUpon().setTag(System.nanoTime()).build())
+        player.seekTo(index, positionMs)
+        player.prepare()
+    }
+
+    /** Moves an Xtra channel on to its next track when the current one ends. */
+    private fun advanceXtra(player: ExoPlayer, index: Int) {
+        val track = player.getMediaItemAt(index).toTrack()
+        val (type, channelId) = track?.let(SxmChannel::idOf) ?: return
+        scope.launch {
+            try {
+                container.siriusXm.nextXtraTrack(type, channelId)
+                if (player.currentMediaItemIndex != index) player.seekTo(index, 0)
+                reload(player, positionMs = 0)
+                player.play()
+                xtraElapsedMs = 0
+            } catch (e: Exception) {
+                Log.w(TAG, "Couldn't continue the Xtra channel", e)
+                container.reportPlaybackError(e.message ?: "Couldn't load the next track")
+            }
+        }
+    }
+
+    private var xtraElapsedMs = 0L
+
+    /**
+     * Track changes: songs left behind lose their pinned stream (so replaying them re-picks the
+     * best copy for the network), and Xtra channels continue past the end of each track.
+     */
+    private inner class TrackChanges(private val player: ExoPlayer) : Player.Listener {
+        private var previous: Pair<Int, String?> = -1 to null
+
+        override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+            val (previousIndex, previousKey) = previous
+            previous = player.currentMediaItemIndex to mediaItem?.mediaId
+            if (previousKey != null && previousKey != mediaItem?.mediaId) container.resolver.release(previousKey)
+            val leftXtra = previousIndex >= 0 && previousIndex < player.mediaItemCount &&
+                player.getMediaItemAt(previousIndex).toTrack()?.let(SxmChannel::idOf)?.first?.let { it != SiriusXmClient.LINEAR } == true
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && leftXtra) {
+                // The Xtra track ended and ExoPlayer moved on; stay on the channel instead.
+                player.seekTo(previousIndex, 0)
+                advanceXtra(player, previousIndex)
+                return
+            }
+            mediaItem?.toTrack()?.let(SxmChannel::idOf)?.takeIf { it.first != SiriusXmClient.LINEAR }?.let { (type, id) ->
+                xtraElapsedMs = 0
+                scope.launch { container.siriusXm.onXtraStarted(type, id) }
+            }
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState != Player.STATE_ENDED) return
+            val channel = player.currentMediaItem?.toTrack()?.let(SxmChannel::idOf) ?: return
+            if (channel.first != SiriusXmClient.LINEAR) advanceXtra(player, player.currentMediaItemIndex)
         }
     }
 
@@ -234,16 +320,22 @@ class PlaybackService : MediaLibraryService() {
         override fun onPlayerError(error: PlaybackException) {
             Log.w(TAG, "Playback error", error)
             val channel = player.currentMediaItem?.toTrack()?.let(SxmChannel::idOf)
-            if (channel != null && error.cause is HttpDataSource.InvalidResponseCodeException &&
-                System.currentTimeMillis() - lastRetuneAt > RETUNE_INTERVAL_MS
-            ) {
+            if (channel != null && System.currentTimeMillis() - lastRetuneAt > RETUNE_INTERVAL_MS) {
                 lastRetuneAt = System.currentTimeMillis()
-                scope.launch {
-                    runCatching { container.siriusXm.streamUrl(channel.first, channel.second, forceRetune = true) }
-                    player.prepare()
-                    player.play()
+                if (channel.first != SiriusXmClient.LINEAR) {
+                    // An Xtra track's stream ran out or broke: carry on with the next track.
+                    advanceXtra(player, player.currentMediaItemIndex)
+                    return
                 }
-                return
+                if (error.cause is HttpDataSource.InvalidResponseCodeException) {
+                    // The live stream's link expired: tune again.
+                    scope.launch {
+                        runCatching { container.siriusXm.streamUrl(channel.first, channel.second, forceRetune = true) }
+                        reload(player)
+                        player.play()
+                    }
+                    return
+                }
             }
             container.reportPlaybackError(error.cause?.message ?: "Playback failed (${error.errorCodeName})")
             consecutiveErrors++
@@ -275,5 +367,6 @@ class PlaybackService : MediaLibraryService() {
         const val TAG = "PlaybackService"
         const val NOW_PLAYING_INTERVAL_MS = 10_000L
         const val RETUNE_INTERVAL_MS = 30_000L
+        const val XTRA_PROGRESS_INTERVAL_MS = 30_000L
     }
 }

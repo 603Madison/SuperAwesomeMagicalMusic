@@ -16,6 +16,8 @@ data class SourceStream(
     val fileExtension: String,
     /** False for live transcodes, which must be fetched in a single request. */
     val supportsRangeRequests: Boolean = true,
+    /** Nominal bitrate, used to compare copies across services; lossless counts as 1411+. */
+    val kbps: Int? = null,
 )
 
 interface MusicSource {

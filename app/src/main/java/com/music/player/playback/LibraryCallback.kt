@@ -163,11 +163,18 @@ class LibraryCallback(
                 folder(LibraryIds.playlist(playlist.id), playlist.name, MediaMetadata.MEDIA_TYPE_PLAYLIST, playable = true)
             }
             LibraryIds.DOWNLOADS -> return completedDownloads().map { browsable(it, LibraryIds.download(it.key)) }
-            LibraryIds.SIRIUSXM -> return container.siriusXm.channels().filter { !it.locked }
-                .map { it.category.ifBlank { "Other" } }
-                .distinct()
-                .sorted()
-                .map { folder(LibraryIds.category(it), it, MediaMetadata.MEDIA_TYPE_FOLDER_RADIO_STATIONS) }
+            LibraryIds.SIRIUSXM -> {
+                val channels = container.siriusXm.channels().filter { !it.locked }
+                val bookmarks = container.settings.current().siriusXmBookmarks
+                // Bookmarked channels come first, ready to play; then every category.
+                val bookmarked = channels.filter { it.id in bookmarks }.map { channel ->
+                    channel.toTrack().let { browsable(it, LibraryIds.track(it)) }
+                }
+                return bookmarked + channels.map { it.category.ifBlank { "Other" } }
+                    .distinct()
+                    .sorted()
+                    .map { folder(LibraryIds.category(it), it, MediaMetadata.MEDIA_TYPE_FOLDER_RADIO_STATIONS) }
+            }
         }
         LibraryIds.parseCategory(parentId)?.let { category ->
             return container.siriusXm.channels()

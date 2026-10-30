@@ -8,6 +8,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -17,8 +19,9 @@ data class RadioUiState(
     val channels: List<SxmChannel> = emptyList(),
     val error: String? = null,
     val filter: String = "",
+    val bookmarks: Set<String> = emptySet(),
 ) {
-    val visible: List<SxmChannel>
+    private val matching: List<SxmChannel>
         get() {
             val query = filter.trim().lowercase()
             if (query.isEmpty()) return channels
@@ -26,6 +29,9 @@ data class RadioUiState(
                 it.name.lowercase().contains(query) || it.category.lowercase().contains(query) || it.number?.toString() == query
             }
         }
+
+    val bookmarked: List<SxmChannel> get() = matching.filter { it.id in bookmarks }
+    val others: List<SxmChannel> get() = matching.filter { it.id !in bookmarks }
 }
 
 class RadioViewModel(private val container: AppContainer) : ViewModel() {
@@ -34,6 +40,17 @@ class RadioViewModel(private val container: AppContainer) : ViewModel() {
 
     init {
         load(refresh = false)
+        viewModelScope.launch {
+            container.settings.settings.map { it.siriusXmBookmarks }.distinctUntilChanged().collect { bookmarks ->
+                _state.update { it.copy(bookmarks = bookmarks) }
+            }
+        }
+    }
+
+    fun toggleBookmark(channel: SxmChannel) {
+        viewModelScope.launch {
+            container.settings.setSiriusXmBookmarked(channel.id, channel.id !in _state.value.bookmarks)
+        }
     }
 
     fun setFilter(filter: String) = _state.update { it.copy(filter = filter) }

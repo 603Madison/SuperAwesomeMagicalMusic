@@ -14,7 +14,7 @@ data class PlaylistDocument(
     val createdAt: Long,
     val updatedAt: Long,
     val tracks: List<Track>,
-    /** The authentik user (OIDC `sub`) the playlist belongs to, if any. */
+    /** The Nextcloud account (`user@server`) the playlist belongs to. */
     val owner: String? = null,
 ) {
     companion object {

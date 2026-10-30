@@ -7,6 +7,7 @@ import com.music.player.lidarr.LidarrService
 import com.music.player.model.SourceType
 import com.music.player.model.Track
 import com.music.player.net.NetworkMonitor
+import com.music.player.quality.NetworkClass
 import com.music.player.quality.StreamQuality
 import com.music.player.settings.SettingsRepository
 import com.music.player.sources.Catalog
@@ -83,7 +84,8 @@ class StreamResolver(
         val state = network.state.value
         if (!state.isOnline) throw OfflineException("\"${track.title}\" isn't downloaded and you're offline")
         val quality = settings.current().quality.forNetwork(state.networkClass)
-        val selected = select(track, quality)
+        // Off satellite, compare every service for the best copy; on satellite take the first fit.
+        val selected = select(track, quality, thorough = state.networkClass != NetworkClass.SATELLITE)
         pins.put(track.key, Pin.Remote(selected.track, quality))
         streams.put(track.key, CachedStream(selected.stream, System.currentTimeMillis()))
         publishOrigin(
@@ -96,7 +98,16 @@ class StreamResolver(
     /** Picks the stream to save for offline listening at the download quality. */
     suspend fun resolveForDownload(track: Track): SelectedStream {
         if (track.isSiriusXmChannel) throw SourceUnavailableException("Live radio can't be downloaded")
-        return select(track, settings.current().quality.download)
+        return select(track, settings.current().quality.download, thorough = true)
+    }
+
+    /** The quality a streaming track is pinned at, if it's streaming (not downloaded or live). */
+    fun pinnedQuality(key: String): StreamQuality? = (pins.get(key) as? Pin.Remote)?.quality
+
+    /** Forgets a track's source and quality, so it's chosen afresh the next time it's opened. */
+    fun release(key: String) {
+        pins.remove(key)
+        streams.remove(key)
     }
 
     /**
@@ -123,12 +134,13 @@ class StreamResolver(
         return fresh
     }
 
-    private suspend fun select(track: Track, quality: StreamQuality): SelectedStream =
+    private suspend fun select(track: Track, quality: StreamQuality, thorough: Boolean): SelectedStream =
         SourceSelector.select(
             track = track,
             quality = quality,
             jellyfin = catalog.jellyfin,
             fallbackOrder = catalog.fallbackOrder().map(catalog::source),
+            thorough = thorough,
             onMissingFromJellyfin = lidarr::onTrackMissingFromJellyfin,
         )
 

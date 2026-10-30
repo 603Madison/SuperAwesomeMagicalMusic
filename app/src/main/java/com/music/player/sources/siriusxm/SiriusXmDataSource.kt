@@ -41,8 +41,9 @@ class SiriusXmDataSource(
                 serve(dataSpec, key)
             }
             uri.path?.endsWith(".m3u8") == true -> {
-                val playlist = readAll(dataSpec)
-                serve(dataSpec, SiriusXmParser.rewriteKeys(playlist.decodeToString()).toByteArray())
+                val playlist = readAll(dataSpec).decodeToString()
+                client.recordDiagnostics("playlist ${uri.lastPathSegment}", playlist.lineSequence().take(40).joinToString("\n"))
+                serve(dataSpec, SiriusXmParser.rewriteKeys(playlist, client.fallbackKeyId).toByteArray())
             }
             else -> {
                 served = upstream

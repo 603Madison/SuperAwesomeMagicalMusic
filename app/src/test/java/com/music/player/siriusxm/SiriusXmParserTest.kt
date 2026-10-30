@@ -91,6 +91,30 @@ class SiriusXmParserTest {
     }
 
     @Test
+    fun `key lines without a GUID use the tune response's key id`() {
+        val playlist = """
+            #EXT-X-KEY:METHOD=NONE
+            #EXT-X-KEY:METHOD=AES-128,URI="https://example.com/key",IV=0x2
+        """.trimIndent()
+        val rewritten = SiriusXmParser.rewriteKeys(playlist, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").lines()
+        assertEquals("#EXT-X-KEY:METHOD=NONE", rewritten[0])
+        assertTrue(rewritten[1].contains("URI=\"sxmkey://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\""))
+        // Without a fallback the line is left alone.
+        assertTrue(SiriusXmParser.rewriteKeys(playlist).contains("https://example.com/key"))
+    }
+
+    @Test
+    fun `xtra track lists become cuts starting now`() {
+        val items = AppJson.parseToJsonElement(
+            """[{"id":"t1","name":"Intro","artistName":"Octane","duration":30000},{"id":"t2","name":"Song","artistName":"Band"}]""",
+        ) as JsonArray
+        val cuts = SiriusXmParser.parseXtraItems(items, nowMs = 1_000)
+        assertEquals(listOf("t1", "t2"), cuts.map { it.id })
+        assertEquals(1_000, cuts[0].startMs)
+        assertEquals(30_000, cuts[0].durationMs)
+    }
+
+    @Test
     fun `timestamps parse in every form SiriusXM uses`() {
         val expected = 1_793_304_000_000L
         assertEquals(expected, SiriusXmParser.parseTimeMs(kotlinx.serialization.json.JsonPrimitive("2026-10-29T20:00:00.000+00:00Z")))

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,7 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.music.player.nextcloud.PlaylistSyncService
 import com.music.player.nextcloud.SyncStatus
 import com.music.player.ui.LocalAppContainer
 import com.music.player.ui.components.TextInputDialog
@@ -60,8 +60,8 @@ fun PlaylistsScreen(onOpen: (String) -> Unit) {
                 title = {
                     Column {
                         Text("Playlists")
-                        settings.account?.let {
-                            Text(it.displayName, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (settings.nextcloud.isConfigured) {
+                            Text(settings.nextcloud.davUser, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 },
@@ -91,10 +91,9 @@ fun PlaylistsScreen(onOpen: (String) -> Unit) {
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
             item {
                 val status = when {
-                    !nextcloudReady -> "Set up Nextcloud in Settings to back up and share playlists across devices."
+                    !nextcloudReady -> "Sign in to Nextcloud in Settings to back up your playlists and use them on other devices."
                     else -> when (val s = syncStatus) {
-                        SyncStatus.Idle -> "Saved to Nextcloud: ${settings.nextcloud.folder}" +
-                            settings.account?.let { "/${PlaylistSyncService.folderNameFor(it.subject)}" }.orEmpty()
+                        SyncStatus.Idle -> "Saved to Nextcloud: ${settings.nextcloud.folder}"
                         SyncStatus.Running -> "Syncing with Nextcloud…"
                         is SyncStatus.Done -> "Synced with Nextcloud (${s.result})"
                         is SyncStatus.Failed -> "Nextcloud sync failed: ${s.message}"
@@ -124,7 +123,13 @@ fun PlaylistsScreen(onOpen: (String) -> Unit) {
                     headlineContent = { Text(playlist.name) },
                     supportingContent = { Text("${playlist.trackCount} ${if (playlist.trackCount == 1) "song" else "songs"}") },
                     trailingContent = {
-                        if (nextcloudReady && playlist.needsUpload) {
+                        if (playlist.keepDownloaded) {
+                            Icon(
+                                Icons.Default.DownloadForOffline,
+                                contentDescription = "Kept downloaded",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        } else if (nextcloudReady && playlist.needsUpload) {
                             Icon(
                                 Icons.Default.CloudUpload,
                                 contentDescription = "Not yet synced",

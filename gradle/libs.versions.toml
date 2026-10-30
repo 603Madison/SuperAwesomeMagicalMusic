@@ -17,7 +17,6 @@ coroutines = "1.10.2"
 coil = "3.3.0"
 newpipeExtractor = "v0.26.5"
 desugar = "2.1.5"
-appauth = "0.11.1"
 junit = "4.13.2"
 robolectric = "4.16.1"
 
@@ -42,7 +41,6 @@ room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
-appauth = { module = "net.openid:appauth", version.ref = "appauth" }
 work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }

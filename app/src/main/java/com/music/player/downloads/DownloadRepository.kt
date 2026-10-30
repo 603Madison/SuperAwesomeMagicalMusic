@@ -30,11 +30,18 @@ class DownloadRepository(
 
     val directory: File get() = File(context.filesDir, "downloads").apply { mkdirs() }
 
-    suspend fun enqueue(tracks: List<Track>) {
+    /**
+     * Downloads [tracks]. [auto] marks downloads made for a kept playlist, which are removed again
+     * once no kept playlist needs them; downloading a song yourself makes it permanent.
+     */
+    suspend fun enqueue(tracks: List<Track>, auto: Boolean = false) {
         val constraints = constraints()
         for (track in tracks.distinctBy { it.key }) {
             val existing = dao.get(track.key)
-            if (existing?.status == DownloadStatus.COMPLETED && existing.filePath?.let { File(it).exists() } == true) continue
+            if (existing?.status == DownloadStatus.COMPLETED && existing.filePath?.let { File(it).exists() } == true) {
+                if (!auto && existing.autoDownloaded) dao.upsert(existing.copy(autoDownloaded = false))
+                continue
+            }
             val inProgress = existing?.status == DownloadStatus.QUEUED || existing?.status == DownloadStatus.DOWNLOADING
             if (!inProgress) dao.upsert(
                 DownloadEntity(
@@ -42,18 +49,34 @@ class DownloadRepository(
                     track = track,
                     status = DownloadStatus.QUEUED,
                     createdAt = existing?.createdAt ?: System.currentTimeMillis(),
+                    autoDownloaded = auto && existing?.autoDownloaded != false,
                 ),
-            )
-            val request = OneTimeWorkRequestBuilder<DownloadWorker>()
-                .setInputData(workDataOf(DownloadWorker.KEY_TRACK to track.key))
-                .setConstraints(constraints)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                .addTag(TAG)
-                .build()
+            ) else if (!auto && existing?.autoDownloaded == true) {
+                dao.upsert(existing.copy(autoDownloaded = false))
+            }
             // KEEP leaves a running download alone but still enqueues one if its job was lost.
             val policy = if (inProgress) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.REPLACE
-            WorkManager.getInstance(context).enqueueUniqueWork(workName(track.key), policy, request)
+            schedule(track.key, upgrade = false, constraints, policy)
         }
+    }
+
+    /**
+     * Looks for a better copy of downloaded songs on every service, replacing the file when one
+     * is found. The current copy stays playable meanwhile.
+     */
+    suspend fun checkForBetterCopies(keys: List<String>) {
+        val constraints = constraints()
+        keys.forEach { schedule(it, upgrade = true, constraints, ExistingWorkPolicy.KEEP) }
+    }
+
+    private fun schedule(key: String, upgrade: Boolean, constraints: Constraints, policy: ExistingWorkPolicy) {
+        val request = OneTimeWorkRequestBuilder<DownloadWorker>()
+            .setInputData(workDataOf(DownloadWorker.KEY_TRACK to key, DownloadWorker.KEY_UPGRADE to upgrade))
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .addTag(TAG)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(workName(key), policy, request)
     }
 
     suspend fun delete(trackKey: String) {

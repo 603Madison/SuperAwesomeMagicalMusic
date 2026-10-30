@@ -58,13 +58,12 @@ class AppSmokeTest {
         compose.onNodeWithText("Nothing downloaded yet", substring = true).assertIsDisplayed()
 
         openTab("Settings")
-        compose.onNodeWithText("Account (authentik)").assertIsDisplayed()
-        compose.onNodeWithText("Streaming quality").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Streaming quality").assertIsDisplayed()
         compose.onNodeWithText("Satellite").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Jellyfin (preferred source)").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Lidarr").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("SiriusXM").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Nextcloud playlist sync").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Sign in with browser").performScrollTo().assertIsDisplayed()
     }
 
     @Test
