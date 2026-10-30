@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.SatelliteAlt
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.Wifi
@@ -70,6 +71,7 @@ import com.music.player.settings.AppSettings
 import com.music.player.settings.TranscodeCodec
 import com.music.player.ui.appViewModel
 import com.music.player.ui.components.NetworkStatusRow
+import com.music.player.ui.components.formatBufferLength
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -88,6 +90,7 @@ fun SettingsScreen() {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             QualitySection(settings, viewModel)
+            BufferSection(settings, viewModel)
             JellyfinSection(settings, viewModel)
             StreamingServicesSection(settings, viewModel)
             SiriusXmSection(settings, viewModel)
@@ -180,6 +183,36 @@ private fun QualitySection(settings: AppSettings, viewModel: SettingsViewModel) 
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun BufferSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    val steps = AppSettings.BUFFER_AHEAD_STEPS
+    fun positionOf(seconds: Int) = steps.indexOfFirst { it >= seconds }.let { if (it < 0) steps.lastIndex else it }.toFloat()
+    var position by remember(settings.bufferAheadSeconds) { mutableFloatStateOf(positionOf(settings.bufferAheadSeconds)) }
+    val seconds = steps[position.roundToInt().coerceIn(steps.indices)]
+    Section("Buffering") {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.HourglassBottom, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Buffer ahead", style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.weight(1f))
+            Text(formatBufferLength(seconds), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
+        Slider(
+            value = position,
+            onValueChange = { position = it },
+            valueRange = 0f..steps.lastIndex.toFloat(),
+            steps = steps.size - 2,
+            onValueChangeFinished = { viewModel.setBufferAheadSeconds(seconds) },
+        )
+        Hint(
+            "How much music is loaded ahead of what you're hearing. When a song has fully loaded, the " +
+                "next songs in the queue load too, so with a long buffer songs change seamlessly even " +
+                "when a satellite or cellular link drops out. The buffer uses up to 64 MB of memory: " +
+                "about 25 minutes at 320 kbps, 2 hours at 64 kbps, or 8 minutes of lossless audio.",
+        )
     }
 }
 

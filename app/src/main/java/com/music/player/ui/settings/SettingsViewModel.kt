@@ -130,6 +130,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setLoadArtworkOnSatellite(enabled: Boolean) = launch { settings.setLoadArtworkOnSatellite(enabled) }
 
+    fun setBufferAheadSeconds(seconds: Int) = launch { settings.setBufferAheadSeconds(seconds) }
+
     fun connectLidarr(url: String, apiKey: String) = act(_lidarr) {
         val config = settings.current().lidarr.copy(serverUrl = Http.normalizeBaseUrl(url), apiKey = apiKey.trim())
         val version = try {

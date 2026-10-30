@@ -24,8 +24,21 @@ import kotlinx.coroutines.flow.update
 import java.io.File
 import java.io.IOException
 
-/** Where a queued track is actually being played from, shown in the now-playing screen. */
-data class PlaybackOrigin(val source: SourceType?, val description: String)
+/**
+ * Where a queued track is actually being played from, shown in the now-playing screen and the
+ * song's info. [source] is null for downloads, whose [description] says where the file came from.
+ */
+data class PlaybackOrigin(
+    val source: SourceType?,
+    val description: String,
+    /** The stream's nominal bitrate; lossless counts as 1411+. */
+    val kbps: Int? = null,
+    /** The copy that is playing, which may be another service's copy of the queued song. */
+    val playing: Track? = null,
+    /** The bitrate cap that applied when the stream was picked. */
+    val quality: StreamQuality? = null,
+    val downloaded: Boolean = false,
+)
 
 class OfflineException(message: String) : IOException(message)
 
@@ -75,9 +88,18 @@ class StreamResolver(
             null -> Unit
         }
 
-        downloads.completed(track.key)?.filePath?.takeIf { File(it).exists() }?.let { path ->
+        downloads.completed(track.key)?.takeIf { it.filePath?.let(::File)?.exists() == true }?.let { download ->
+            val path = download.filePath!!
             pins.put(track.key, Pin.Local(path))
-            publishOrigin(track.key, PlaybackOrigin(null, "Downloaded"))
+            publishOrigin(
+                track.key,
+                PlaybackOrigin(
+                    source = null,
+                    description = listOfNotNull("Downloaded", download.qualityDescription).joinToString(" · "),
+                    kbps = download.effectiveKbps,
+                    downloaded = true,
+                ),
+            )
             return localUri(path)
         }
 
@@ -90,7 +112,13 @@ class StreamResolver(
         streams.put(track.key, CachedStream(selected.stream, System.currentTimeMillis()))
         publishOrigin(
             track.key,
-            PlaybackOrigin(selected.track.source, "${selected.track.source.label} · ${selected.stream.description}"),
+            PlaybackOrigin(
+                source = selected.track.source,
+                description = "${selected.track.source.label} · ${selected.stream.description}",
+                kbps = selected.stream.kbps,
+                playing = selected.track,
+                quality = quality,
+            ),
         )
         return selected.stream.url to selected.stream.headers
     }

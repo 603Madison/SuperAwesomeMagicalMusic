@@ -26,4 +26,14 @@ class UpgradesTest {
         assertFalse(Upgrades.isBetter(null, false, 320))
         assertFalse(Upgrades.isBetter(160, false, null))
     }
+
+    @Test
+    fun `Jellyfin copies replace other services' downloads unless those are clearly better`() {
+        assertTrue(Upgrades.preferJellyfin(160, 160))
+        assertTrue(Upgrades.preferJellyfin(160, 150))
+        assertFalse(Upgrades.preferJellyfin(160, 128))
+        assertTrue(Upgrades.preferJellyfin(null, 128))
+        assertFalse(Upgrades.preferJellyfin(1411, 128))
+        assertFalse(Upgrades.preferJellyfin(320, 192))
+    }
 }

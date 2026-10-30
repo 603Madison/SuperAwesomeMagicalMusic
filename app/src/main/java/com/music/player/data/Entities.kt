@@ -6,6 +6,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.music.player.model.SourceType
 import com.music.player.model.Track
 
 @Entity(tableName = "playlists")
@@ -95,6 +96,10 @@ data class DownloadEntity(
     val qualityCheckedAt: Long? = null,
 ) {
     val isLossless: Boolean get() = filePath?.substringAfterLast('.')?.lowercase() in setOf("flac", "wav", "alac")
+
+    /** The service the file came from, as recorded in [qualityDescription]. */
+    val downloadedFrom: SourceType?
+        get() = SourceType.entries.firstOrNull { qualityDescription?.startsWith("${it.label} ·") == true }
 
     /** The known bitrate, or an estimate from file size and duration for older downloads. */
     val effectiveKbps: Int?

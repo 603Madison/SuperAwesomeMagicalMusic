@@ -14,6 +14,13 @@ import com.music.player.MusicApp
 import com.music.player.data.DownloadDao
 import com.music.player.data.DownloadStatus
 import com.music.player.data.PlaylistDao
+import com.music.player.model.SourceType
+import com.music.player.sources.MusicSource
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.TimeUnit
 
 /** When a download counts as replaceable by a better copy. */
@@ -34,7 +41,19 @@ object Upgrades {
             else -> candidateKbps >= current * 1.15
         }
     }
+
+    /**
+     * Whether a Jellyfin copy should replace a download from another service: your own library
+     * is preferred unless the download is clearly better (e.g. a Qobuz FLAC over a 128 kbps MP3).
+     */
+    fun preferJellyfin(currentKbps: Int?, jellyfinKbps: Int?): Boolean {
+        if (currentKbps == null || jellyfinKbps == null) return true
+        return !isBetter(jellyfinKbps, jellyfinKbps >= LOSSLESS_KBPS, currentKbps)
+    }
 }
+
+/** What "Refresh downloads" found: [inJellyfin] is null when Jellyfin couldn't be asked. */
+data class RefreshResult(val songs: Int, val inJellyfin: Int?, val rechecking: Int, val queued: Int)
 
 /**
  * Keeps playlists marked "keep downloaded" available offline: new songs are downloaded, songs
@@ -45,6 +64,7 @@ class OfflinePlaylists(
     private val playlists: PlaylistDao,
     private val downloadDao: DownloadDao,
     private val downloads: DownloadRepository,
+    private val jellyfin: MusicSource,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     suspend fun sync() {
@@ -70,7 +90,45 @@ class OfflinePlaylists(
         existing.values.filter { it.autoDownloaded && it.trackKey !in wantedKeys }.forEach { downloads.delete(it.trackKey) }
     }
 
+    /**
+     * "Refresh downloads" on a playlist: finds songs from other services that Jellyfin now has
+     * (e.g. once Lidarr brought in the album), and re-checks every downloaded song now instead of
+     * waiting for the weekly check, so downloads switch to the Jellyfin copy or a better one. In a
+     * kept playlist, songs that aren't downloaded (or failed) are queued again.
+     */
+    suspend fun refresh(playlistId: String): RefreshResult {
+        val playlist = playlists.get(playlistId)
+        val tracks = playlists.entries(playlistId).map { it.track }.distinctBy { it.key }
+        val existing = downloadDao.all().associateBy { it.trackKey }
+        val completed = tracks.mapNotNull { existing[it.key]?.takeIf { d -> d.status == DownloadStatus.COMPLETED } }
+
+        val elsewhere = tracks.filter { track ->
+            val download = existing[track.key]?.takeIf { it.status == DownloadStatus.COMPLETED }
+            (download?.downloadedFrom ?: track.source) != SourceType.JELLYFIN && !track.isSiriusXmChannel
+        }
+        val inJellyfin = if (jellyfin.isAvailable()) {
+            val permits = Semaphore(LOOKUP_CONCURRENCY)
+            coroutineScope {
+                elsewhere.map { track ->
+                    async { permits.withPermit { runCatching { jellyfin.findMatch(track) }.getOrNull() != null } }
+                }.awaitAll().count { it }
+            }
+        } else {
+            null
+        }
+
+        downloads.checkForBetterCopies(completed.map { it.trackKey })
+        val missing = if (playlist?.keepDownloaded == true) {
+            tracks.filter { existing[it.key] == null || existing[it.key]?.status == DownloadStatus.FAILED }
+        } else {
+            emptyList()
+        }
+        downloads.enqueue(missing, auto = true)
+        return RefreshResult(songs = tracks.size, inJellyfin = inJellyfin, rechecking = completed.size, queued = missing.size)
+    }
+
     companion object {
+        private const val LOOKUP_CONCURRENCY = 4
         private const val RECHECK_MS = 7 * 24 * 3600_000L
         private const val MAX_CHECKS_PER_RUN = 25
     }

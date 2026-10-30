@@ -12,6 +12,7 @@ class TrackActions(
     private val scope: CoroutineScope,
     private val showAddToPlaylist: (List<Track>) -> Unit,
     private val showMessage: (String) -> Unit,
+    private val showInfo: (Track) -> Unit = {},
 ) {
     fun play(tracks: List<Track>, index: Int = 0) = container.player.play(tracks, index)
 
@@ -28,6 +29,11 @@ class TrackActions(
     }
 
     fun addToPlaylist(tracks: List<Track>) = showAddToPlaylist(tracks)
+
+    fun message(text: String) = showMessage(text)
+
+    /** Shows where the song comes from and, while it plays, its source, format and bitrate. */
+    fun info(track: Track) = showInfo(track)
 
     fun download(tracks: List<Track>) {
         scope.launch {

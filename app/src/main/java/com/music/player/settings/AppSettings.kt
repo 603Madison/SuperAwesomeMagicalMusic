@@ -111,4 +111,11 @@ data class AppSettings(
     val jellyfinTranscodeCodec: TranscodeCodec = TranscodeCodec.MP3,
     val downloads: DownloadSettings = DownloadSettings(),
     val loadArtworkOnSatellite: Boolean = false,
-)
+    /** How much music to load ahead of what's playing, running on into the next songs. */
+    val bufferAheadSeconds: Int = DEFAULT_BUFFER_AHEAD_SECONDS,
+) {
+    companion object {
+        const val DEFAULT_BUFFER_AHEAD_SECONDS = 300
+        val BUFFER_AHEAD_STEPS = listOf(30, 60, 120, 300, 600, 900, 1200, 1800)
+    }
+}

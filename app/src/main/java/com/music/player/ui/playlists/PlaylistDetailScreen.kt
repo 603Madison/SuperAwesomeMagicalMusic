@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -20,10 +21,12 @@ import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,11 +48,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.player.downloads.RefreshResult
 import com.music.player.ui.LocalAppContainer
 import com.music.player.ui.LocalTrackActions
 import com.music.player.ui.components.MenuItem
 import com.music.player.ui.components.TextInputDialog
 import com.music.player.ui.components.TrackRow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,6 +71,7 @@ fun PlaylistDetailScreen(playlistId: String, onBack: () -> Unit) {
     var renaming by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
+    var refreshing by remember { mutableStateOf(false) }
 
     // Leave the screen if the playlist disappears (deleted here or by a sync).
     LaunchedEffect(playlist) {
@@ -82,6 +88,29 @@ fun PlaylistDetailScreen(playlistId: String, onBack: () -> Unit) {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
                 },
                 actions = {
+                    IconButton(
+                        enabled = !refreshing && tracks.isNotEmpty(),
+                        onClick = {
+                            refreshing = true
+                            scope.launch {
+                                try {
+                                    actions.message(describe(container.offlinePlaylists.refresh(playlistId)))
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    actions.message("Couldn't refresh: ${e.message ?: e.javaClass.simpleName}")
+                                } finally {
+                                    refreshing = false
+                                }
+                            }
+                        },
+                    ) {
+                        if (refreshing) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh downloads")
+                        }
+                    }
                     Box {
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
@@ -180,3 +209,13 @@ fun PlaylistDetailScreen(playlistId: String, onBack: () -> Unit) {
         )
     }
 }
+
+private fun describe(result: RefreshResult): String = buildList {
+    when (result.inJellyfin) {
+        null -> add("Jellyfin couldn't be reached")
+        0 -> add("No new songs in Jellyfin")
+        else -> add("${result.inJellyfin} ${if (result.inJellyfin == 1) "song" else "songs"} from other services found in Jellyfin")
+    }
+    if (result.rechecking > 0) add("checking ${result.rechecking} downloads for Jellyfin or better copies")
+    if (result.queued > 0) add("downloading ${result.queued} missing")
+}.joinToString("; ")

@@ -87,7 +87,7 @@ class AppContainer(private val context: Context) {
         onChanged = ::onPlaylistsChanged,
     )
     val heardSongs = HeardSongs(jellyfin, lidarr, playlists)
-    val offlinePlaylists = OfflinePlaylists(database.playlists(), database.downloads(), downloads)
+    val offlinePlaylists = OfflinePlaylists(database.playlists(), database.downloads(), downloads, catalog.jellyfin)
     val nextcloudSignIn = NextcloudSignIn(nextcloud, settings, database.playlists(), playlistSync, appScope)
 
     val player = PlayerController(context, MainScope())

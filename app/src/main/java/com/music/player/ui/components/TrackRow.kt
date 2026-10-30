@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -102,6 +103,7 @@ fun ColumnScope.StandardTrackMenuItems(track: Track, downloaded: Boolean, dismis
     val actions = LocalTrackActions.current
     MenuItem("Play next", Icons.Default.SkipNext) { dismiss(); actions.playNext(track) }
     MenuItem("Add to queue", Icons.AutoMirrored.Filled.QueueMusic) { dismiss(); actions.addToQueue(listOf(track)) }
+    MenuItem("Info", Icons.Outlined.Info) { dismiss(); actions.info(track) }
     // Live channels can't be saved or downloaded; their songs can (see the radio screen).
     if (track.isSiriusXmChannel) return
     MenuItem("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) { dismiss(); actions.addToPlaylist(listOf(track)) }

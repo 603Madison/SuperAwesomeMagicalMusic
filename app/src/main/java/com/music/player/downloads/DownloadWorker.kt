@@ -13,6 +13,7 @@ import androidx.work.WorkerParameters
 import com.music.player.MusicApp
 import com.music.player.R
 import com.music.player.data.DownloadStatus
+import com.music.player.model.SourceType
 import com.music.player.quality.NetworkClass
 import kotlinx.coroutines.CancellationException
 import java.io.File
@@ -41,7 +42,13 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         var target: File? = null
         return try {
             val selected = container.resolver.resolveForDownload(entity.track)
-            if (upgrade && !Upgrades.isBetter(entity.effectiveKbps, entity.isLossless, selected.stream.kbps)) {
+            val replace = if (selected.track.source == SourceType.JELLYFIN && entity.downloadedFrom != SourceType.JELLYFIN) {
+                // Your own library wins over a copy from a streaming service unless that's clearly better.
+                Upgrades.preferJellyfin(entity.effectiveKbps, selected.stream.kbps)
+            } else {
+                Upgrades.isBetter(entity.effectiveKbps, entity.isLossless, selected.stream.kbps)
+            }
+            if (upgrade && !replace) {
                 dao.upsert(entity.copy(qualityCheckedAt = System.currentTimeMillis()))
                 return Result.success()
             }

@@ -117,6 +117,8 @@ class SettingsRepository(context: Context) {
 
     suspend fun setLoadArtworkOnSatellite(enabled: Boolean) = store.edit { it[Keys.ARTWORK_ON_SATELLITE] = enabled }
 
+    suspend fun setBufferAheadSeconds(seconds: Int) = store.edit { it[Keys.BUFFER_AHEAD] = seconds }
+
     private fun Preferences.toAppSettings(): AppSettings {
         val defaults = AppSettings()
         return AppSettings(
@@ -171,6 +173,7 @@ class SettingsRepository(context: Context) {
                 allowSatellite = this[Keys.DL_SATELLITE] ?: defaults.downloads.allowSatellite,
             ),
             loadArtworkOnSatellite = this[Keys.ARTWORK_ON_SATELLITE] ?: defaults.loadArtworkOnSatellite,
+            bufferAheadSeconds = this[Keys.BUFFER_AHEAD] ?: defaults.bufferAheadSeconds,
         )
     }
 
@@ -235,5 +238,6 @@ class SettingsRepository(context: Context) {
         val DL_CELLULAR = booleanPreferencesKey("download_cellular")
         val DL_SATELLITE = booleanPreferencesKey("download_satellite")
         val ARTWORK_ON_SATELLITE = booleanPreferencesKey("artwork_on_satellite")
+        val BUFFER_AHEAD = intPreferencesKey("buffer_ahead_seconds")
     }
 }

@@ -1,5 +1,6 @@
 package com.music.player.ui.player
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,12 +26,12 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -45,6 +47,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,6 +60,7 @@ import com.music.player.ui.LocalTrackActions
 import com.music.player.ui.components.Artwork
 import com.music.player.ui.components.NetworkStatusRow
 import com.music.player.ui.components.SourceBadge
+import com.music.player.ui.components.formatTime
 import com.music.player.ui.radio.NowPlayingCard
 
 @Composable
@@ -64,8 +70,13 @@ fun MiniPlayer(onExpand: () -> Unit) {
     val track = state.current ?: return
     Surface(tonalElevation = 3.dp) {
         Column {
-            val progress = if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs else 0f
-            LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+            val duration = state.durationMs
+            BufferedProgress(
+                played = if (duration > 0) state.positionMs.toFloat() / duration else 0f,
+                buffered = if (duration > 0) state.bufferedPositionMs.toFloat() / duration else 0f,
+                modifier = Modifier.fillMaxWidth().height(3.dp),
+                rounded = false,
+            )
             Row(
                 Modifier.fillMaxWidth().clickable(onClick = onExpand).padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -136,7 +147,9 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
                         )
                     }
                     NetworkStatusRow()
-                    if (!track.isSiriusXmChannel) SeekBar(state.positionMs, state.durationMs, player::seekTo)
+                    if (!track.isSiriusXmChannel) {
+                        SeekBar(state.positionMs, state.bufferedPositionMs, state.durationMs, player::seekTo)
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         IconButton(onClick = player::toggleShuffle) {
                             Icon(
@@ -172,18 +185,23 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
                         }
                     }
                     if (track.isSiriusXmChannel) NowPlayingCard()
-                    if (!track.isSiriusXmChannel) Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        IconButton(onClick = { actions.addToPlaylist(listOf(track)) }) {
-                            Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Add to playlist")
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        if (!track.isSiriusXmChannel) {
+                            IconButton(onClick = { actions.addToPlaylist(listOf(track)) }) {
+                                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Add to playlist")
+                            }
+                            if (track.key in downloaded) {
+                                IconButton(onClick = { actions.removeDownload(track) }) {
+                                    Icon(Icons.Default.DownloadDone, contentDescription = "Remove download", tint = MaterialTheme.colorScheme.primary)
+                                }
+                            } else {
+                                IconButton(onClick = { actions.download(listOf(track)) }) {
+                                    Icon(Icons.Default.Download, contentDescription = "Download")
+                                }
+                            }
                         }
-                        if (track.key in downloaded) {
-                            IconButton(onClick = { actions.removeDownload(track) }) {
-                                Icon(Icons.Default.DownloadDone, contentDescription = "Remove download", tint = MaterialTheme.colorScheme.primary)
-                            }
-                        } else {
-                            IconButton(onClick = { actions.download(listOf(track)) }) {
-                                Icon(Icons.Default.Download, contentDescription = "Download")
-                            }
+                        IconButton(onClick = { actions.info(track) }) {
+                            Icon(Icons.Outlined.Info, contentDescription = "Info")
                         }
                     }
                     Text(
@@ -217,8 +235,9 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) {
+private fun SeekBar(positionMs: Long, bufferedMs: Long, durationMs: Long, onSeek: (Long) -> Unit) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     val duration = durationMs.coerceAtLeast(1)
     val fraction = dragging ?: (positionMs.toFloat() / duration).coerceIn(0f, 1f)
@@ -231,6 +250,13 @@ private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) 
                 dragging = null
             },
             enabled = durationMs > 0,
+            track = { sliderState ->
+                BufferedProgress(
+                    played = sliderState.value,
+                    buffered = bufferedMs.toFloat() / duration,
+                    modifier = Modifier.fillMaxWidth().height(6.dp),
+                )
+            },
         )
         Row(Modifier.fillMaxWidth()) {
             Text(formatTime((fraction * duration).toLong()), style = MaterialTheme.typography.labelSmall)
@@ -240,7 +266,20 @@ private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) 
     }
 }
 
-private fun formatTime(ms: Long): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+/** A progress bar that also shows, lighter, how far ahead the song has loaded. */
+@Composable
+private fun BufferedProgress(played: Float, buffered: Float, modifier: Modifier = Modifier, rounded: Boolean = true) {
+    val playedColor = MaterialTheme.colorScheme.primary
+    val bufferedColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+    val emptyColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    Canvas(modifier) {
+        val corner = if (rounded) CornerRadius(size.height / 2) else CornerRadius.Zero
+        fun bar(fraction: Float, color: Color) {
+            val width = size.width * fraction.coerceIn(0f, 1f)
+            if (width > 0f) drawRoundRect(color, size = Size(width, size.height), cornerRadius = corner)
+        }
+        bar(1f, emptyColor)
+        bar(maxOf(buffered, played), bufferedColor)
+        bar(played, playedColor)
+    }
 }

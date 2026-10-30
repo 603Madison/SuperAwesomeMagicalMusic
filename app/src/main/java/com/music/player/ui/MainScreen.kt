@@ -44,6 +44,7 @@ import com.music.player.lidarr.LidarrEvent
 import com.music.player.model.Track
 import com.music.player.quality.NetworkClass
 import com.music.player.ui.components.AddToPlaylistDialog
+import com.music.player.ui.components.TrackInfoDialog
 import com.music.player.ui.downloads.DownloadsScreen
 import com.music.player.ui.player.MiniPlayer
 import com.music.player.ui.player.NowPlayingSheet
@@ -71,6 +72,7 @@ fun MusicAppUi() {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var addToPlaylist by remember { mutableStateOf<List<Track>?>(null) }
+    var infoFor by remember { mutableStateOf<Track?>(null) }
     var showPlayer by remember { mutableStateOf(false) }
     val network by container.networkMonitor.state.collectAsStateWithLifecycle()
     val settings by container.settingsState.collectAsStateWithLifecycle()
@@ -81,6 +83,7 @@ fun MusicAppUi() {
             scope = scope,
             showAddToPlaylist = { addToPlaylist = it },
             showMessage = { message -> scope.launch { snackbar.showSnackbar(message) } },
+            showInfo = { infoFor = it },
         )
     }
 
@@ -138,6 +141,7 @@ fun MusicAppUi() {
         }
 
         if (showPlayer) NowPlayingSheet(onDismiss = { showPlayer = false })
+        infoFor?.let { track -> TrackInfoDialog(track, onDismiss = { infoFor = null }) }
         addToPlaylist?.let { tracks ->
             AddToPlaylistDialog(
                 tracks = tracks,

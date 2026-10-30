@@ -54,4 +54,24 @@ class OfflinePlaylistsTest {
         assertEquals(DownloadStatus.COMPLETED, dao.get(one.key)!!.status)
         assertEquals("/x.mp3", dao.get(one.key)!!.filePath)
     }
+
+    @Test
+    fun `refresh re-checks downloads now and queues missing songs of kept playlists`() = runBlocking {
+        val id = container.playlists.create("Refresh", listOf(one, two))
+        container.playlists.setKeepDownloaded(id, true)
+        val checkedAt = 1L
+        dao.upsert(
+            DownloadEntity(
+                two.key, two, DownloadStatus.COMPLETED, 1f, "/two.webm", 10, "YouTube Music · Opus 160 kbps",
+                createdAt = 0, kbps = 160, qualityCheckedAt = checkedAt,
+            ),
+        )
+        val result = container.offlinePlaylists.refresh(id)
+        assertEquals(2, result.songs)
+        assertNull(result.inJellyfin) // Jellyfin isn't set up in tests.
+        assertEquals(1, result.rechecking)
+        assertEquals(1, result.queued)
+        assertEquals(SourceType.YOUTUBE_MUSIC, dao.get(two.key)!!.downloadedFrom)
+        assertEquals(DownloadStatus.QUEUED, dao.get(one.key)!!.status)
+    }
 }

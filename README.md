@@ -95,6 +95,17 @@ guidance:
 When the network changes, upcoming songs switch to the new bitrate. The current song keeps its
 stream so seeking stays consistent.
 
+**Buffering:** Settings › Buffering sets how far ahead the player loads, from 30 seconds to 30
+minutes (5 minutes by default). Once a song has fully loaded, the next songs in the queue load too,
+so songs change seamlessly even when a satellite or cellular link drops out. Loading pauses when
+the buffer is full and resumes once a quarter of it has played. The buffer uses up to 64 MB of
+memory, which a lossless song reaches first. The progress bars show how far ahead has loaded.
+
+**Song info:** "Info" in a song's menu, or ⓘ in the player, shows the service the song was saved
+from and, while it plays, the copy that's playing: service, format, sample rate, bitrate, the cap
+that applied and how much is buffered. Downloads show where the file came from, its bitrate and
+size.
+
 ### 3. Offline listening, from every source
 
 "Download" works on songs from Jellyfin, Qobuz and YouTube Music, on whole playlists, and from the
@@ -108,6 +119,11 @@ against every service, and the file is replaced when a clearly better copy turns
 more bitrate, lossless over lossy, or hi-res over CD quality). The old copy keeps playing until
 the new one is saved. Songs removed from the playlist are deleted again, unless you downloaded
 them yourself.
+
+**Refresh downloads** (⟳ on a playlist) runs those checks now: it looks for songs from other
+services that Jellyfin has since gained (e.g. once Lidarr brought in the album) and re-checks
+every downloaded song. A download from Qobuz or YouTube Music is replaced by the Jellyfin copy
+unless it is clearly better. Songs you stream already play from Jellyfin once it has them.
 
 ### 4. Playlists synced to Nextcloud
 

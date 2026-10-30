@@ -2,8 +2,13 @@ package com.music.player.playback
 
 import android.content.ComponentName
 import android.content.Context
+import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
+import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -28,7 +33,41 @@ data class PlayerUiState(
     val currentIndex: Int = -1,
     val shuffle: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
+    /** How far into the current song has loaded. */
+    val bufferedPositionMs: Long = 0,
+    /** Loaded ahead of the playback position, including songs after this one. */
+    val totalBufferedMs: Long = 0,
+    /** What the decoder is actually getting, when known. */
+    val format: AudioFormatInfo? = null,
 )
+
+/** The audio format being played: codec, bitrate (when the file declares it), sample rate, channels. */
+data class AudioFormatInfo(val codec: String, val kbps: Int?, val sampleRateHz: Int?, val channels: Int?) {
+    companion object {
+        // Format.bitrate is a Media3 "unstable" API.
+        @OptIn(UnstableApi::class)
+        fun of(format: Format): AudioFormatInfo = AudioFormatInfo(
+            codec = codecName(format.sampleMimeType ?: format.containerMimeType),
+            kbps = format.bitrate.takeIf { it != Format.NO_VALUE }?.let { (it + 500) / 1000 },
+            sampleRateHz = format.sampleRate.takeIf { it != Format.NO_VALUE },
+            channels = format.channelCount.takeIf { it != Format.NO_VALUE },
+        )
+
+        fun codecName(mimeType: String?): String = when (mimeType) {
+            MimeTypes.AUDIO_MPEG, MimeTypes.AUDIO_MPEG_L2, MimeTypes.AUDIO_MPEG_L1 -> "MP3"
+            MimeTypes.AUDIO_AAC -> "AAC"
+            MimeTypes.AUDIO_OPUS -> "Opus"
+            MimeTypes.AUDIO_VORBIS -> "Vorbis"
+            MimeTypes.AUDIO_FLAC -> "FLAC"
+            MimeTypes.AUDIO_ALAC -> "ALAC"
+            MimeTypes.AUDIO_RAW, MimeTypes.AUDIO_WAV -> "PCM"
+            MimeTypes.AUDIO_AC3 -> "AC-3"
+            MimeTypes.AUDIO_E_AC3, MimeTypes.AUDIO_E_AC3_JOC -> "E-AC-3"
+            null -> "Unknown"
+            else -> mimeType.substringAfter('/').uppercase()
+        }
+    }
+}
 
 /** UI-side handle on [PlaybackService], via a Media3 [MediaController]. */
 class PlayerController(private val context: Context, private val scope: CoroutineScope) {
@@ -150,8 +189,12 @@ class PlayerController(private val context: Context, private val scope: Coroutin
             currentIndex = player.currentMediaItemIndex,
             shuffle = player.shuffleModeEnabled,
             repeatMode = player.repeatMode,
+            bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0),
+            totalBufferedMs = player.totalBufferedDuration.coerceAtLeast(0),
+            format = currentFormat(player),
         )
-        if (player.isPlaying) startTicker() else ticker?.cancel()
+        // While playing or loading, position and buffer move on without player events.
+        if (player.isPlaying || player.isLoading) startTicker() else ticker?.cancel()
     }
 
     private fun startTicker() {
@@ -160,8 +203,18 @@ class PlayerController(private val context: Context, private val scope: Coroutin
             while (isActive) {
                 delay(500)
                 val player = controller ?: break
-                _state.value = _state.value.copy(positionMs = player.currentPosition.coerceAtLeast(0))
+                _state.value = _state.value.copy(
+                    positionMs = player.currentPosition.coerceAtLeast(0),
+                    bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0),
+                    totalBufferedMs = player.totalBufferedDuration.coerceAtLeast(0),
+                )
             }
         }
     }
+
+    private fun currentFormat(player: Player): AudioFormatInfo? =
+        player.currentTracks.groups
+            .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
+            ?.let { group -> (0 until group.length).firstOrNull(group::isTrackSelected)?.let(group::getTrackFormat) }
+            ?.let(AudioFormatInfo::of)
 }

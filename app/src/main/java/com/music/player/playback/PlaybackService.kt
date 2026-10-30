@@ -19,7 +19,6 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
@@ -72,10 +71,7 @@ class PlaybackService : MediaLibraryService() {
             // Lets transcoded MP3/AAC streams of unknown length be seekable.
             .setConstantBitrateSeekingEnabled(true)
             .setConstantBitrateSeekingAlwaysEnabled(true)
-        val loadControl = DefaultLoadControl.Builder()
-            // Large buffers make loading bursty with long idle gaps, which suits satellite links.
-            .setBufferDurationsMs(60_000, 300_000, 2_500, 5_000)
-            .build()
+        val loadControl = BufferControl { container.settingsState.value.bufferAheadSeconds * 1000L }
 
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, extractors))
