@@ -1,5 +1,6 @@
 package com.music.player.sources
 
+import com.music.player.model.SourceType
 import com.music.player.model.Track
 import java.text.Normalizer
 import kotlin.math.abs
@@ -18,12 +19,20 @@ object TrackMatcher {
     )
     private val ARTIST_SEPARATORS = Regex("\\s*(,|;|/|&|\\band\\b|\\bx\\b|\\+)\\s*", RegexOption.IGNORE_CASE)
     private val NON_ALNUM = Regex("[^\\p{L}\\p{N}]+")
+    private val APOSTROPHES = Regex("['’‘`´]")
     private val TOPIC_SUFFIX = Regex("\\s+-\\s+Topic$", RegexOption.IGNORE_CASE)
     private const val DURATION_TOLERANCE_MS = 12_000L
+    private const val RADIO_DURATION_TOLERANCE_MS = 45_000L
 
     fun normalize(text: String): String {
         val stripped = Normalizer.normalize(text, Normalizer.Form.NFD).replace(DIACRITICS, "")
-        return stripped.lowercase().replace(NON_ALNUM, " ").trim().replace(Regex("\\s+"), " ")
+        return stripped.lowercase()
+            // "Fool's Gold" and "Fools Gold" are the same song; so are "Rock & Roll" and "Rock and Roll".
+            .replace(APOSTROPHES, "")
+            .replace("&", " and ")
+            .replace(NON_ALNUM, " ")
+            .trim()
+            .replace(Regex("\\s+"), " ")
     }
 
     /** "Song (feat. X) [2011 Remaster] - Mono" -> "Song": for search boxes, which do their own normalization. */
@@ -61,7 +70,13 @@ object TrackMatcher {
         if (!isSameArtist(candidate.artist, wanted.artist)) return false
         val d1 = candidate.durationMs
         val d2 = wanted.durationMs
-        return d1 == null || d2 == null || abs(d1 - d2) <= DURATION_TOLERANCE_MS
+        // Radio plays edits and trims cuts, so songs heard on SiriusXM get more slack.
+        val tolerance = if (candidate.source == SourceType.SIRIUSXM || wanted.source == SourceType.SIRIUSXM) {
+            RADIO_DURATION_TOLERANCE_MS
+        } else {
+            DURATION_TOLERANCE_MS
+        }
+        return d1 == null || d2 == null || abs(d1 - d2) <= tolerance
     }
 
     /** The best match for [wanted] among [candidates], preferring the closest duration. */

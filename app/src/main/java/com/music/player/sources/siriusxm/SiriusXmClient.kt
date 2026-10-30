@@ -54,6 +54,7 @@ class SiriusXmClient(
     private val keys = ConcurrentHashMap<String, ByteArray>()
     private val schedules = ConcurrentHashMap<String, Pair<List<SxmCut>, Long>>()
     private val xtra = ConcurrentHashMap<String, XtraTrack>()
+    private val xtraPrefixes: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val telemetryCounter = AtomicInteger()
     private val diagnosticLog = ArrayDeque<String>()
 
@@ -124,11 +125,14 @@ class SiriusXmClient(
         }
         if (type != LINEAR) {
             val items = SiriusXmParser.dig(stream, "metadata", "xtra", "items") as? JsonArray
+            val cuts = SiriusXmParser.parseXtraItems(items, clock())
             xtra[channelId] = XtraTrack(
                 url = url,
                 next = (SiriusXmParser.dig(stream, "mtc", "next") as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() },
-                cut = SiriusXmParser.parseXtraItems(items, clock()).firstOrNull(),
+                cut = cuts.firstOrNull(),
+                cuts = cuts,
             )
+            xtraPrefixes += url.substringBeforeLast('/').substringBeforeLast('/')
         }
         tunes[channelId] = url to clock()
         return url
@@ -169,6 +173,7 @@ class SiriusXmClient(
         if (next.startsWith("http") && next.contains(".m3u8")) {
             tunes[channelId] = next to clock()
             xtra[channelId] = XtraTrack(url = next, next = null, cut = null)
+            xtraPrefixes += next.substringBeforeLast('/').substringBeforeLast('/')
             return next
         }
         val path = when {
@@ -232,7 +237,10 @@ class SiriusXmClient(
     var fallbackKeyId: String? = null
         private set
 
-    private data class XtraTrack(val url: String, val next: String?, val cut: SxmCut?)
+    private data class XtraTrack(val url: String, val next: String?, val cut: SxmCut?, val cuts: List<SxmCut> = listOfNotNull(cut))
+
+    /** Whether [url] belongs to an Xtra channel's stream (whose playlists grow; see keepGrowing). */
+    fun isXtraStream(url: String): Boolean = xtraPrefixes.any { url.startsWith(it) }
 
     /** The 16-byte AES-128 key for an encrypted segment. */
     suspend fun key(guid: String): ByteArray {
@@ -246,7 +254,11 @@ class SiriusXmClient(
 
     /** The song (or show) on [channelId] at wall-clock time [heardAtMs]. */
     suspend fun cutAt(type: String, channelId: String, heardAtMs: Long): SxmCut? {
-        if (type != LINEAR) return xtra[channelId]?.cut
+        if (type != LINEAR) {
+            // Known tracks are laid out from tuning time; past the last one we don't know the song.
+            val now = clock()
+            return xtra[channelId]?.cuts?.lastOrNull { it.startMs <= now && now <= it.endMs + 1_000 }
+        }
         val cached = schedules[channelId]
         var cut = cached?.let { SiriusXmParser.currentCut(it.first, heardAtMs) }
         val stale = cached == null || clock() - cached.second > SCHEDULE_MAX_AGE_MS ||

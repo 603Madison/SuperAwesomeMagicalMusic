@@ -46,7 +46,6 @@ fun TrackRow(
     modifier: Modifier = Modifier,
     downloaded: Boolean = false,
     highlighted: Boolean = false,
-    showSource: Boolean = false,
     extraMenuItems: @Composable ColumnScope.(dismiss: () -> Unit) -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -67,17 +66,11 @@ fun TrackRow(
             )
         },
         supportingContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (showSource) {
-                    SourceBadge(track.source)
-                    Text(" ", style = MaterialTheme.typography.bodySmall)
-                }
-                Text(
-                    listOfNotNull(track.artist, track.album).joinToString(" · "),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            Text(
+                listOfNotNull(track.artist, track.album).joinToString(" · "),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {

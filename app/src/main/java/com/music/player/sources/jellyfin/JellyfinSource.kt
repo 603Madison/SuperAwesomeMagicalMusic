@@ -44,23 +44,46 @@ class JellyfinSource(
 
     override suspend fun search(query: String, limit: Int): List<Track> {
         val (config, deviceId) = requireConfig()
-        val url = itemsUrl(config)
-            .addQueryParameter("searchTerm", query)
-            .addQueryParameter("limit", limit.toString())
-            .build()
-        return fetchItems(url, config, deviceId).map { it.toTrack(config.serverUrl) }
+        // Jellyfin matches titles literally: "fools gold" doesn't find "Fool's Gold", so also try
+        // the apostrophe spellings of the query.
+        return searchVariants(query).flatMap { term ->
+            val url = itemsUrl(config)
+                .addQueryParameter("searchTerm", term)
+                .addQueryParameter("limit", limit.toString())
+                .build()
+            fetchItems(url, config, deviceId)
+        }.distinctBy { it.id }.take(limit).map { it.toTrack(config.serverUrl) }
     }
 
     override suspend fun findMatch(track: Track): Track? {
         if (track.source == type) return track
-        // Jellyfin's search matches on the song title only, so search by title and filter by artist.
         val (config, deviceId) = requireConfig()
-        val url = itemsUrl(config)
-            .addQueryParameter("searchTerm", TrackMatcher.searchTitle(track.title))
-            .addQueryParameter("limit", "50")
+        // Search by title and filter by artist…
+        val byTitle = searchVariants(TrackMatcher.searchTitle(track.title)).flatMap { term ->
+            val url = itemsUrl(config).addQueryParameter("searchTerm", term).addQueryParameter("limit", "50").build()
+            fetchItems(url, config, deviceId)
+        }.distinctBy { it.id }.map { it.toTrack(config.serverUrl) }
+        TrackMatcher.bestMatch(track, byTitle)?.let { return it }
+        // …then through the artist's songs, which survives titles spelled differently.
+        return TrackMatcher.bestMatch(track, songsByArtist(config, deviceId, TrackMatcher.primaryArtist(track.artist)))
+    }
+
+    private suspend fun songsByArtist(config: JellyfinConfig, deviceId: String, artist: String): List<Track> {
+        if (artist.isBlank()) return emptyList()
+        val artistsUrl = "${config.serverUrl}/Artists".toHttpUrl().newBuilder()
+            .addQueryParameter("userId", config.userId)
+            .addQueryParameter("searchTerm", artist)
+            .addQueryParameter("limit", "10")
             .build()
-        val candidates = fetchItems(url, config, deviceId).map { it.toTrack(config.serverUrl) }
-        return TrackMatcher.bestMatch(track, candidates)
+        val artistIds = fetchItems(artistsUrl, config, deviceId)
+            .filter { it.name != null && TrackMatcher.isSameArtist(it.name, artist) }
+            .map { it.id }
+        if (artistIds.isEmpty()) return emptyList()
+        val songsUrl = itemsUrl(config)
+            .addQueryParameter("artistIds", artistIds.joinToString(","))
+            .addQueryParameter("limit", "1000")
+            .build()
+        return fetchItems(songsUrl, config, deviceId).map { it.toTrack(config.serverUrl) }
     }
 
     override suspend fun stream(sourceId: String, quality: StreamQuality): SourceStream {
@@ -158,9 +181,18 @@ class JellyfinSource(
             "Version=\"${BuildConfig.VERSION_NAME}\"$tokenPart"
     }
 
-    private companion object {
-        val JSON = "application/json".toMediaType()
-        const val LOSSLESS_KBPS = 1411
-        const val TICKS_PER_MS = 10_000L
+    companion object {
+        private val JSON = "application/json".toMediaType()
+        private const val LOSSLESS_KBPS = 1411
+        private const val TICKS_PER_MS = 10_000L
+        private val WORD_ENDING_IN_S = Regex("\\b(\\p{L}{2,})s\\b")
+
+        /** The query, plus the same words with apostrophes before a final "s" ("fools" -> "fool's"). */
+        fun searchVariants(query: String): List<String> {
+            val trimmed = query.trim()
+            if (trimmed.contains('\'') || trimmed.contains('’')) return listOf(trimmed)
+            val withApostrophes = trimmed.replace(WORD_ENDING_IN_S) { "${it.groupValues[1]}'s" }
+            return listOf(trimmed, withApostrophes).distinct()
+        }
     }
 }

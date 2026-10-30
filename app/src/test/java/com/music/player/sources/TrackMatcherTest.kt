@@ -2,6 +2,7 @@ package com.music.player.sources
 
 import com.music.player.model.SourceType
 import com.music.player.model.Track
+import com.music.player.sources.jellyfin.JellyfinSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -30,7 +31,7 @@ class TrackMatcherTest {
 
     @Test
     fun `artists are split into individual credits`() {
-        assertEquals(setOf("simon", "garfunkel", "simon garfunkel"), TrackMatcher.artistNames("Simon & Garfunkel"))
+        assertEquals(setOf("simon", "garfunkel", "simon and garfunkel"), TrackMatcher.artistNames("Simon & Garfunkel"))
         assertTrue(TrackMatcher.isSameArtist("Daft Punk, Pharrell Williams", "Daft Punk"))
         assertTrue(TrackMatcher.isSameArtist("The Beatles", "Beatles"))
         assertTrue(TrackMatcher.isSameArtist("Daft Punk - Topic", "Daft Punk"))
@@ -49,6 +50,30 @@ class TrackMatcherTest {
         val library = track("Get Lucky (feat. Pharrell Williams)", "Daft Punk", 369_000, SourceType.JELLYFIN)
         val youtube = track("Get Lucky", "Daft Punk, Pharrell Williams", 368_000, SourceType.YOUTUBE_MUSIC)
         assertTrue(TrackMatcher.matches(library, youtube))
+    }
+
+    @Test
+    fun `apostrophes and ampersands don't stop a match`() {
+        // Saved from SiriusXM without the apostrophe; YouTube Music has it.
+        val heard = track("Fools Gold", "Buffalo Traffic Jam", source = SourceType.SIRIUSXM)
+        assertTrue(TrackMatcher.matches(track("Fool's Gold", "Buffalo Traffic Jam", source = SourceType.YOUTUBE_MUSIC), heard))
+        val idkhow = track("Leave Me Alone", "I DONT KNOW HOW BUT THEY FOUND ME", source = SourceType.SIRIUSXM)
+        assertTrue(TrackMatcher.matches(track("Leave Me Alone", "I DON’T KNOW HOW BUT THEY FOUND ME"), idkhow))
+        assertEquals(TrackMatcher.normalizeTitle("Rock and Roll"), TrackMatcher.normalizeTitle("Rock & Roll"))
+    }
+
+    @Test
+    fun `songs heard on the radio get more duration slack`() {
+        val heard = track("Song", "Artist", durationMs = 200_000, source = SourceType.SIRIUSXM)
+        assertTrue(TrackMatcher.matches(track("Song", "Artist", durationMs = 235_000), heard))
+        assertFalse(TrackMatcher.matches(track("Song", "Artist", durationMs = 235_000), track("Song", "Artist", durationMs = 200_000)))
+    }
+
+    @Test
+    fun `jellyfin searches also try apostrophe spellings`() {
+        assertEquals(listOf("fools gold", "fool's gold"), JellyfinSource.searchVariants("fools gold"))
+        assertEquals(listOf("Fool's Gold"), JellyfinSource.searchVariants("Fool's Gold"))
+        assertEquals(listOf("blue"), JellyfinSource.searchVariants("blue"))
     }
 
     @Test

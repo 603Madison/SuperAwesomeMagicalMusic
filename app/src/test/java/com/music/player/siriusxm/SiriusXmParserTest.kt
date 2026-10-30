@@ -112,6 +112,28 @@ class SiriusXmParserTest {
         assertEquals(listOf("t1", "t2"), cuts.map { it.id })
         assertEquals(1_000, cuts[0].startMs)
         assertEquals(30_000, cuts[0].durationMs)
+        // Tracks play back to back.
+        assertEquals(31_000, cuts[1].startMs)
+    }
+
+    @Test
+    fun `xtra playlists keep growing instead of ending after the first track`() {
+        val playlist = """
+            #EXTM3U
+            #EXT-X-VERSION:3
+            #EXT-X-PLAYLIST-TYPE:VOD
+            #EXT-X-TARGETDURATION:10
+            #EXTINF:10.0,
+            intro1.aac
+            #EXT-X-ENDLIST
+        """.trimIndent()
+        val growing = SiriusXmParser.keepGrowing(playlist).lines()
+        assertEquals("#EXT-X-START:TIME-OFFSET=0,PRECISE=YES", growing[1])
+        assertFalse(growing.any { it.startsWith("#EXT-X-ENDLIST") || it.startsWith("#EXT-X-PLAYLIST-TYPE") })
+        assertTrue(growing.contains("intro1.aac"))
+        // Master playlists are left alone.
+        val master = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=64000\nlow.m3u8"
+        assertEquals(master, SiriusXmParser.keepGrowing(master))
     }
 
     @Test

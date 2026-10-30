@@ -81,20 +81,44 @@ object SiriusXmParser {
         )
     }.sortedBy { it.startMs }
 
-    /** Xtra channels list their tracks without air times; the first is the one being played. */
-    fun parseXtraItems(items: JsonArray?, nowMs: Long): List<SxmCut> = items.orEmpty().mapNotNull { element ->
-        val item = element as? JsonObject ?: return@mapNotNull null
-        val title = item["name"].string().orEmpty()
-        SxmCut(
-            id = item["id"].string() ?: "xtra-${title.hashCode()}",
-            title = title,
-            artist = item["artistName"].string().orEmpty(),
-            album = item["albumName"].string()?.takeIf { it.isNotBlank() },
-            startMs = parseTimeMs(item["timestamp"]) ?: nowMs,
-            durationMs = (item["duration"] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toLong() ?: 0L,
-            artworkUrl = pickImage(item["images"] as? JsonObject, 300) ?: pickImage(item["artistImages"] as? JsonObject, 300),
-            interstitial = (item["isInterstitial"] as? JsonPrimitive)?.contentOrNull == "true",
-        )
+    /**
+     * Xtra channels list their tracks without air times; they play back to back from [nowMs]
+     * (when the channel was tuned), the first one first.
+     */
+    fun parseXtraItems(items: JsonArray?, nowMs: Long): List<SxmCut> {
+        var start = nowMs
+        return items.orEmpty().mapNotNull { element ->
+            val item = element as? JsonObject ?: return@mapNotNull null
+            val title = item["name"].string().orEmpty()
+            val duration = (item["duration"] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()?.toLong() ?: 0L
+            SxmCut(
+                id = item["id"].string() ?: "xtra-${title.hashCode()}",
+                title = title,
+                artist = item["artistName"].string().orEmpty(),
+                album = item["albumName"].string()?.takeIf { it.isNotBlank() },
+                startMs = start,
+                durationMs = duration,
+                artworkUrl = pickImage(item["images"] as? JsonObject, 300) ?: pickImage(item["artistImages"] as? JsonObject, 300),
+                interstitial = (item["isInterstitial"] as? JsonPrimitive)?.contentOrNull == "true",
+            ).also { start += duration }
+        }
+    }
+
+    /**
+     * Xtra channels grow their playlist as tracks are added, yet mark it finished; read that way,
+     * the player stops after the first track. This removes the end marker (so the playlist keeps
+     * being refreshed) and starts playback at the beginning rather than the newest track.
+     */
+    fun keepGrowing(playlist: String): String {
+        if (!playlist.contains("#EXTINF")) return playlist // A master playlist.
+        val lines = playlist.lineSequence()
+            .filterNot { it.startsWith("#EXT-X-ENDLIST") || it.startsWith("#EXT-X-PLAYLIST-TYPE") }
+            .toMutableList()
+        if (lines.none { it.startsWith("#EXT-X-START") }) {
+            val header = lines.indexOfFirst { it.startsWith("#EXTM3U") }
+            lines.add(header + 1, "#EXT-X-START:TIME-OFFSET=0,PRECISE=YES")
+        }
+        return lines.joinToString("\n")
     }
 
     /** The cut playing at wall-clock time [positionMs] (the moment of audio being heard). */

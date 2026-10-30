@@ -12,6 +12,7 @@ import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -69,7 +70,7 @@ class SiriusXmClientTest {
     private fun xtraTune(trackId: String, next: String?) = json(
         """{"streams":[{"urls":[{"url":"https://cdn.example.com/$trackId/master.m3u8","isPrimary":true}],
             "mtc":{"next":${next?.let { "\"$it\"" } ?: "null"}},
-            "metadata":{"xtra":{"items":[{"id":"$trackId","name":"$trackId","artistName":"Artist"}]}}}]}""",
+            "metadata":{"xtra":{"items":[{"id":"$trackId","name":"$trackId","artistName":"Artist","duration":180000}]}}}]}""",
     )
 
     private fun json(body: String) = MockResponse().setBody(body).addHeader("Content-Type", "application/json")
@@ -137,6 +138,14 @@ class SiriusXmClientTest {
         assertTrue(requests.any { it.path == "/playback/telemetry/v2/actions" })
         // The player re-opens the channel and gets the new track.
         assertEquals(next, client.streamUrl("channel-xtra", "x1"))
+    }
+
+    @Test
+    fun `xtra stream playlists are recognised by their location`() = runTest {
+        val client = client()
+        client.streamUrl("channel-xtra", "x1")
+        assertTrue(client.isXtraStream("https://cdn.example.com/intro/variant/low.m3u8"))
+        assertFalse(client.isXtraStream("https://other.example.com/live/low.m3u8"))
     }
 
     @Test

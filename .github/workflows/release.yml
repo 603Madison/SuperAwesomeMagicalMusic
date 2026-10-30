@@ -44,15 +44,23 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # The key may be stored as a repository secret (preferred) or a repository variable.
       - name: Restore signing key
         env:
-          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 || vars.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD || vars.RELEASE_KEYSTORE_PASSWORD }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::Add the RELEASE_KEYSTORE_BASE64 and RELEASE_KEYSTORE_PASSWORD repository secrets"
+          [ -n "$KEYSTORE_BASE64" ] && echo "RELEASE_KEYSTORE_BASE64: found" || echo "RELEASE_KEYSTORE_BASE64: missing"
+          [ -n "$KEYSTORE_PASSWORD" ] && echo "RELEASE_KEYSTORE_PASSWORD: found" || echo "RELEASE_KEYSTORE_PASSWORD: missing"
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::Add RELEASE_KEYSTORE_BASE64 and RELEASE_KEYSTORE_PASSWORD under Settings > Secrets and variables > Actions > Repository secrets (not Environment, Dependabot or Codespaces secrets)"
             exit 1
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "$KEYSTORE_BASE64" | tr -d ' \n\r' | base64 -d > "$RUNNER_TEMP/release.jks"
+          if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            echo "::error::The keystore couldn't be opened: check that RELEASE_KEYSTORE_BASE64 was pasted completely and the password matches"
+            exit 1
+          fi
           echo "RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
       - name: Unit tests
@@ -60,7 +68,7 @@ jobs:
 
       - name: Build signed release APK
         env:
-          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD || vars.RELEASE_KEYSTORE_PASSWORD }}
         run: |
           ./gradlew --no-daemon assembleRelease
           cp app/build/outputs/apk/release/app-release.apk "Music-$TAG.apk"

@@ -134,7 +134,6 @@ fun PlaylistDetailScreen(playlistId: String, onBack: () -> Unit) {
                     onClick = { actions.play(tracks, index) },
                     downloaded = track.key in downloaded,
                     highlighted = current.current?.key == track.key,
-                    showSource = true,
                 ) { dismiss ->
                     if (index > 0) {
                         MenuItem("Move up", Icons.Default.ArrowUpward) {
