@@ -1,10 +1,15 @@
 package com.music.player.playback
 
 import androidx.annotation.OptIn
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.analytics.PlayerId
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.TrackGroupArray
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection
+import androidx.media3.exoplayer.upstream.Allocator
 
 /**
  * Loads as far ahead as Settings asks, applied without restarting playback.
@@ -21,7 +26,9 @@ class BufferControl(
         .setTargetBufferBytes(MAX_BUFFER_BYTES)
         .build(),
     private val bufferAheadMs: () -> Long,
-) : LoadControl by delegate {
+) : LoadControl {
+    // Every method is forwarded by hand: Kotlin's `by` delegation skips Java default methods,
+    // and LoadControl's defaults throw, which crashed the player as soon as it was created.
     private var isLoading = false
 
     override fun shouldContinueLoading(parameters: LoadControl.Parameters): Boolean {
@@ -34,6 +41,29 @@ class BufferControl(
         )
         return isLoading
     }
+
+    override fun shouldStartPlayback(parameters: LoadControl.Parameters): Boolean =
+        delegate.shouldStartPlayback(parameters)
+
+    override fun shouldContinuePreloading(
+        playerId: PlayerId,
+        timeline: Timeline,
+        mediaPeriodId: MediaSource.MediaPeriodId,
+        bufferedDurationUs: Long,
+    ): Boolean = delegate.shouldContinuePreloading(playerId, timeline, mediaPeriodId, bufferedDurationUs)
+
+    override fun onTracksSelected(
+        parameters: LoadControl.Parameters,
+        trackGroups: TrackGroupArray,
+        trackSelections: Array<out ExoTrackSelection?>,
+    ) = delegate.onTracksSelected(parameters, trackGroups, trackSelections)
+
+    override fun getAllocator(playerId: PlayerId): Allocator = delegate.getAllocator(playerId)
+
+    override fun getBackBufferDurationUs(playerId: PlayerId): Long = delegate.getBackBufferDurationUs(playerId)
+
+    override fun retainBackBufferFromKeyframe(playerId: PlayerId): Boolean =
+        delegate.retainBackBufferFromKeyframe(playerId)
 
     override fun onPrepared(playerId: PlayerId) {
         isLoading = false
