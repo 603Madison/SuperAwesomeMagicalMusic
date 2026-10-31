@@ -97,6 +97,12 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         "Signed in · $channels channels"
     }
 
+    val version: String get() = container.versionDescription
+
+    /** The app log (Android Auto requests and playback errors), headed by the version. */
+    fun appDiagnostics(): String =
+        "Music ${container.versionDescription}\n" + container.appLog.text().ifBlank { "Nothing recorded yet." }
+
     fun siriusXmDiagnostics(): String = container.siriusXm.diagnostics().ifBlank { "Nothing recorded yet. Play a channel first." }
 
     fun signOutSiriusXm() = act(_siriusXm) {

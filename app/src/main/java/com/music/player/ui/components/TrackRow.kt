@@ -104,8 +104,8 @@ fun ColumnScope.StandardTrackMenuItems(track: Track, downloaded: Boolean, dismis
     MenuItem("Play next", Icons.Default.SkipNext) { dismiss(); actions.playNext(track) }
     MenuItem("Add to queue", Icons.AutoMirrored.Filled.QueueMusic) { dismiss(); actions.addToQueue(listOf(track)) }
     MenuItem("Info", Icons.Outlined.Info) { dismiss(); actions.info(track) }
-    // Live channels can't be saved or downloaded; their songs can (see the radio screen).
-    if (track.isSiriusXmChannel) return
+    // Live channels and stations can't be saved or downloaded; SiriusXM songs can (see the radio screen).
+    if (track.isLive) return
     MenuItem("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) { dismiss(); actions.addToPlaylist(listOf(track)) }
     if (downloaded) {
         MenuItem("Remove download", Icons.Default.DeleteOutline) { dismiss(); actions.removeDownload(track) }
@@ -130,6 +130,7 @@ fun SourceBadge(source: SourceType) {
         SourceType.QOBUZ -> "Qobuz" to MaterialTheme.colorScheme.tertiaryContainer
         SourceType.YOUTUBE_MUSIC -> "YouTube" to MaterialTheme.colorScheme.errorContainer
         SourceType.SIRIUSXM -> "SiriusXM" to MaterialTheme.colorScheme.secondaryContainer
+        SourceType.RADIO -> "Radio" to MaterialTheme.colorScheme.surfaceVariant
     }
     Surface(color = color, shape = RoundedCornerShape(4.dp)) {
         Text(

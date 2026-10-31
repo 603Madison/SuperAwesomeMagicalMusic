@@ -50,7 +50,11 @@ fun TrackInfoDialog(track: Track, onDismiss: () -> Unit) {
                     track.durationMs?.takeIf { it > 0 }?.let { Info("Length", formatTime(it)) }
                     Info(
                         "Saved from",
-                        if (track.isSiriusXmChannel) "SiriusXM live channel" else track.source.label,
+                        when {
+                            track.isSiriusXmChannel -> "SiriusXM live channel"
+                            track.isLive -> "Live radio station"
+                            else -> track.source.label
+                        },
                     )
                     Info("${track.source.label} id", track.sourceId)
 

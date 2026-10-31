@@ -76,4 +76,18 @@ class LibraryCallbackTest {
         assertEquals("playlist-id" to null, LibraryIds.parsePlaylist(LibraryIds.playlist("playlist-id")))
         assertTrue(channel.toMediaItem().localConfiguration!!.mimeType == androidx.media3.common.MimeTypes.APPLICATION_M3U8)
     }
+
+    @Test
+    fun `radio stations appear once there are favourites`() = runBlocking {
+        val station = com.music.player.sources.radio.RadioStation("s1", "WXYZ", urlResolved = "http://stream/a.mp3")
+        container.settings.setRadioFavorite(station, true)
+        try {
+            assertTrue(LibraryIds.RADIO in callback.children(LibraryIds.ROOT).map { it.mediaId })
+            val stations = callback.children(LibraryIds.RADIO)
+            assertEquals(listOf("WXYZ"), stations.map { it.mediaMetadata.title.toString() })
+            assertEquals(listOf(station.toTrack()), callback.expand(stations.single().mediaId)!!.first)
+        } finally {
+            container.settings.setRadioFavorite(station, false)
+        }
+    }
 }

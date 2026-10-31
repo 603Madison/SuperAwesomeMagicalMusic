@@ -191,7 +191,7 @@ class SiriusXmClient(
         val tuned = tune(type, channelId)
         recordDiagnostics("tune $type $channelId", tuned.toString())
         val streamUrl = streamOf(tuned)
-        val items = SiriusXmParser.dig((tuned["streams"] as? JsonArray)?.firstOrNull(), "metadata", "xtra", "items") as? JsonArray
+        val items = SiriusXmParser.trackItems((tuned["streams"] as? JsonArray)?.firstOrNull())
         val cut = SiriusXmParser.parseXtraItems(items, now).firstOrNull()
         var playlistUrl = streamUrl
         var playlist = fetchPlaylist(streamUrl)
@@ -217,6 +217,41 @@ class SiriusXmClient(
                 "+$added segments, ${track.durationMs / 1000}s, complete=${track.complete}, from $playlistUrl\n" +
                 playlist.lineSequence().take(12).joinToString("\n"),
         )
+    }
+
+    /**
+     * The Pandora station for [artist]. SiriusXM's page for the artist names the station when it
+     * has one; otherwise the artist's own id is used as the station to tune.
+     */
+    suspend fun artistStation(artist: SxmArtist): SxmStation {
+        val stationId = artist.stationId ?: runCatching {
+            val page = call("GET", "page/v1/page/artist/${artist.id}")
+            recordDiagnostics("artist page ${artist.id}", page.toString())
+            SiriusXmParser.findEntityId(page, ARTIST_STATION)
+        }.onFailure { recordDiagnostics("artist page ${artist.id} failed", it.toString()) }.getOrNull()
+        return SxmStation(id = stationId ?: artist.id, name = "${artist.name} Radio", artworkUrl = artist.artworkUrl)
+    }
+
+    /**
+     * Artists matching [query], through SiriusXM's search. The search request isn't documented
+     * anywhere public, so this is a best guess at it; the response is kept in the diagnostics.
+     */
+    suspend fun searchArtists(query: String): List<SxmArtist> {
+        val response = call(
+            "POST",
+            "search/v1/search",
+            buildJsonObject {
+                put("query", query)
+                put("searchText", query)
+                put("resultSize", 20)
+                put("entityTypes", kotlinx.serialization.json.buildJsonArray {
+                    add(kotlinx.serialization.json.JsonPrimitive("artist"))
+                    add(kotlinx.serialization.json.JsonPrimitive(ARTIST_STATION))
+                })
+            },
+        )
+        recordDiagnostics("search \"$query\"", response.toString())
+        return SiriusXmParser.parseArtists(response)
     }
 
     private suspend fun fetchPlaylist(url: String): String =
@@ -250,7 +285,7 @@ class SiriusXmClient(
                     put("id", channelId)
                 })
                 put("item", buildJsonObject {
-                    put("type", "xtra-channel-track")
+                    put("type", if (type == ARTIST_STATION) "artist-station-track" else "xtra-channel-track")
                     put("id", trackId)
                 })
                 put("position", buildJsonObject { put("elapsedTimeMs", elapsedMs) })
@@ -479,6 +514,8 @@ class SiriusXmClient(
 
     companion object {
         const val LINEAR = "channel-linear"
+        /** Pandora artist stations, a source type SiriusXM's apps tune like channels. */
+        const val ARTIST_STATION = "artist-station"
         const val API_BASE = "https://api.edge-gateway.siriusxm.com/"
         const val WEB_ORIGIN = "https://www.siriusxm.com"
         private const val BROWSER_VERSION = "130.0.0.0"

@@ -109,7 +109,7 @@ class OfflinePlaylists(
 
         val elsewhere = tracks.filter { track ->
             val download = existing[track.key]?.takeIf { it.status == DownloadStatus.COMPLETED }
-            (download?.downloadedFrom ?: track.source) != SourceType.JELLYFIN && !track.isSiriusXmChannel
+            (download?.downloadedFrom ?: track.source) != SourceType.JELLYFIN && !track.isLive
         }
         val inJellyfin = if (jellyfin.isAvailable()) {
             val permits = Semaphore(LOOKUP_CONCURRENCY)
@@ -125,7 +125,7 @@ class OfflinePlaylists(
         val artworkFound = details?.let { filler ->
             val permits = Semaphore(LOOKUP_CONCURRENCY)
             coroutineScope {
-                tracks.filter { it.artworkUrl == null && !it.isSiriusXmChannel }.map { track ->
+                tracks.filter { it.artworkUrl == null && !it.isLive }.map { track ->
                     async {
                         permits.withPermit {
                             val copy = runCatching { findCopy(track) }.getOrNull() ?: return@withPermit false

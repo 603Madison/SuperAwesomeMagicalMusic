@@ -145,4 +145,35 @@ class SiriusXmParserTest {
         assertEquals(expected, SiriusXmParser.parseTimeMs(kotlinx.serialization.json.JsonPrimitive(expected / 1000)))
         assertEquals("2026-10-29T20:00:00.000Z", SiriusXmParser.isoUtc(expected))
     }
+
+    @Test
+    fun `artists and their pandora stations are found anywhere in a search response`() {
+        val response = AppJson.parseToJsonElement(
+            """{"sets":[{"items":[
+                {"entity":{"id":"a1","type":"artist","texts":{"title":{"default":"girl in red"}}}},
+                {"entity":{"id":"st9","type":"artist-station","texts":{"title":"Phoebe Bridgers Radio"}}},
+                {"entity":{"id":"c1","type":"channel-linear","texts":{"title":"Alt Nation"}}}
+            ]}]}""",
+        )
+        val artists = SiriusXmParser.parseArtists(response)
+        assertEquals(listOf("girl in red", "Phoebe Bridgers"), artists.map { it.name })
+        assertEquals(null, artists[0].stationId)
+        assertEquals("st9", artists[1].stationId)
+        assertEquals("st9", SiriusXmParser.findEntityId(response, "artist-station"))
+    }
+
+    @Test
+    fun `track lists are found for xtra channels and other one-track-at-a-time sources`() {
+        val xtra = AppJson.parseToJsonElement("""{"metadata":{"xtra":{"items":[{"id":"x"}]}}}""")
+        val station = AppJson.parseToJsonElement("""{"metadata":{"artistStation":{"items":[{"id":"y"}]}}}""")
+        assertEquals("x", (SiriusXmParser.trackItems(xtra)!![0] as kotlinx.serialization.json.JsonObject)["id"].toString().trim('"'))
+        assertEquals("y", (SiriusXmParser.trackItems(station)!![0] as kotlinx.serialization.json.JsonObject)["id"].toString().trim('"'))
+    }
+
+    @Test
+    fun `artist stations travel as channels the player tunes like xtra`() {
+        val track = com.music.player.sources.siriusxm.SxmStation("st9", "Phoebe Bridgers Radio").toTrack()
+        assertTrue(track.isSiriusXmChannel)
+        assertEquals("artist-station" to "st9", com.music.player.sources.siriusxm.SxmChannel.idOf(track))
+    }
 }

@@ -11,6 +11,11 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.music.player.model.SourceType
+import com.music.player.net.AppJson
+import com.music.player.sources.radio.RadioStation
+import com.music.player.sources.siriusxm.SxmStation
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.ListSerializer
 import com.music.player.quality.StreamQuality
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -58,6 +63,32 @@ class SettingsRepository(context: Context) {
         val current = it[Keys.SXM_BOOKMARKS].orEmpty()
         it[Keys.SXM_BOOKMARKS] = if (bookmarked) current + channelId else current - channelId
     }
+
+    /** Saves a Pandora artist station, moving it to the top if it's already saved. */
+    suspend fun addSiriusXmStation(station: SxmStation) = store.edit {
+        val current = decodeList(it[Keys.SXM_STATIONS], SxmStation.serializer())
+        it[Keys.SXM_STATIONS] = encodeList(listOf(station) + current.filter { saved -> saved.id != station.id }, SxmStation.serializer())
+    }
+
+    suspend fun removeSiriusXmStation(id: String) = store.edit {
+        val current = decodeList(it[Keys.SXM_STATIONS], SxmStation.serializer())
+        it[Keys.SXM_STATIONS] = encodeList(current.filter { saved -> saved.id != id }, SxmStation.serializer())
+    }
+
+    suspend fun setRadioFavorite(station: RadioStation, favorite: Boolean) = store.edit {
+        val current = decodeList(it[Keys.RADIO_FAVORITES], RadioStation.serializer()).filter { saved -> saved.id != station.id }
+        it[Keys.RADIO_FAVORITES] = encodeList(if (favorite) current + station else current, RadioStation.serializer())
+    }
+
+    suspend fun setRadioNearby(stations: List<RadioStation>) = store.edit {
+        it[Keys.RADIO_NEARBY] = encodeList(stations, RadioStation.serializer())
+    }
+
+    private fun <T> decodeList(raw: String?, serializer: KSerializer<T>): List<T> =
+        raw?.let { runCatching { AppJson.decodeFromString(ListSerializer(serializer), it) }.getOrNull() }.orEmpty()
+
+    private fun <T> encodeList(items: List<T>, serializer: KSerializer<T>): String =
+        AppJson.encodeToString(ListSerializer(serializer), items)
 
     /** SiriusXM's device grant and session tokens, as JSON. */
     suspend fun siriusXmSession(): String? = store.data.first()[Keys.SXM_SESSION]
@@ -141,6 +172,9 @@ class SettingsRepository(context: Context) {
                 password = this[Keys.SXM_PASSWORD].orEmpty(),
             ),
             siriusXmBookmarks = this[Keys.SXM_BOOKMARKS].orEmpty(),
+            siriusXmStations = decodeList(this[Keys.SXM_STATIONS], SxmStation.serializer()),
+            radioFavorites = decodeList(this[Keys.RADIO_FAVORITES], RadioStation.serializer()),
+            radioNearby = decodeList(this[Keys.RADIO_NEARBY], RadioStation.serializer()),
             fallbackOrder = parseFallbackOrder(this[Keys.FALLBACK_ORDER]) ?: defaults.fallbackOrder,
             lidarr = LidarrConfig(
                 serverUrl = this[Keys.LIDARR_URL].orEmpty(),
@@ -206,6 +240,9 @@ class SettingsRepository(context: Context) {
         val SXM_PASSWORD = stringPreferencesKey("sxm_password")
         val SXM_SESSION = stringPreferencesKey("sxm_session")
         val SXM_BOOKMARKS = stringSetPreferencesKey("sxm_bookmarks")
+        val SXM_STATIONS = stringPreferencesKey("sxm_artist_stations")
+        val RADIO_FAVORITES = stringPreferencesKey("radio_favorites")
+        val RADIO_NEARBY = stringPreferencesKey("radio_nearby")
         val ACCOUNT_SUBJECT = stringPreferencesKey("account_subject")
         val LEGACY_AUTHENTIK = listOf(
             stringPreferencesKey("authentik_issuer"),

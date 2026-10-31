@@ -3,6 +3,8 @@ package com.music.player.settings
 import com.music.player.model.SourceType
 import com.music.player.quality.NetworkClass
 import com.music.player.quality.StreamQuality
+import com.music.player.sources.radio.RadioStation
+import com.music.player.sources.siriusxm.SxmStation
 
 data class JellyfinConfig(
     val serverUrl: String = "",
@@ -111,6 +113,12 @@ data class AppSettings(
     val jellyfinTranscodeCodec: TranscodeCodec = TranscodeCodec.MP3,
     val downloads: DownloadSettings = DownloadSettings(),
     val loadArtworkOnSatellite: Boolean = false,
+    /** Pandora artist stations started on SiriusXM, newest first. */
+    val siriusXmStations: List<SxmStation> = emptyList(),
+    /** Favourite radio stations, shown first. */
+    val radioFavorites: List<RadioStation> = emptyList(),
+    /** The stations found near you last time, so Android Auto can list them without asking for location. */
+    val radioNearby: List<RadioStation> = emptyList(),
     /** How much music to load ahead of what's playing, running on into the next songs. */
     val bufferAheadSeconds: Int = DEFAULT_BUFFER_AHEAD_SECONDS,
 ) {

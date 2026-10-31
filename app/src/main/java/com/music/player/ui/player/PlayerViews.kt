@@ -147,7 +147,7 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
                         )
                     }
                     NetworkStatusRow()
-                    if (!track.isSiriusXmChannel) {
+                    if (!track.isLive) {
                         SeekBar(state.positionMs, state.bufferedPositionMs, state.durationMs, player::seekTo)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -186,7 +186,7 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
                     }
                     if (track.isSiriusXmChannel) NowPlayingCard()
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        if (!track.isSiriusXmChannel) {
+                        if (!track.isLive) {
                             IconButton(onClick = { actions.addToPlaylist(listOf(track)) }) {
                                 Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Add to playlist")
                             }

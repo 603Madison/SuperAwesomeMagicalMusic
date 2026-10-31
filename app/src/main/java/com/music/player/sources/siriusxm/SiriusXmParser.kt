@@ -79,6 +79,7 @@ object SiriusXmParser {
             durationMs = duration,
             artworkUrl = pickImage(item["images"] as? JsonObject, 300) ?: pickImage(item["artistImages"] as? JsonObject, 300),
             interstitial = (item["isInterstitial"] as? JsonPrimitive)?.contentOrNull == "true",
+            artistId = item["artistId"].string()?.takeIf { it.isNotBlank() },
         )
     }.sortedBy { it.startMs }
 
@@ -101,8 +102,62 @@ object SiriusXmParser {
                 durationMs = duration,
                 artworkUrl = pickImage(item["images"] as? JsonObject, 300) ?: pickImage(item["artistImages"] as? JsonObject, 300),
                 interstitial = (item["isInterstitial"] as? JsonPrimitive)?.contentOrNull == "true",
+                artistId = item["artistId"].string()?.takeIf { it.isNotBlank() },
             ).also { start += duration }
         }
+    }
+
+    /**
+     * The track list in a tune response for a source played a track at a time: Xtra channels
+     * put it under `metadata.xtra.items`; other sources (artist stations) may use another key.
+     */
+    fun trackItems(stream: JsonElement?): JsonArray? {
+        (dig(stream, "metadata", "xtra", "items") as? JsonArray)?.let { return it }
+        (dig(stream, "metadata", "items") as? JsonArray)?.let { return it }
+        val metadata = dig(stream, "metadata") as? JsonObject ?: return null
+        return metadata.values.firstNotNullOfOrNull { (it as? JsonObject)?.get("items") as? JsonArray }
+    }
+
+    /** The id of the first entity of [type] anywhere in [json] (e.g. an artist's Pandora station). */
+    fun findEntityId(json: JsonElement?, type: String): String? = when (json) {
+        is JsonObject -> {
+            val ownType = json["type"].string() ?: json["entityType"].string()
+            json["id"].string()?.takeIf { ownType == type && it.isNotBlank() }
+                ?: json.values.firstNotNullOfOrNull { findEntityId(it, type) }
+        }
+        is JsonArray -> json.firstNotNullOfOrNull { findEntityId(it, type) }
+        else -> null
+    }
+
+    /**
+     * Artists (and artists' Pandora stations) anywhere in a search response. Entities look like
+     * the channel lineup's: an id, a type, and a title under `texts`.
+     */
+    fun parseArtists(json: JsonElement?): List<SxmArtist> {
+        val found = LinkedHashMap<String, SxmArtist>()
+        fun visit(element: JsonElement?) {
+            when (element) {
+                is JsonObject -> {
+                    val type = element["type"].string() ?: element["entityType"].string()
+                    val id = element["id"].string()
+                    val texts = element["texts"] as? JsonObject
+                    val name = texts?.let { text(it, "title") }?.takeIf { it.isNotBlank() }
+                        ?: element["name"].string()
+                        ?: element["title"].string()
+                    if (id != null && !name.isNullOrBlank() && (type == "artist" || type == SiriusXmClient.ARTIST_STATION)) {
+                        val artwork = pickImage(element["images"] as? JsonObject, 300)
+                        val artist = if (type == "artist") SxmArtist(id, name, artwork)
+                        else SxmArtist(id, name.removeSuffix(" Radio").removeSuffix(" Station"), artwork, stationId = id)
+                        found.putIfAbsent(artist.name.lowercase(), artist)
+                    }
+                    element.values.forEach(::visit)
+                }
+                is JsonArray -> element.forEach(::visit)
+                else -> Unit
+            }
+        }
+        visit(json)
+        return found.values.toList()
     }
 
     /**

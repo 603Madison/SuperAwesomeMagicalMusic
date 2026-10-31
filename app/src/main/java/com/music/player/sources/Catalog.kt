@@ -19,16 +19,21 @@ class Catalog(
         SourceType.JELLYFIN -> jellyfin
         SourceType.QOBUZ -> qobuz
         SourceType.YOUTUBE_MUSIC -> youtube
-        SourceType.SIRIUSXM -> LiveRadioOnly
+        SourceType.SIRIUSXM -> siriusXmSongs
+        SourceType.RADIO -> radioStations
     }
 
     /** SiriusXM songs can't be fetched on demand; they play from the other services. */
-    private object LiveRadioOnly : MusicSource {
-        override val type = SourceType.SIRIUSXM
+    private val siriusXmSongs: MusicSource = LiveOnly(SourceType.SIRIUSXM, "SiriusXM songs aren't available on demand")
+
+    /** Radio stations play live (see StreamResolver); there are no songs to fetch from them. */
+    private val radioStations: MusicSource = LiveOnly(SourceType.RADIO, "Radio stations only play live")
+
+    private class LiveOnly(override val type: SourceType, private val reason: String) : MusicSource {
         override suspend fun isAvailable() = false
         override suspend fun search(query: String, limit: Int): List<Track> = emptyList()
         override suspend fun stream(sourceId: String, quality: StreamQuality): SourceStream =
-            throw SourceUnavailableException("SiriusXM songs aren't available on demand")
+            throw SourceUnavailableException(reason)
     }
 
     /** Streaming services to use when Jellyfin lacks a song, in the user's preferred order. */

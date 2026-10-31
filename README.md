@@ -62,6 +62,24 @@ Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Andro
   block it at any time. If a channel misbehaves, Settings › SiriusXM › **Copy diagnostics**
   copies what SiriusXM sent, for troubleshooting.
 
+### Pandora artist stations (on SiriusXM)
+
+SiriusXM includes Pandora artist stations: music by and like one artist. Tap **Artist station** on
+a song playing on SiriusXM to start one for that artist, or **New station** on the Radio tab to
+search for an artist. Stations are saved on the Radio tab and in Android Auto (SiriusXM › Pandora
+artist stations). They play a track at a time like Xtra channels, stitched into one stream.
+SiriusXM's search request isn't documented anywhere public, so artist search is a best guess;
+starting a station from a song you're hearing doesn't depend on it.
+
+### Local radio
+
+The Radio tab's **Radio stations** section plays local and internet radio from
+[Radio Browser](https://www.radio-browser.info/), a free, open directory. **Find stations near
+me** asks once for your approximate (city-level) location, which is sent only to Radio Browser's
+search and not stored; stations within 80 km are listed, most listened to first. You can also
+search by name, and star favourites. Favourites and the stations found near you are listed in
+Android Auto under **Radio**. Next and previous move between stations in the list you played from.
+
 ### Android Auto
 
 The app appears as a media source in Android Auto. You can browse **Playlists**, **Downloads**
@@ -198,7 +216,7 @@ release keystore, base64-encoded) and `RELEASE_KEYSTORE_PASSWORD`.
 
 ```
 app/src/main/java/com/music/player/
-├── sources/        Jellyfin, Qobuz, YouTube Music, SiriusXM clients; TrackMatcher; SourceSelector (source rules)
+├── sources/        Jellyfin, Qobuz, YouTube Music, SiriusXM, Radio Browser clients; TrackMatcher; SourceSelector
 ├── quality/        StreamQuality and the round-down tier selection
 ├── net/            NetworkMonitor (Wi-Fi / cellular / satellite), OkHttp helpers
 ├── lidarr/         Lidarr API client, auto-add-artist service and its request queue
@@ -226,5 +244,7 @@ moment.
   matters to you.
 - Seeking within a song Jellyfin is transcoding is estimated from the constant bitrate. A seek far
   ahead may wait while the server catches up.
+- Settings › About › **Copy app log** copies what Android Auto asked the app for and how it
+  answered, plus playback errors, for troubleshooting.
 - Satellite data needs a carrier plan that supports it and Android 15 or later. On older Android
   versions the app treats every network as Wi-Fi or cellular.

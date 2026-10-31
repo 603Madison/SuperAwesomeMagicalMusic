@@ -34,6 +34,26 @@ data class SxmChannel(
     }
 }
 
+/** An artist on SiriusXM; [stationId] is set when SiriusXM named the artist's Pandora station. */
+data class SxmArtist(val id: String, val name: String, val artworkUrl: String?, val stationId: String? = null)
+
+/**
+ * A Pandora artist station on SiriusXM: music by and like one artist, handed out a track at a
+ * time like an Xtra channel. It travels through the player as a channel of type
+ * [SiriusXmClient.ARTIST_STATION].
+ */
+@Serializable
+data class SxmStation(val id: String, val name: String, val artworkUrl: String? = null) {
+    fun toTrack(): Track = Track(
+        source = SourceType.SIRIUSXM,
+        sourceId = "${Track.CHANNEL_PREFIX}${SiriusXmClient.ARTIST_STATION}:$id",
+        title = name,
+        artist = "Pandora station · SiriusXM",
+        album = "Pandora artist stations",
+        artworkUrl = artworkUrl,
+    )
+}
+
 /** One item ("cut") in a channel's schedule: usually a song, sometimes talk or an ad break. */
 data class SxmCut(
     val id: String,
@@ -44,6 +64,8 @@ data class SxmCut(
     val durationMs: Long,
     val artworkUrl: String?,
     val interstitial: Boolean,
+    /** SiriusXM's id for the artist, which a Pandora artist station can be started from. */
+    val artistId: String? = null,
 ) {
     val endMs: Long get() = startMs + durationMs
 

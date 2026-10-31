@@ -13,6 +13,9 @@ enum class SourceType(val label: String, val onDemand: Boolean = true) {
      * song heard on a channel (`song:<id>`), which plays from Jellyfin or a streaming service.
      */
     SIRIUSXM("SiriusXM", onDemand = false),
+
+    /** Local and internet radio stations from the Radio Browser directory, played live. */
+    RADIO("Radio", onDemand = false),
 }
 
 /**
@@ -34,6 +37,9 @@ data class Track(
     val key: String get() = "${source.name}:$sourceId"
 
     val isSiriusXmChannel: Boolean get() = source == SourceType.SIRIUSXM && sourceId.startsWith(CHANNEL_PREFIX)
+
+    /** A live stream (a SiriusXM channel or a radio station): no seeking, saving or downloading. */
+    val isLive: Boolean get() = isSiriusXmChannel || source == SourceType.RADIO
 
     companion object {
         const val CHANNEL_PREFIX = "channel:"

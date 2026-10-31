@@ -7,6 +7,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import com.music.player.model.Track
 import com.music.player.net.AppJson
+import com.music.player.sources.radio.RadioStation
 
 private const val EXTRA_TRACK = "com.music.player.TRACK"
 
@@ -16,7 +17,7 @@ fun Track.toMediaItem(): MediaItem {
         .setMediaId(key)
         .setUri(uri)
         // SiriusXM channels are live HLS streams; the type can't be sniffed from the URI.
-        .setMimeType(if (isSiriusXmChannel) MimeTypes.APPLICATION_M3U8 else null)
+        .setMimeType(if (isSiriusXmChannel || RadioStation.idOf(this)?.second == true) MimeTypes.APPLICATION_M3U8 else null)
         // Play radio at normal speed rather than speeding up or slowing down to hold a live offset.
         .setLiveConfiguration(MediaItem.LiveConfiguration.Builder().setMinPlaybackSpeed(1f).setMaxPlaybackSpeed(1f).build())
         // The URI is dropped when items cross from a MediaController to the session; the
@@ -31,7 +32,7 @@ fun Track.toMediaItem(): MediaItem {
                 .setDurationMs(durationMs)
                 .setIsPlayable(true)
                 .setIsBrowsable(false)
-                .setMediaType(if (isSiriusXmChannel) MediaMetadata.MEDIA_TYPE_RADIO_STATION else MediaMetadata.MEDIA_TYPE_MUSIC)
+                .setMediaType(if (isLive) MediaMetadata.MEDIA_TYPE_RADIO_STATION else MediaMetadata.MEDIA_TYPE_MUSIC)
                 .setExtras(bundleOf(EXTRA_TRACK to AppJson.encodeToString(Track.serializer(), this)))
                 .build(),
         )

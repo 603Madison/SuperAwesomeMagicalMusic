@@ -62,6 +62,7 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         container = (application as MusicApp).container
+        container.appLog.log("service", "playback service started")
 
         val http = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(container.httpClient))
         val upstream = SiriusXmDataSource.Factory(http, container.siriusXm)
@@ -142,12 +143,18 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
+    override fun onBind(intent: Intent?): android.os.IBinder? {
+        container.appLog.log("service", "bind: ${intent?.action}")
+        return super.onBind(intent)
+    }
+
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = session?.player
         if (player == null || !player.playWhenReady || player.mediaItemCount == 0) stopSelf()
     }
 
     override fun onDestroy() {
+        container.appLog.log("service", "playback service stopped")
         scope.cancel()
         container.siriusXm.publishNowPlaying(null)
         session?.run {
@@ -250,7 +257,7 @@ class PlaybackService : MediaLibraryService() {
     /** Fills in the current song's artwork and album from the copy playing, where it has none. */
     private fun showCopyDetails(player: ExoPlayer, copy: com.music.player.model.Track) {
         val item = player.currentMediaItem ?: return
-        if (item.toTrack()?.isSiriusXmChannel != false) return
+        if (item.toTrack()?.isLive != false) return
         val metadata = item.mediaMetadata
         val artwork = metadata.artworkUri ?: copy.artworkUrl?.toUri()
         val album = metadata.albumTitle ?: copy.album
@@ -295,6 +302,7 @@ class PlaybackService : MediaLibraryService() {
 
         override fun onPlayerError(error: PlaybackException) {
             Log.w(TAG, "Playback error", error)
+            container.appLog.log("player", "error ${error.errorCodeName} on ${player.currentMediaItem?.mediaId}: ${error.cause ?: error.message}")
             val channel = player.currentMediaItem?.toTrack()?.let(SxmChannel::idOf)
             if (channel != null && System.currentTimeMillis() - lastRetuneAt > RETUNE_INTERVAL_MS) {
                 lastRetuneAt = System.currentTimeMillis()

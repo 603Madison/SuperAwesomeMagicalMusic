@@ -2,7 +2,9 @@ package com.music.player.ui
 
 import com.music.player.AppContainer
 import com.music.player.model.Track
+import com.music.player.sources.siriusxm.SxmArtist
 import com.music.player.sources.siriusxm.SxmCut
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -54,6 +56,27 @@ class TrackActions(
                 captured.inLibrary -> showMessage("\"${cut.title}\" is in your Jellyfin library")
                 captured.requestedFromLidarr && container.settingsState.value.lidarr.isConfigured ->
                     showMessage("Not in Jellyfin yet — requested ${cut.artist} from Lidarr")
+            }
+        }
+    }
+
+    /** Starts (and saves) the Pandora station for the artist of a song heard on SiriusXM. */
+    fun startArtistStation(cut: SxmCut) {
+        val artistId = cut.artistId ?: return showMessage("SiriusXM didn't say who this artist is")
+        startArtistStation(SxmArtist(artistId, cut.artist, cut.artworkUrl))
+    }
+
+    fun startArtistStation(artist: SxmArtist) {
+        scope.launch {
+            try {
+                val station = container.siriusXm.artistStation(artist)
+                container.settings.addSiriusXmStation(station)
+                play(listOf(station.toTrack()))
+                showMessage("Playing ${station.name}")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                showMessage("Couldn't start the station: ${e.message ?: e.javaClass.simpleName}")
             }
         }
     }

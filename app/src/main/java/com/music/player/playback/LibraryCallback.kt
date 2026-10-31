@@ -32,6 +32,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.guava.future
+import kotlinx.coroutines.withTimeout
 import java.util.concurrent.ConcurrentHashMap
 
 /** Browse ids used by Android Auto and other media browsers. */
@@ -40,6 +41,8 @@ object LibraryIds {
     const val PLAYLISTS = "playlists"
     const val DOWNLOADS = "downloads"
     const val SIRIUSXM = "siriusxm"
+    const val SXM_STATIONS = "sxmstations"
+    const val RADIO = "radio"
     private const val PLAYLIST = "playlist:"
     private const val CATEGORY = "sxmcat:"
     private const val DOWNLOAD = "download:"
@@ -81,7 +84,10 @@ class LibraryCallback(
 ) : MediaLibrarySession.Callback {
     private val searches = ConcurrentHashMap<String, Deferred<List<Track>>>()
 
+    private fun log(message: String) = container.appLog.log("library", message)
+
     override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
+        log("connect from ${controller.packageName} (Media3 ${controller.controllerVersion}, interface ${controller.interfaceVersion})")
         val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon().add(SAVE_SONG).build()
         return MediaSession.ConnectionResult.AcceptedResultBuilder(session).setAvailableSessionCommands(commands).build()
     }
@@ -124,8 +130,10 @@ class LibraryCallback(
         session: MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
         params: LibraryParams?,
-    ): ListenableFuture<LibraryResult<MediaItem>> =
-        Futures.immediateFuture(LibraryResult.ofItem(folder(LibraryIds.ROOT, "Music", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED), params))
+    ): ListenableFuture<LibraryResult<MediaItem>> {
+        log("root for ${browser.packageName}: recent=${params?.isRecent} hints=${params?.extras?.keySet()}")
+        return Futures.immediateFuture(LibraryResult.ofItem(folder(LibraryIds.ROOT, "Music", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED), params))
+    }
 
     override fun onGetItem(
         session: MediaLibrarySession,
@@ -145,14 +153,21 @@ class LibraryCallback(
         pageSize: Int,
         params: LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = scope.future {
+        val started = System.currentTimeMillis()
         val children = try {
-            children(parentId)
+            // A slow source shouldn't leave Android Auto spinning: answer with an error instead.
+            withTimeout(BROWSE_TIMEOUT_MS) { children(parentId) }
         } catch (e: Exception) {
             Log.w(TAG, "Couldn't list $parentId", e)
+            log("children of $parentId for ${browser.packageName} failed after ${System.currentTimeMillis() - started} ms: $e")
             return@future LibraryResult.ofError(SessionError.ERROR_IO)
         }
-        val from = (page * pageSize).coerceAtMost(children.size)
-        val to = (from + pageSize).coerceAtMost(children.size)
+        val from = (page.toLong() * pageSize).coerceAtMost(children.size.toLong()).toInt()
+        val to = (from.toLong() + pageSize).coerceAtMost(children.size.toLong()).toInt()
+        log(
+            "children of $parentId for ${browser.packageName} (page $page, size $pageSize): " +
+                "${to - from} of ${children.size} in ${System.currentTimeMillis() - started} ms",
+        )
         LibraryResult.ofItemList(children.subList(from, to), params)
     }
 
@@ -164,6 +179,13 @@ class LibraryCallback(
                 if (container.siriusXm.isAvailable()) {
                     add(folder(LibraryIds.SIRIUSXM, "SiriusXM", MediaMetadata.MEDIA_TYPE_FOLDER_RADIO_STATIONS))
                 }
+                if (radioStations().isNotEmpty()) {
+                    add(folder(LibraryIds.RADIO, "Radio", MediaMetadata.MEDIA_TYPE_FOLDER_RADIO_STATIONS))
+                }
+            }
+            LibraryIds.RADIO -> return radioStations().map { browsable(it, LibraryIds.track(it)) }
+            LibraryIds.SXM_STATIONS -> return container.settings.current().siriusXmStations.map { station ->
+                station.toTrack().let { browsable(it, LibraryIds.track(it)) }
             }
             LibraryIds.PLAYLISTS -> return container.playlists.active().map { playlist ->
                 folder(LibraryIds.playlist(playlist.id), playlist.name, MediaMetadata.MEDIA_TYPE_PLAYLIST, playable = true)
@@ -176,7 +198,9 @@ class LibraryCallback(
                 val bookmarked = channels.filter { it.id in bookmarks }.map { channel ->
                     channel.toTrack().let { browsable(it, LibraryIds.track(it)) }
                 }
-                return bookmarked + channels.map { it.category.ifBlank { "Other" } }
+                val stations = if (container.settings.current().siriusXmStations.isEmpty()) emptyList()
+                else listOf(folder(LibraryIds.SXM_STATIONS, "Pandora artist stations", MediaMetadata.MEDIA_TYPE_FOLDER_RADIO_STATIONS))
+                return bookmarked + stations + channels.map { it.category.ifBlank { "Other" } }
                     .distinct()
                     .sorted()
                     .map { folder(LibraryIds.category(it), it, MediaMetadata.MEDIA_TYPE_FOLDER_RADIO_STATIONS) }
@@ -224,6 +248,7 @@ class LibraryCallback(
         startIndex: Int,
         startPositionMs: Long,
     ): ListenableFuture<MediaItemsWithStartPosition> = scope.future {
+        log("play ${mediaItems.size} item(s) from ${controller.packageName}: ${mediaItems.firstOrNull()?.mediaId?.take(80)}")
         val single = mediaItems.singleOrNull()
         if (single != null) {
             expand(single.mediaId)?.let { (tracks, index) ->
@@ -262,6 +287,12 @@ class LibraryCallback(
             return tracks to tracks.indexOfFirst { it.key == key }.coerceAtLeast(0)
         }
         return null
+    }
+
+    /** Favourite radio stations, then the ones found near you last time. */
+    private suspend fun radioStations(): List<Track> {
+        val settings = container.settings.current()
+        return (settings.radioFavorites + settings.radioNearby).distinctBy { it.id }.map { it.toTrack() }
     }
 
     private suspend fun completedDownloads(): List<Track> =
@@ -330,7 +361,7 @@ class LibraryCallback(
                     .setIsBrowsable(false)
                     .setIsPlayable(true)
                     .setMediaType(
-                        if (track.isSiriusXmChannel) MediaMetadata.MEDIA_TYPE_RADIO_STATION
+                        if (track.isLive) MediaMetadata.MEDIA_TYPE_RADIO_STATION
                         else MediaMetadata.MEDIA_TYPE_MUSIC,
                     )
                     .build(),
@@ -339,6 +370,7 @@ class LibraryCallback(
 
     companion object {
         private const val TAG = "LibraryCallback"
+        private const val BROWSE_TIMEOUT_MS = 15_000L
         const val SAVED_PLAYLIST = "Saved songs"
         val SAVE_SONG = SessionCommand("com.music.player.SAVE_SONG", Bundle.EMPTY)
 

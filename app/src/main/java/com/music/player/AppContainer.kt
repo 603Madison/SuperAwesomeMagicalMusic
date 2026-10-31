@@ -3,7 +3,9 @@ package com.music.player
 import android.content.Context
 import android.util.Log
 import com.music.player.data.AppDatabase
+import com.music.player.diagnostics.AppLog
 import com.music.player.data.MissingDetails
+import com.music.player.sources.radio.RadioBrowserClient
 import com.music.player.downloads.DownloadRepository
 import com.music.player.downloads.OfflinePlaylistWorker
 import com.music.player.downloads.OfflinePlaylists
@@ -44,16 +46,24 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 /** Hand-rolled dependency graph; one instance lives in [MusicApp]. */
-class AppContainer(private val context: Context) {
+class AppContainer(val context: Context) {
     /** Background work that outlives screens; failures are logged rather than crashing the app. */
     val appScope: CoroutineScope = CoroutineScope(
         SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e("AppContainer", "Background task failed", e) },
     )
 
     val settings = SettingsRepository(context)
+    val appLog = AppLog(File(context.filesDir, "app-log.txt"))
+
+    /** The installed version, e.g. "1.4.0 (10)". */
+    val versionDescription: String = runCatching {
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        "${info.versionName} (${androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info)})"
+    }.getOrDefault("unknown")
     val settingsState: StateFlow<AppSettings> = settings.settings.stateIn(appScope, SharingStarted.Eagerly, AppSettings())
     val networkMonitor = NetworkMonitor(context)
     val httpClient = Http.createClient()
@@ -79,7 +89,18 @@ class AppContainer(private val context: Context) {
 
     val downloads = DownloadRepository(context, database.downloads(), settings)
     val missingDetails = MissingDetails(database.playlists(), database.downloads())
-    val resolver = StreamResolver(catalog, database.downloads(), networkMonitor, settings, lidarr, siriusXm, missingDetails, appScope)
+    val radio = RadioBrowserClient(httpClient, userAgent = "MusicApp/${versionDescription.substringBefore(' ')}")
+    val resolver = StreamResolver(
+        catalog,
+        database.downloads(),
+        networkMonitor,
+        settings,
+        lidarr,
+        siriusXm,
+        missingDetails,
+        appScope,
+        radio,
+    )
 
     val nextcloud = NextcloudClient(httpClient)
     val playlistSync = PlaylistSyncService(database.playlists(), nextcloud, settings)

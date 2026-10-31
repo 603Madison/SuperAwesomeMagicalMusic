@@ -96,6 +96,7 @@ fun SettingsScreen() {
             SiriusXmSection(settings, viewModel)
             LidarrSection(settings, viewModel)
             NextcloudSection(settings, viewModel)
+            AboutSection(viewModel)
             Spacer(Modifier.size(24.dp))
         }
     }
@@ -183,6 +184,22 @@ private fun QualitySection(settings: AppSettings, viewModel: SettingsViewModel) 
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AboutSection(viewModel: SettingsViewModel) {
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    Section("About") {
+        Text("Version ${viewModel.version}")
+        Hint(
+            "The app log records what Android Auto asks the app for and how it answers, and playback " +
+                "errors. If something misbehaves (e.g. in the car), copy it and send it along.",
+        )
+        TextButton(onClick = {
+            scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("Music app log", viewModel.appDiagnostics()))) }
+        }) { Text("Copy app log") }
     }
 }
 
