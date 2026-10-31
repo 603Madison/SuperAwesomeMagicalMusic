@@ -19,6 +19,7 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.music.player.AppContainer
 import com.music.player.data.DownloadStatus
@@ -113,13 +114,18 @@ class LibraryCallback(
         }
     }
 
+    /**
+     * Answered at once, never through [scope]: Android Auto connects through the legacy
+     * MediaBrowserService API, and Media3 blocks the main thread waiting for this result. A
+     * future completed by a coroutine on the main thread would never finish, and Android Auto
+     * would spin forever.
+     */
     override fun onGetLibraryRoot(
         session: MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
         params: LibraryParams?,
-    ): ListenableFuture<LibraryResult<MediaItem>> = scope.future {
-        LibraryResult.ofItem(folder(LibraryIds.ROOT, "Music", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED), params)
-    }
+    ): ListenableFuture<LibraryResult<MediaItem>> =
+        Futures.immediateFuture(LibraryResult.ofItem(folder(LibraryIds.ROOT, "Music", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED), params))
 
     override fun onGetItem(
         session: MediaLibrarySession,

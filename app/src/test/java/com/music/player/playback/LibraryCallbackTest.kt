@@ -1,5 +1,8 @@
 package com.music.player.playback
 
+import android.os.Bundle
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaSession
 import androidx.test.core.app.ApplicationProvider
 import com.music.player.MusicApp
 import com.music.player.model.SourceType
@@ -11,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
@@ -24,6 +28,23 @@ class LibraryCallbackTest {
         Track(SourceType.JELLYFIN, "1", "One", "Artist"),
         Track(SourceType.YOUTUBE_MUSIC, "2", "Two", "Artist"),
     )
+
+    @Test
+    fun `the root is answered at once, as Android Auto's legacy connection needs`() {
+        val service = Robolectric.buildService(PlaybackService::class.java).create()
+        try {
+            val auto = MediaSession.ControllerInfo.createTestOnlyControllerInfo(
+                "com.google.android.projection.gearhead", 0, 0, 0, 0, false, Bundle.EMPTY, true,
+            )
+            val session = service.get().onGetSession(auto) as MediaLibraryService.MediaLibrarySession
+            val root = callback.onGetLibraryRoot(session, auto, null)
+            // Media3 blocks the main thread on this future, so it must already be complete.
+            assertTrue(root.isDone)
+            assertEquals(LibraryIds.ROOT, root.get().value!!.mediaId)
+        } finally {
+            service.destroy()
+        }
+    }
 
     @Test
     fun `root lists playlists and downloads, plus SiriusXM only when signed in`() = runBlocking {
