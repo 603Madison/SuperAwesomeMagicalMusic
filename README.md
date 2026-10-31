@@ -47,8 +47,10 @@ Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Andro
   cap for the current network.
 - While a channel plays, the app shows the song you're actually hearing (the live edge runs ahead
   of the audio). It appears in the player, the notification and Android Auto.
-- **Xtra channels** arrive one track at a time: when a track ends, the app fetches the next one
-  and keeps playing.
+- **Xtra channels** arrive one track at a time. The app stitches them into one continuous stream:
+  shortly before a track ends it tunes the channel again, which hands out the next track, and
+  appends it, so playback carries on. It also reports the track being heard to SiriusXM, as
+  SiriusXM's own players do.
 - **Bookmark** channels with the star; bookmarked channels are listed first in the app and in
   Android Auto.
 - **Save** adds that song to a playlist using the usual rules: the Jellyfin copy if your library

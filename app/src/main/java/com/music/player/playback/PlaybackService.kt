@@ -20,7 +20,6 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -74,7 +73,7 @@ class PlaybackService : MediaLibraryService() {
         val loadControl = BufferControl { container.settingsState.value.bufferAheadSeconds * 1000L }
 
         val player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, extractors))
+            .setMediaSourceFactory(AppMediaSourceFactory(dataSourceFactory, extractors))
             .setLoadControl(loadControl)
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
@@ -84,7 +83,7 @@ class PlaybackService : MediaLibraryService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
         player.addListener(ErrorHandler(player))
-        player.addListener(TrackChanges(player))
+        player.addListener(TrackChanges())
 
         val openApp = PendingIntent.getActivity(
             this,
@@ -126,6 +125,7 @@ class PlaybackService : MediaLibraryService() {
                 settings.quality.forNetwork(network.networkClass)
             }.distinctUntilChanged().collect { quality ->
                 val maxBitrate = (quality as? StreamQuality.Capped)?.kbps?.times(1000) ?: Int.MAX_VALUE
+                container.siriusXm.maxBitrate = maxBitrate
                 player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                     .setMaxAudioBitrate(maxBitrate)
                     .build()
@@ -188,10 +188,7 @@ class PlaybackService : MediaLibraryService() {
                 val heardAt = if (windowStart != C.TIME_UNSET) windowStart + player.currentPosition
                 else System.currentTimeMillis() - 30_000
                 if (channel.first != SiriusXmClient.LINEAR && player.isPlaying) {
-                    xtraElapsedMs += NOW_PLAYING_INTERVAL_MS
-                    if (xtraElapsedMs % XTRA_PROGRESS_INTERVAL_MS == 0L) {
-                        runCatching { container.siriusXm.onXtraProgress(channel.first, channel.second, xtraElapsedMs) }
-                    }
+                    runCatching { container.siriusXm.onXtraHeard(channel.first, channel.second, heardAt) }
                 }
                 val cut = runCatching { container.siriusXm.cutAt(channel.first, channel.second, heardAt) }
                     .onFailure { Log.w(TAG, "SiriusXM now playing failed", it) }
@@ -228,55 +225,17 @@ class PlaybackService : MediaLibraryService() {
         player.prepare()
     }
 
-    /** Moves an Xtra channel on to its next track when the current one ends. */
-    private fun advanceXtra(player: ExoPlayer, index: Int) {
-        val track = player.getMediaItemAt(index).toTrack()
-        val (type, channelId) = track?.let(SxmChannel::idOf) ?: return
-        scope.launch {
-            try {
-                container.siriusXm.nextXtraTrack(type, channelId)
-                if (player.currentMediaItemIndex != index) player.seekTo(index, 0)
-                reload(player, positionMs = 0)
-                player.play()
-                xtraElapsedMs = 0
-            } catch (e: Exception) {
-                Log.w(TAG, "Couldn't continue the Xtra channel", e)
-                container.reportPlaybackError(e.message ?: "Couldn't load the next track")
-            }
-        }
-    }
-
-    private var xtraElapsedMs = 0L
-
     /**
-     * Track changes: songs left behind lose their pinned stream (so replaying them re-picks the
-     * best copy for the network), and Xtra channels continue past the end of each track.
+     * Track changes: songs left behind lose their pinned stream, so replaying them re-picks the
+     * best copy for the network.
      */
-    private inner class TrackChanges(private val player: ExoPlayer) : Player.Listener {
-        private var previous: Pair<Int, String?> = -1 to null
+    private inner class TrackChanges : Player.Listener {
+        private var previousKey: String? = null
 
         override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
-            val (previousIndex, previousKey) = previous
-            previous = player.currentMediaItemIndex to mediaItem?.mediaId
-            if (previousKey != null && previousKey != mediaItem?.mediaId) container.resolver.release(previousKey)
-            val leftXtra = previousIndex >= 0 && previousIndex < player.mediaItemCount &&
-                player.getMediaItemAt(previousIndex).toTrack()?.let(SxmChannel::idOf)?.first?.let { it != SiriusXmClient.LINEAR } == true
-            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && leftXtra) {
-                // The Xtra track ended and ExoPlayer moved on; stay on the channel instead.
-                player.seekTo(previousIndex, 0)
-                advanceXtra(player, previousIndex)
-                return
-            }
-            mediaItem?.toTrack()?.let(SxmChannel::idOf)?.takeIf { it.first != SiriusXmClient.LINEAR }?.let { (type, id) ->
-                xtraElapsedMs = 0
-                scope.launch { container.siriusXm.onXtraStarted(type, id) }
-            }
-        }
-
-        override fun onPlaybackStateChanged(playbackState: Int) {
-            if (playbackState != Player.STATE_ENDED) return
-            val channel = player.currentMediaItem?.toTrack()?.let(SxmChannel::idOf) ?: return
-            if (channel.first != SiriusXmClient.LINEAR) advanceXtra(player, player.currentMediaItemIndex)
+            val key = previousKey
+            previousKey = mediaItem?.mediaId
+            if (key != null && key != mediaItem?.mediaId) container.resolver.release(key)
         }
     }
 
@@ -319,8 +278,11 @@ class PlaybackService : MediaLibraryService() {
             if (channel != null && System.currentTimeMillis() - lastRetuneAt > RETUNE_INTERVAL_MS) {
                 lastRetuneAt = System.currentTimeMillis()
                 if (channel.first != SiriusXmClient.LINEAR) {
-                    // An Xtra track's stream ran out or broke: carry on with the next track.
-                    advanceXtra(player, player.currentMediaItemIndex)
+                    // The Xtra stream broke (e.g. its links expired): start the channel afresh.
+                    container.siriusXm.resetXtra(channel.second)
+                    player.seekToDefaultPosition(player.currentMediaItemIndex)
+                    player.prepare()
+                    player.play()
                     return
                 }
                 if (error.cause is HttpDataSource.InvalidResponseCodeException) {
@@ -363,6 +325,5 @@ class PlaybackService : MediaLibraryService() {
         const val TAG = "PlaybackService"
         const val NOW_PLAYING_INTERVAL_MS = 10_000L
         const val RETUNE_INTERVAL_MS = 30_000L
-        const val XTRA_PROGRESS_INTERVAL_MS = 30_000L
     }
 }

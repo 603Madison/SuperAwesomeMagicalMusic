@@ -17,6 +17,8 @@ fun Track.toMediaItem(): MediaItem {
         .setUri(uri)
         // SiriusXM channels are live HLS streams; the type can't be sniffed from the URI.
         .setMimeType(if (isSiriusXmChannel) MimeTypes.APPLICATION_M3U8 else null)
+        // Play radio at normal speed rather than speeding up or slowing down to hold a live offset.
+        .setLiveConfiguration(MediaItem.LiveConfiguration.Builder().setMinPlaybackSpeed(1f).setMaxPlaybackSpeed(1f).build())
         // The URI is dropped when items cross from a MediaController to the session; the
         // request metadata survives, and the session rebuilds the URI from it.
         .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(uri).build())

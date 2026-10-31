@@ -117,23 +117,23 @@ class SiriusXmParserTest {
     }
 
     @Test
-    fun `xtra playlists keep growing instead of ending after the first track`() {
-        val playlist = """
+    fun `the best variant within the cap is picked from a master playlist`() {
+        val master = """
             #EXTM3U
-            #EXT-X-VERSION:3
-            #EXT-X-PLAYLIST-TYPE:VOD
-            #EXT-X-TARGETDURATION:10
-            #EXTINF:10.0,
-            intro1.aac
-            #EXT-X-ENDLIST
+            #EXT-X-STREAM-INF:BANDWIDTH=281600,AVERAGE-BANDWIDTH=270000,CODECS="mp4a.40.2"
+            256k/media.m3u8
+            #EXT-X-STREAM-INF:BANDWIDTH=105600
+            96k/media.m3u8
+            #EXT-X-STREAM-INF:BANDWIDTH=70400
+            64k/media.m3u8
         """.trimIndent()
-        val growing = SiriusXmParser.keepGrowing(playlist).lines()
-        assertEquals("#EXT-X-START:TIME-OFFSET=0,PRECISE=YES", growing[1])
-        assertFalse(growing.any { it.startsWith("#EXT-X-ENDLIST") || it.startsWith("#EXT-X-PLAYLIST-TYPE") })
-        assertTrue(growing.contains("intro1.aac"))
-        // Master playlists are left alone.
-        val master = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=64000\nlow.m3u8"
-        assertEquals(master, SiriusXmParser.keepGrowing(master))
+        val url = "https://cdn.example.com/track/master.m3u8"
+        assertEquals("https://cdn.example.com/track/256k/media.m3u8", SiriusXmParser.pickVariant(master, url, Int.MAX_VALUE))
+        assertEquals("https://cdn.example.com/track/96k/media.m3u8", SiriusXmParser.pickVariant(master, url, 128_000))
+        // Nothing fits: the lowest.
+        assertEquals("https://cdn.example.com/track/64k/media.m3u8", SiriusXmParser.pickVariant(master, url, 32_000))
+        // A media playlist isn't a master.
+        assertEquals(null, SiriusXmParser.pickVariant("#EXTM3U\n#EXTINF:10,\na.aac", url, 128_000))
     }
 
     @Test

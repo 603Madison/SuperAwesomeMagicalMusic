@@ -75,8 +75,9 @@ class StreamResolver(
     suspend fun resolveForPlayback(track: Track): Pair<String, Map<String, String>> {
         SxmChannel.idOf(track)?.let { (type, channelId) ->
             if (!network.state.value.isOnline) throw OfflineException("SiriusXM needs a connection")
-            val url = siriusXm.streamUrl(type, channelId)
-            publishOrigin(track.key, PlaybackOrigin(SourceType.SIRIUSXM, "SiriusXM · Live"))
+            val xtra = type != SiriusXmClient.LINEAR
+            val url = if (xtra) siriusXm.xtraUri(type, channelId) else siriusXm.streamUrl(type, channelId)
+            publishOrigin(track.key, PlaybackOrigin(SourceType.SIRIUSXM, if (xtra) "SiriusXM · Xtra" else "SiriusXM · Live"))
             return url to mapOf("User-Agent" to SiriusXmClient.USER_AGENT)
         }
         when (val pin = pins.get(track.key)) {

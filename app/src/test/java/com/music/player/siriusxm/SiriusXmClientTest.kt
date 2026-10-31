@@ -25,8 +25,7 @@ class SiriusXmClientTest {
     private val requests = mutableListOf<RecordedRequest>()
     private var rejectPassword = false
     private var expireNextKeyRequest = false
-    private var xtraTunes = 0
-    private var nextResponds = true
+    private var xtraCurrent = "intro"
 
     @Before
     fun setUp() {
@@ -41,12 +40,7 @@ class SiriusXmClientTest {
                     "/identity/v1/identities/authenticate/password" ->
                         if (rejectPassword) MockResponse().setResponseCode(401) else json("""{"grant":"identity-grant"}""")
                     "/session/v1/sessions/authenticated" -> json("""{"accessToken":"access-token","accessTokenExpiresAt":"2099-01-01T00:00:00Z"}""")
-                    "/playback/play/v1/tuneSource" -> {
-                        xtraTunes++
-                        xtraTune(if (xtraTunes == 1) "intro" else "track-$xtraTunes", next = "playback/play/v1/next/abc")
-                    }
-                    "/playback/play/v1/next/abc" ->
-                        if (nextResponds) xtraTune("song-after-intro", next = null) else MockResponse().setResponseCode(404)
+                    "/playback/play/v1/tuneSource" -> xtraTune(xtraCurrent)
                     "/playback/telemetry/v2/actions" -> json("""{"failedActions":[]}""")
                     "/relationship/v1/container/all-channels" ->
                         json("""{"container":{"sets":[{"items":[{"entity":{"id":"c1","texts":{"title":"Octane"}}}]}]}}""")
@@ -57,7 +51,20 @@ class SiriusXmClientTest {
                         } else {
                             json("""{"key":"${Base64.getEncoder().encodeToString(ByteArray(16) { it.toByte() })}"}""")
                         }
-                    else -> MockResponse().setResponseCode(404)
+                    else -> when {
+                        path.startsWith("/cdn/") && path.endsWith("/master.m3u8") -> MockResponse().setBody(
+                            "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=281600\n256k/media.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=105600\n96k/media.m3u8",
+                        )
+                        path.startsWith("/cdn/") && path.endsWith("/media.m3u8") -> {
+                            val track = path.removePrefix("/cdn/").substringBefore('/')
+                            MockResponse().setBody(
+                                "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-TARGETDURATION:10\n#EXT-X-MEDIA-SEQUENCE:5\n" +
+                                    "#EXT-X-KEY:METHOD=AES-128,URI=\"https://key.example.com/12345678-1234-1234-1234-123456789abc\"\n" +
+                                    "#EXTINF:10.0,\n${track}_1.aac\n#EXTINF:10.0,\n${track}_2.aac\n#EXT-X-ENDLIST",
+                            )
+                        }
+                        else -> MockResponse().setResponseCode(404)
+                    }
                 }
             }
         }
@@ -67,20 +74,24 @@ class SiriusXmClientTest {
     @After
     fun tearDown() = server.shutdown()
 
-    private fun xtraTune(trackId: String, next: String?) = json(
-        """{"streams":[{"urls":[{"url":"https://cdn.example.com/$trackId/master.m3u8","isPrimary":true}],
-            "mtc":{"next":${next?.let { "\"$it\"" } ?: "null"}},
-            "metadata":{"xtra":{"items":[{"id":"$trackId","name":"$trackId","artistName":"Artist","duration":180000}]}}}]}""",
+    private fun xtraTune(trackId: String) = json(
+        """{"streams":[{"urls":[{"url":"${server.url("/cdn/$trackId/master.m3u8")}","isPrimary":true}],
+            "mtc":{"next":"enabled"},
+            "metadata":{"xtra":{"items":[{"id":"$trackId","name":"$trackId","artistName":"Artist","duration":20000}]}}}]}""",
     )
 
     private fun json(body: String) = MockResponse().setBody(body).addHeader("Content-Type", "application/json")
 
-    private fun client(config: SiriusXmConfig = SiriusXmConfig("me@example.com", "secret")) = SiriusXmClient(
+    private fun client(
+        config: SiriusXmConfig = SiriusXmConfig("me@example.com", "secret"),
+        clock: () -> Long = System::currentTimeMillis,
+    ) = SiriusXmClient(
         http = OkHttpClient(),
         credentials = { config },
         loadSession = { savedSession },
         saveSession = { savedSession = it },
         baseUrl = server.url("/").toString(),
+        clock = clock,
     )
 
     @Test
@@ -127,33 +138,57 @@ class SiriusXmClientTest {
         assertEquals("/playback/key/v1/12345678-1234-1234-1234-123456789abc", requests.last().path)
     }
 
+    private fun tunes() = requests.count { it.path == "/playback/play/v1/tuneSource" }
+
     @Test
-    fun `xtra channels move on through the stream's next link`() = runTest {
-        val client = client()
-        assertEquals("https://cdn.example.com/intro/master.m3u8", client.streamUrl("channel-xtra", "x1"))
-        assertEquals("intro", client.cutAt("channel-xtra", "x1", 0)?.title)
-        val next = client.nextXtraTrack("channel-xtra", "x1")
-        assertEquals("https://cdn.example.com/song-after-intro/master.m3u8", next)
-        assertEquals("song-after-intro", client.cutAt("channel-xtra", "x1", 0)?.title)
-        assertTrue(requests.any { it.path == "/playback/telemetry/v2/actions" })
-        // The player re-opens the channel and gets the new track.
-        assertEquals(next, client.streamUrl("channel-xtra", "x1"))
+    fun `xtra channels play as one stream that grows a track at a time`() = runTest {
+        var now = 1_000_000L
+        val client = client(clock = { now })
+        client.maxBitrate = 128_000
+        val first = client.xtraPlaylist("channel-xtra", "x1")
+        assertFalse(first.contains("#EXT-X-ENDLIST"))
+        // The variant within the cap, with keys served by the app and the original IVs kept.
+        assertTrue(first.contains(server.url("/cdn/intro/96k/intro_1.aac").toString()))
+        assertTrue(first.contains("URI=\"sxmkey://12345678-1234-1234-1234-123456789abc\",IV=0x00000000000000000000000000000005"))
+        assertEquals("intro", client.cutAt("channel-xtra", "x1", now + 5_000)?.title)
+
+        // Reloading straight away doesn't tune again.
+        val tuned = tunes()
+        client.xtraPlaylist("channel-xtra", "x1")
+        assertEquals(tuned, tunes())
+
+        // SiriusXM hasn't moved on yet: the same track again adds nothing.
+        now += 10_000
+        val same = client.xtraPlaylist("channel-xtra", "x1")
+        assertEquals(tuned + 1, tunes())
+        assertEquals(2, same.lines().count { it.endsWith(".aac") })
+
+        // The next track is appended after a discontinuity, and the song changes with it.
+        xtraCurrent = "song-2"
+        now += 10_000
+        val grown = client.xtraPlaylist("channel-xtra", "x1").lines()
+        assertEquals(4, grown.count { it.endsWith(".aac") })
+        val discontinuity = grown.indexOf("#EXT-X-DISCONTINUITY")
+        assertTrue(discontinuity > grown.indexOfFirst { it.endsWith("intro_2.aac") })
+        assertTrue(discontinuity < grown.indexOfFirst { it.endsWith("song-2_1.aac") })
+        assertEquals("song-2", client.cutAt("channel-xtra", "x1", 1_000_000L + 25_000)?.title)
+
+        // What's heard is reported to SiriusXM.
+        client.onXtraHeard("channel-xtra", "x1", 1_000_000L + 25_000)
+        val telemetry = requests.last { it.path == "/playback/telemetry/v2/actions" }.body.readUtf8()
+        assertTrue(telemetry.contains("\"start\"") && telemetry.contains("\"id\":\"song-2\""))
     }
 
     @Test
-    fun `xtra stream playlists are recognised by their location`() = runTest {
-        val client = client()
-        client.streamUrl("channel-xtra", "x1")
-        assertTrue(client.isXtraStream("https://cdn.example.com/intro/variant/low.m3u8"))
-        assertFalse(client.isXtraStream("https://other.example.com/live/low.m3u8"))
-    }
-
-    @Test
-    fun `xtra channels tune again when the next link doesn't work`() = runTest {
-        nextResponds = false
-        val client = client()
-        client.streamUrl("channel-xtra", "x1")
-        assertEquals("https://cdn.example.com/track-2/master.m3u8", client.nextXtraTrack("channel-xtra", "x1"))
+    fun `an xtra channel nobody has loaded for a while starts afresh`() = runTest {
+        var now = 1_000_000L
+        val client = client(clock = { now })
+        client.xtraPlaylist("channel-xtra", "x1")
+        xtraCurrent = "song-2"
+        now += 10 * 60_000L
+        val fresh = client.xtraPlaylist("channel-xtra", "x1")
+        assertFalse(fresh.contains("intro_1.aac"))
+        assertTrue(fresh.contains("song-2_1.aac"))
     }
 
     @Test

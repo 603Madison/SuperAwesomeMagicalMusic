@@ -15,7 +15,8 @@ import java.io.IOException
 /**
  * Serves SiriusXM's encrypted HLS streams to ExoPlayer: media playlists are rewritten so each
  * `#EXT-X-KEY` points at `sxmkey://<guid>`, and those keys are fetched from SiriusXM with the
- * signed-in session. Everything else passes straight through to [upstream].
+ * signed-in session. Xtra channels play from `sxmxtra://` playlists the client stitches together
+ * (see [XtraStream]). Everything else passes straight through to [upstream].
  */
 @OptIn(UnstableApi::class)
 class SiriusXmDataSource(
@@ -40,12 +41,26 @@ class SiriusXmDataSource(
                 }
                 serve(dataSpec, key)
             }
+            uri.scheme == SiriusXmClient.XTRA_SCHEME -> {
+                val (type, channelId) = uri.pathSegments.takeIf { it.size == 2 }
+                    ?.let { it[0] to it[1].removeSuffix(".m3u8") }
+                    ?: throw IOException("Malformed Xtra URI $uri")
+                val playlist = try {
+                    runBlocking { client.xtraPlaylist(type, channelId) }
+                } catch (e: IOException) {
+                    throw e
+                } catch (e: Exception) {
+                    throw IOException("Couldn't load the SiriusXM Xtra channel: ${e.message}", e)
+                }
+                serve(dataSpec, playlist.toByteArray())
+            }
             uri.path?.endsWith(".m3u8") == true -> {
                 val playlist = readAll(dataSpec).decodeToString()
-                client.recordDiagnostics("playlist ${uri.lastPathSegment}", playlist.lineSequence().take(40).joinToString("\n"))
-                val keyed = SiriusXmParser.rewriteKeys(playlist, client.fallbackKeyId)
-                val rewritten = if (client.isXtraStream(uri.toString())) SiriusXmParser.keepGrowing(keyed) else keyed
-                serve(dataSpec, rewritten.toByteArray())
+                // Live playlists reload every few seconds; log each one once.
+                if (logged.add(uri.path.orEmpty())) {
+                    client.recordDiagnostics("playlist ${uri.lastPathSegment}", playlist.lineSequence().take(40).joinToString("\n"))
+                }
+                serve(dataSpec, SiriusXmParser.rewriteKeys(playlist, client.fallbackKeyId).toByteArray())
             }
             else -> {
                 served = upstream
@@ -89,6 +104,10 @@ class SiriusXmDataSource(
         } finally {
             served = null
         }
+    }
+
+    private companion object {
+        val logged: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     }
 
     class Factory(private val upstream: DataSource.Factory, private val client: SiriusXmClient) : DataSource.Factory {

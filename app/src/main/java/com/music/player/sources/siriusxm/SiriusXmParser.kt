@@ -19,6 +19,7 @@ import java.util.Base64
 object SiriusXmParser {
     const val IMAGE_BASE = "https://imgsrv-sxm-prod-device.streaming.siriusxm.com/"
     private val GUID = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+    private val BANDWIDTH = Regex("""(?<![A-Z-])BANDWIDTH=(\d+)""")
     private val KEY_URI = Regex("URI=\"[^\"]*\"")
 
     /** The URI scheme the app gives HLS encryption keys; [SiriusXmDataSource] serves them. */
@@ -105,20 +106,24 @@ object SiriusXmParser {
     }
 
     /**
-     * Xtra channels grow their playlist as tracks are added, yet mark it finished; read that way,
-     * the player stops after the first track. This removes the end marker (so the playlist keeps
-     * being refreshed) and starts playback at the beginning rather than the newest track.
+     * The media playlist to play from a master playlist: the highest bitrate within [maxBitrate]
+     * (bits per second), else the lowest on offer. Null when [playlist] isn't a master playlist.
      */
-    fun keepGrowing(playlist: String): String {
-        if (!playlist.contains("#EXTINF")) return playlist // A master playlist.
-        val lines = playlist.lineSequence()
-            .filterNot { it.startsWith("#EXT-X-ENDLIST") || it.startsWith("#EXT-X-PLAYLIST-TYPE") }
-            .toMutableList()
-        if (lines.none { it.startsWith("#EXT-X-START") }) {
-            val header = lines.indexOfFirst { it.startsWith("#EXTM3U") }
-            lines.add(header + 1, "#EXT-X-START:TIME-OFFSET=0,PRECISE=YES")
+    fun pickVariant(playlist: String, playlistUrl: String, maxBitrate: Int): String? {
+        val variants = mutableListOf<Pair<Long, String>>()
+        var bandwidth: Long? = null
+        for (raw in playlist.lineSequence()) {
+            val line = raw.trim()
+            when {
+                line.startsWith("#EXT-X-STREAM-INF:") ->
+                    bandwidth = BANDWIDTH.find(line)?.groupValues?.get(1)?.toLongOrNull() ?: 0
+                bandwidth != null && line.isNotEmpty() && !line.startsWith("#") -> {
+                    variants += bandwidth!! to java.net.URI(playlistUrl).resolve(line).toString()
+                    bandwidth = null
+                }
+            }
         }
-        return lines.joinToString("\n")
+        return (variants.filter { it.first <= maxBitrate }.maxByOrNull { it.first } ?: variants.minByOrNull { it.first })?.second
     }
 
     /** The cut playing at wall-clock time [positionMs] (the moment of audio being heard). */
