@@ -3,6 +3,7 @@ package com.music.player.playback
 import android.net.Uri
 import android.util.LruCache
 import com.music.player.data.DownloadDao
+import com.music.player.data.MissingDetails
 import com.music.player.lidarr.LidarrService
 import com.music.player.model.SourceType
 import com.music.player.model.Track
@@ -21,7 +22,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.io.IOException
 
 /**
@@ -57,7 +61,12 @@ class StreamResolver(
     private val settings: SettingsRepository,
     private val lidarr: LidarrService,
     private val siriusXm: SiriusXmClient,
+    private val details: MissingDetails,
+    private val scope: CoroutineScope,
 ) {
+    /** Downloads already looked up for missing artwork this session. */
+    private val lookedUp: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
     private sealed interface Pin {
         data class Local(val path: String) : Pin
         data class Remote(val track: Track, val quality: StreamQuality) : Pin
@@ -92,15 +101,21 @@ class StreamResolver(
         downloads.completed(track.key)?.takeIf { it.filePath?.let(::File)?.exists() == true }?.let { download ->
             val path = download.filePath!!
             pins.put(track.key, Pin.Local(path))
-            publishOrigin(
-                track.key,
-                PlaybackOrigin(
-                    source = null,
-                    description = listOfNotNull("Downloaded", download.qualityDescription).joinToString(" · "),
-                    kbps = download.effectiveKbps,
-                    downloaded = true,
-                ),
+            val origin = PlaybackOrigin(
+                source = null,
+                description = listOfNotNull("Downloaded", download.qualityDescription).joinToString(" · "),
+                kbps = download.effectiveKbps,
+                playing = download.track,
+                downloaded = true,
             )
+            publishOrigin(track.key, origin)
+            if (download.track.artworkUrl == null && network.state.value.isOnline && lookedUp.add(track.key)) {
+                // Saved without artwork (e.g. from SiriusXM): borrow it from another service's copy.
+                scope.launch {
+                    val copy = runCatching { catalog.findCopyWithArtwork(download.track) }.getOrNull() ?: return@launch
+                    publishOrigin(track.key, origin.copy(playing = details.fill(download.track, copy)))
+                }
+            }
             return localUri(path)
         }
 
@@ -109,6 +124,7 @@ class StreamResolver(
         val quality = settings.current().quality.forNetwork(state.networkClass)
         // Off satellite, compare every service for the best copy; on satellite take the first fit.
         val selected = select(track, quality, thorough = state.networkClass != NetworkClass.SATELLITE)
+        details.fill(track, selected.track)
         pins.put(track.key, Pin.Remote(selected.track, quality))
         streams.put(track.key, CachedStream(selected.stream, System.currentTimeMillis()))
         publishOrigin(

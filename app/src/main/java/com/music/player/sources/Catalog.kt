@@ -7,6 +7,7 @@ import com.music.player.settings.SettingsRepository
 import com.music.player.sources.jellyfin.JellyfinSource
 import com.music.player.sources.qobuz.QobuzSource
 import com.music.player.sources.youtube.YouTubeMusicSource
+import kotlinx.coroutines.CancellationException
 
 class Catalog(
     val jellyfin: JellyfinSource,
@@ -32,4 +33,24 @@ class Catalog(
 
     /** Streaming services to use when Jellyfin lacks a song, in the user's preferred order. */
     suspend fun fallbackOrder(): List<SourceType> = settings.current().fallbackOrder
+
+    /**
+     * Another service's copy of [track] that has artwork, to fill in details SiriusXM didn't
+     * give. Jellyfin is asked first unless [includeJellyfin] is false.
+     */
+    suspend fun findCopyWithArtwork(track: Track, includeJellyfin: Boolean = true): Track? {
+        val sources = (if (includeJellyfin) listOf(jellyfin) else emptyList()) + fallbackOrder().map(::source)
+        for (source in sources) {
+            if (source.type == track.source || !source.isAvailable()) continue
+            val match = try {
+                source.findMatch(track)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            if (match?.artworkUrl != null) return match
+        }
+        return null
+    }
 }

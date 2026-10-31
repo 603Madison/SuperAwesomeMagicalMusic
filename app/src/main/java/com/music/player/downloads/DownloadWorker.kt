@@ -42,6 +42,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         var target: File? = null
         return try {
             val selected = container.resolver.resolveForDownload(entity.track)
+            container.missingDetails.fill(entity.track, selected.track)
             val replace = if (selected.track.source == SourceType.JELLYFIN && entity.downloadedFrom != SourceType.JELLYFIN) {
                 // Your own library wins over a copy from a streaming service unless that's clearly better.
                 Upgrades.preferJellyfin(entity.effectiveKbps, selected.stream.kbps)

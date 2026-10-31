@@ -83,7 +83,7 @@ class PlaybackService : MediaLibraryService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
         player.addListener(ErrorHandler(player))
-        player.addListener(TrackChanges())
+        player.addListener(TrackChanges(player))
 
         val openApp = PendingIntent.getActivity(
             this,
@@ -132,6 +132,12 @@ class PlaybackService : MediaLibraryService() {
             }
         }
         scope.launch { trackSiriusXmNowPlaying(player) }
+        // Songs saved without artwork (e.g. from SiriusXM) show the copy that's playing's.
+        scope.launch {
+            container.resolver.origins.collect { origins ->
+                player.currentMediaItem?.let { item -> origins[item.mediaId]?.playing?.let { showCopyDetails(player, it) } }
+            }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
@@ -229,14 +235,29 @@ class PlaybackService : MediaLibraryService() {
      * Track changes: songs left behind lose their pinned stream, so replaying them re-picks the
      * best copy for the network.
      */
-    private inner class TrackChanges : Player.Listener {
+    private inner class TrackChanges(private val player: ExoPlayer) : Player.Listener {
         private var previousKey: String? = null
 
         override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
             val key = previousKey
             previousKey = mediaItem?.mediaId
             if (key != null && key != mediaItem?.mediaId) container.resolver.release(key)
+            // The next song may have been resolved (and its copy found) before it started.
+            mediaItem?.let { container.resolver.origins.value[it.mediaId]?.playing }?.let { showCopyDetails(player, it) }
         }
+    }
+
+    /** Fills in the current song's artwork and album from the copy playing, where it has none. */
+    private fun showCopyDetails(player: ExoPlayer, copy: com.music.player.model.Track) {
+        val item = player.currentMediaItem ?: return
+        if (item.toTrack()?.isSiriusXmChannel != false) return
+        val metadata = item.mediaMetadata
+        val artwork = metadata.artworkUri ?: copy.artworkUrl?.toUri()
+        val album = metadata.albumTitle ?: copy.album
+        if (artwork == metadata.artworkUri && album == metadata.albumTitle) return
+        val updated = metadata.buildUpon().setArtworkUri(artwork).setAlbumTitle(album).build()
+        // Same stream, new metadata: ExoPlayer updates it without interrupting playback.
+        player.replaceMediaItem(player.currentMediaItemIndex, item.buildUpon().setMediaMetadata(updated).build())
     }
 
     private fun showSong(player: ExoPlayer, cut: SxmCut?) {

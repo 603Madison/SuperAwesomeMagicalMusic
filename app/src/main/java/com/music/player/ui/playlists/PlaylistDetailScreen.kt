@@ -218,4 +218,5 @@ private fun describe(result: RefreshResult): String = buildList {
     }
     if (result.rechecking > 0) add("checking ${result.rechecking} downloads for Jellyfin or better copies")
     if (result.queued > 0) add("downloading ${result.queued} missing")
+    if (result.artworkFound > 0) add("found artwork for ${result.artworkFound}")
 }.joinToString("; ")

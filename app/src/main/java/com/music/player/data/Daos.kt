@@ -10,6 +10,13 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PlaylistDao {
+    /** Fills in artwork and album for a song saved without them, in every playlist it's in. */
+    @Query(
+        "UPDATE playlist_entries SET track_artworkUrl = COALESCE(track_artworkUrl, :artworkUrl), " +
+            "track_album = COALESCE(track_album, :album) WHERE track_source = :source AND track_sourceId = :sourceId",
+    )
+    suspend fun fillDetails(source: String, sourceId: String, artworkUrl: String?, album: String?)
+
     @Query(
         """
         SELECT p.id, p.name, p.description, p.updatedAt,
@@ -109,6 +116,12 @@ interface LidarrRequestDao {
 
 @Dao
 interface DownloadDao {
+    @Query(
+        "UPDATE downloads SET track_artworkUrl = COALESCE(track_artworkUrl, :artworkUrl), " +
+            "track_album = COALESCE(track_album, :album) WHERE trackKey = :key",
+    )
+    suspend fun fillDetails(key: String, artworkUrl: String?, album: String?)
+
     @Query("SELECT * FROM downloads ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<DownloadEntity>>
 

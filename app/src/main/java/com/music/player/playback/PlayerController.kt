@@ -178,7 +178,7 @@ class PlayerController(private val context: Context, private val scope: Coroutin
             _state.value.queue
         }
         _state.value = PlayerUiState(
-            current = player.currentMediaItem?.toTrack(),
+            current = player.currentMediaItem?.let(::currentTrack),
             isPlaying = player.isPlaying,
             isBuffering = player.playbackState == Player.STATE_BUFFERING,
             positionMs = player.currentPosition.coerceAtLeast(0),
@@ -210,6 +210,16 @@ class PlayerController(private val context: Context, private val scope: Coroutin
                 )
             }
         }
+    }
+
+    /** The current song, with artwork and album the player found for it (from the copy playing). */
+    private fun currentTrack(item: MediaItem): Track? {
+        val track = item.toTrack() ?: return null
+        if (track.isSiriusXmChannel) return track
+        return track.copy(
+            artworkUrl = track.artworkUrl ?: item.mediaMetadata.artworkUri?.toString(),
+            album = track.album ?: item.mediaMetadata.albumTitle?.toString(),
+        )
     }
 
     private fun currentFormat(player: Player): AudioFormatInfo? =

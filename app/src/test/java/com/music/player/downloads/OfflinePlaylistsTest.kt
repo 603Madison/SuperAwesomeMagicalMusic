@@ -74,4 +74,22 @@ class OfflinePlaylistsTest {
         assertEquals(SourceType.YOUTUBE_MUSIC, dao.get(two.key)!!.downloadedFrom)
         assertEquals(DownloadStatus.QUEUED, dao.get(one.key)!!.status)
     }
+
+    @Test
+    fun `songs saved without artwork get it from another service's copy`() = runBlocking {
+        val heard = Track(SourceType.SIRIUSXM, "song:42", "Sticking To The Plan", "The Bends")
+        val copy = heard.copy(source = SourceType.YOUTUBE_MUSIC, sourceId = "yt", album = "Album", artworkUrl = "https://img/yt.jpg")
+        val id = container.playlists.create("Heard", listOf(heard))
+        dao.upsert(DownloadEntity(heard.key, heard, DownloadStatus.COMPLETED, 1f, "/h.webm", 10, createdAt = 0))
+
+        val filled = container.missingDetails.fill(heard, copy)
+        assertEquals("https://img/yt.jpg", filled.artworkUrl)
+        assertEquals(heard.key, filled.key)
+        assertEquals("https://img/yt.jpg", container.database.playlists().entries(id).single().track.artworkUrl)
+        assertEquals("Album", dao.get(heard.key)!!.track.album)
+
+        // Artwork a song already has is kept.
+        container.missingDetails.fill(filled, copy.copy(artworkUrl = "https://img/other.jpg"))
+        assertEquals("https://img/yt.jpg", container.database.playlists().entries(id).single().track.artworkUrl)
+    }
 }

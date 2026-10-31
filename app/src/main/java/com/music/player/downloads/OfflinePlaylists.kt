@@ -13,8 +13,10 @@ import androidx.work.WorkerParameters
 import com.music.player.MusicApp
 import com.music.player.data.DownloadDao
 import com.music.player.data.DownloadStatus
+import com.music.player.data.MissingDetails
 import com.music.player.data.PlaylistDao
 import com.music.player.model.SourceType
+import com.music.player.model.Track
 import com.music.player.sources.MusicSource
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -53,7 +55,7 @@ object Upgrades {
 }
 
 /** What "Refresh downloads" found: [inJellyfin] is null when Jellyfin couldn't be asked. */
-data class RefreshResult(val songs: Int, val inJellyfin: Int?, val rechecking: Int, val queued: Int)
+data class RefreshResult(val songs: Int, val inJellyfin: Int?, val rechecking: Int, val queued: Int, val artworkFound: Int = 0)
 
 /**
  * Keeps playlists marked "keep downloaded" available offline: new songs are downloaded, songs
@@ -65,6 +67,9 @@ class OfflinePlaylists(
     private val downloadDao: DownloadDao,
     private val downloads: DownloadRepository,
     private val jellyfin: MusicSource,
+    private val details: MissingDetails? = null,
+    /** Another service's copy with artwork, for songs saved without (see [MissingDetails]). */
+    private val findCopy: suspend (Track) -> Track? = { null },
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     suspend fun sync() {
@@ -117,6 +122,20 @@ class OfflinePlaylists(
             null
         }
 
+        val artworkFound = details?.let { filler ->
+            val permits = Semaphore(LOOKUP_CONCURRENCY)
+            coroutineScope {
+                tracks.filter { it.artworkUrl == null && !it.isSiriusXmChannel }.map { track ->
+                    async {
+                        permits.withPermit {
+                            val copy = runCatching { findCopy(track) }.getOrNull() ?: return@withPermit false
+                            filler.fill(track, copy) != track
+                        }
+                    }
+                }.awaitAll().count { it }
+            }
+        } ?: 0
+
         downloads.checkForBetterCopies(completed.map { it.trackKey })
         val missing = if (playlist?.keepDownloaded == true) {
             tracks.filter { existing[it.key] == null || existing[it.key]?.status == DownloadStatus.FAILED }
@@ -124,7 +143,13 @@ class OfflinePlaylists(
             emptyList()
         }
         downloads.enqueue(missing, auto = true)
-        return RefreshResult(songs = tracks.size, inJellyfin = inJellyfin, rechecking = completed.size, queued = missing.size)
+        return RefreshResult(
+            songs = tracks.size,
+            inJellyfin = inJellyfin,
+            rechecking = completed.size,
+            queued = missing.size,
+            artworkFound = artworkFound,
+        )
     }
 
     companion object {

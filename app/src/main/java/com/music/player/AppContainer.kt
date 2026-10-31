@@ -3,6 +3,7 @@ package com.music.player
 import android.content.Context
 import android.util.Log
 import com.music.player.data.AppDatabase
+import com.music.player.data.MissingDetails
 import com.music.player.downloads.DownloadRepository
 import com.music.player.downloads.OfflinePlaylistWorker
 import com.music.player.downloads.OfflinePlaylists
@@ -77,7 +78,8 @@ class AppContainer(private val context: Context) {
     )
 
     val downloads = DownloadRepository(context, database.downloads(), settings)
-    val resolver = StreamResolver(catalog, database.downloads(), networkMonitor, settings, lidarr, siriusXm)
+    val missingDetails = MissingDetails(database.playlists(), database.downloads())
+    val resolver = StreamResolver(catalog, database.downloads(), networkMonitor, settings, lidarr, siriusXm, missingDetails, appScope)
 
     val nextcloud = NextcloudClient(httpClient)
     val playlistSync = PlaylistSyncService(database.playlists(), nextcloud, settings)
@@ -86,8 +88,15 @@ class AppContainer(private val context: Context) {
         owner = settings.settings.map { it.nextcloud.owner },
         onChanged = ::onPlaylistsChanged,
     )
-    val heardSongs = HeardSongs(jellyfin, lidarr, playlists)
-    val offlinePlaylists = OfflinePlaylists(database.playlists(), database.downloads(), downloads, catalog.jellyfin)
+    val heardSongs = HeardSongs(jellyfin, lidarr, playlists) { catalog.findCopyWithArtwork(it, includeJellyfin = false) }
+    val offlinePlaylists = OfflinePlaylists(
+        database.playlists(),
+        database.downloads(),
+        downloads,
+        catalog.jellyfin,
+        missingDetails,
+        { catalog.findCopyWithArtwork(it) },
+    )
     val nextcloudSignIn = NextcloudSignIn(nextcloud, settings, database.playlists(), playlistSync, appScope)
 
     val player = PlayerController(context, MainScope())

@@ -1,10 +1,13 @@
 package com.music.player.sources.siriusxm
 
 import android.util.Log
+import com.music.player.data.MissingDetails
 import com.music.player.lidarr.LidarrService
 import com.music.player.model.Track
 import com.music.player.playlists.PlaylistRepository
 import com.music.player.sources.MusicSource
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** A song heard on SiriusXM, as it will be saved. */
 data class CapturedSong(
@@ -25,9 +28,11 @@ class HeardSongs(
     private val jellyfin: MusicSource,
     private val lidarr: LidarrService,
     private val playlists: PlaylistRepository,
+    /** Another service's copy with artwork, for songs SiriusXM sent without (Jellyfin excluded). */
+    private val findCopy: suspend (Track) -> Track? = { null },
 ) {
     suspend fun capture(cut: SxmCut): CapturedSong {
-        val heard = cut.toTrack()
+        val heard = withArtwork(cut.toTrack())
         if (jellyfin.isAvailable()) {
             val match = try {
                 jellyfin.findMatch(heard)
@@ -42,6 +47,14 @@ class HeardSongs(
         return CapturedSong(heard, inLibrary = false, requestedFromLidarr = true)
     }
 
+    private suspend fun withArtwork(track: Track): Track {
+        if (track.artworkUrl != null) return track
+        val copy = withTimeoutOrNull(COPY_LOOKUP_MS) {
+            runCatching { findCopy(track) }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+        } ?: return track
+        return MissingDetails.with(track, copy)
+    }
+
     /** One-tap save (e.g. from Android Auto) to the "Heard on SiriusXM" playlist. */
     suspend fun saveToHeardPlaylist(cut: SxmCut): CapturedSong {
         val captured = capture(cut)
@@ -52,5 +65,6 @@ class HeardSongs(
     companion object {
         const val PLAYLIST_NAME = "Heard on SiriusXM"
         private const val TAG = "HeardSongs"
+        private const val COPY_LOOKUP_MS = 8_000L
     }
 }
