@@ -108,11 +108,11 @@ class PlaybackService : MediaLibraryService() {
         // On a network change (e.g. Wi-Fi -> satellite), queued songs re-pick their bitrate. The
         // current song keeps its stream so seeking within it stays consistent.
         // If the network now allows more (e.g. satellite -> Wi-Fi), the current song also switches
-        // to a better copy, picking up where it was.
+        // to a better copy, picking up where it was. When Data Saver comes on, it switches down.
         scope.launch {
-            container.networkMonitor.state.map { it.networkClass }.distinctUntilChanged().drop(1).collect {
+            container.networkMonitor.state.map { it.networkClass to it.savingData }.distinctUntilChanged().drop(1).collect { (_, savingData) ->
                 container.resolver.onNetworkOrQualityChanged(player.currentMediaItem?.mediaId)
-                upgradeCurrentIfBetter(player)
+                upgradeCurrentIfBetter(player, orLower = savingData)
             }
         }
         scope.launch {
@@ -124,7 +124,7 @@ class PlaybackService : MediaLibraryService() {
         // Streams with several bitrates (SiriusXM's HLS) round down to the network's cap.
         scope.launch {
             combine(container.networkMonitor.state, container.settings.settings) { network, settings ->
-                settings.quality.forNetwork(network.networkClass)
+                settings.quality.forState(network)
             }.distinctUntilChanged().collect { quality ->
                 val maxBitrate = (quality as? StreamQuality.Capped)?.kbps?.times(1000) ?: Int.MAX_VALUE
                 container.siriusXm.maxBitrate = maxBitrate
@@ -217,14 +217,17 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
-    /** Re-opens the current song at a better quality if the current network or settings allow it. */
-    private suspend fun upgradeCurrentIfBetter(player: ExoPlayer) {
+    /**
+     * Re-opens the current song at a better quality if the current network or settings allow it,
+     * or (with [orLower], when Data Saver comes on) at a lower one if they now ask for less.
+     */
+    private suspend fun upgradeCurrentIfBetter(player: ExoPlayer, orLower: Boolean = false) {
         val item = player.currentMediaItem ?: return
         val pinned = container.resolver.pinnedQuality(item.mediaId) ?: return // downloaded, live or not started
         val state = container.networkMonitor.state.value
         if (!state.isOnline) return
-        val now = container.settings.current().quality.forNetwork(state.networkClass)
-        if (!now.isHigherThan(pinned)) return
+        val now = container.settings.current().quality.forState(state)
+        if (now == pinned || !(now.isHigherThan(pinned) || orLower)) return
         container.resolver.release(item.mediaId)
         reload(player)
     }

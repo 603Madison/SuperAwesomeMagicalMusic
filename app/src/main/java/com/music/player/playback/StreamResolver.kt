@@ -153,7 +153,7 @@ class StreamResolver(
 
         val state = network.state.value
         if (!state.isOnline) throw OfflineException("\"${track.title}\" isn't downloaded and you're offline")
-        val quality = settings.current().quality.forNetwork(state.networkClass)
+        val quality = settings.current().quality.forState(state)
         // Off satellite, compare every service for the best copy; on satellite take the first fit.
         val selected = select(track, quality, thorough = state.networkClass != NetworkClass.SATELLITE)
         details.fill(track, selected.track)

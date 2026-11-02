@@ -132,6 +132,7 @@ class SettingsRepository(context: Context) {
         it[Keys.Q_CELLULAR] = quality.cellular.toStored()
         it[Keys.Q_SATELLITE] = quality.satellite.toStored()
         it[Keys.Q_DOWNLOAD] = quality.download.toStored()
+        it[Keys.Q_DATA_SAVER] = quality.dataSaver.toStored()
     }
 
     suspend fun setTranscodeCodec(codec: TranscodeCodec) = store.edit { it[Keys.JF_TRANSCODE_CODEC] = codec.name }
@@ -198,6 +199,7 @@ class SettingsRepository(context: Context) {
                 cellular = this[Keys.Q_CELLULAR]?.let(StreamQuality::fromStored) ?: defaults.quality.cellular,
                 satellite = this[Keys.Q_SATELLITE]?.let(StreamQuality::fromStored) ?: defaults.quality.satellite,
                 download = this[Keys.Q_DOWNLOAD]?.let(StreamQuality::fromStored) ?: defaults.quality.download,
+                dataSaver = this[Keys.Q_DATA_SAVER]?.let(StreamQuality::fromStored) ?: defaults.quality.dataSaver,
             ),
             jellyfinTranscodeCodec = this[Keys.JF_TRANSCODE_CODEC]
                 ?.let { name -> TranscodeCodec.entries.firstOrNull { it.name == name } }
@@ -272,6 +274,7 @@ class SettingsRepository(context: Context) {
         val Q_CELLULAR = intPreferencesKey("quality_cellular")
         val Q_SATELLITE = intPreferencesKey("quality_satellite")
         val Q_DOWNLOAD = intPreferencesKey("quality_download")
+        val Q_DATA_SAVER = intPreferencesKey("quality_data_saver")
         val DL_CELLULAR = booleanPreferencesKey("download_cellular")
         val DL_SATELLITE = booleanPreferencesKey("download_satellite")
         val ARTWORK_ON_SATELLITE = booleanPreferencesKey("artwork_on_satellite")

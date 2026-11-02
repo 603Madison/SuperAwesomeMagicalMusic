@@ -18,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DataSaverOn
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.SatelliteAlt
@@ -154,6 +155,14 @@ private fun QualitySection(settings: AppSettings, viewModel: SettingsViewModel) 
         QualitySlider("Satellite", Icons.Default.SatelliteAlt, quality.satellite) {
             viewModel.setQuality(quality.copy(satellite = it))
         }
+        QualitySlider("Data Saver", Icons.Default.DataSaverOn, quality.dataSaver) {
+            viewModel.setQuality(quality.copy(dataSaver = it))
+        }
+        Hint(
+            "While Android's Data Saver is on, music streams at the Data Saver bitrate or the network's own, " +
+                "whichever is lower, even if this app is allowed unrestricted data. Like Data Saver itself, " +
+                "this applies on metered connections (cellular, satellite, metered hotspots), not ordinary Wi-Fi.",
+        )
         HorizontalDivider()
         QualitySlider("Downloads", Icons.Default.Download, quality.download) {
             viewModel.setQuality(quality.copy(download = it))

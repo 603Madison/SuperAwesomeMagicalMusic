@@ -40,7 +40,8 @@ fun NetworkStatusRow(modifier: Modifier = Modifier) {
     val text = if (networkClass == NetworkClass.NONE) {
         "Offline · downloaded songs only"
     } else {
-        "${networkClass.label} · streaming at ${settings.quality.forNetwork(networkClass).label.lowercase()}"
+        val dataSaver = if (network.savingData) " · Data Saver" else ""
+        "${networkClass.label}$dataSaver · streaming at ${settings.quality.forState(network).label.lowercase()}"
     }
     Row(modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(

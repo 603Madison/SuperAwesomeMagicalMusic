@@ -1,6 +1,7 @@
 package com.music.player.settings
 
 import com.music.player.model.SourceType
+import com.music.player.net.NetworkState
 import com.music.player.quality.NetworkClass
 import com.music.player.quality.StreamQuality
 import com.music.player.sources.radio.RadioStation
@@ -77,7 +78,15 @@ data class QualitySettings(
     val cellular: StreamQuality = StreamQuality.Capped(192),
     val satellite: StreamQuality = StreamQuality.Capped(64),
     val download: StreamQuality = StreamQuality.Original,
+    /** The most to stream while Android's Data Saver is on (on metered networks). */
+    val dataSaver: StreamQuality = StreamQuality.Capped(96),
 ) {
+    /** The bitrate for the current connection: its network's setting, lowered further by Data Saver. */
+    fun forState(state: NetworkState): StreamQuality {
+        val network = forNetwork(state.networkClass)
+        return if (state.savingData && network.isHigherThan(dataSaver)) dataSaver else network
+    }
+
     fun forNetwork(networkClass: NetworkClass): StreamQuality = when (networkClass) {
         NetworkClass.WIFI -> wifi
         NetworkClass.CELLULAR -> cellular

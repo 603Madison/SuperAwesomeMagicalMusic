@@ -112,6 +112,12 @@ guidance:
   (this can be turned on). Downloads wait for another network unless you allow them. The player
   uses large buffers, so data arrives in bursts with long idle gaps, which suits satellite links.
 
+**Data Saver:** a separate slider sets the most to stream while Android's Data Saver is on. The
+app then streams at that bitrate or the network's own, whichever is lower, even if it's been
+allowed unrestricted data in Android's Data Saver settings. Like Data Saver itself, this applies
+on metered connections (cellular, satellite, metered hotspots), not ordinary Wi-Fi. When Data
+Saver comes on, the song playing switches down too.
+
 When the network changes, upcoming songs switch to the new bitrate. The current song keeps its
 stream so seeking stays consistent.
 
