@@ -17,7 +17,13 @@ import java.util.Locale
  * the sequence number) and a program date-time on a continuous clock starting at [startTimeMs],
  * which is how [cutAt] finds the song being heard.
  */
-class XtraStream(private val startTimeMs: Long, private val maxSegments: Int = MAX_SEGMENTS) {
+class XtraStream(
+    /** The stream clock's start: the first segment's program date-time. */
+    val startTimeMs: Long,
+    private val maxSegments: Int = MAX_SEGMENTS,
+    /** When the stream was started, on the wall clock. */
+    val createdAtMs: Long = startTimeMs,
+) {
     private class Segment(
         val url: String,
         val durationMs: Long,
@@ -47,6 +53,9 @@ class XtraStream(private val startTimeMs: Long, private val maxSegments: Int = M
     val lastTrack: Track? @Synchronized get() = tracks.lastOrNull()
 
     val isEmpty: Boolean @Synchronized get() = segments.isEmpty()
+
+    /** Where the queued music ends, on the stream's clock. */
+    val endTimeMs: Long @Synchronized get() = endMs
 
     /**
      * Adds the segments of [mediaPlaylist] (fetched from [playlistUrl]) that aren't already here.

@@ -133,7 +133,9 @@ class SiriusXmClient(
         val choice = urls.firstOrNull { (it["isPrimary"] as? JsonPrimitive)?.contentOrNull == "true" } ?: urls.firstOrNull()
         val url = (choice?.get("url") as? JsonPrimitive)?.contentOrNull
             ?: throw IllegalStateException("SiriusXM returned no stream for this channel")
-        (choice["encryptionKeyId"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }?.let { fallbackKeyId = it }
+        (choice["encryptionKeyId"] as? JsonPrimitive)?.contentOrNull
+            ?.takeIf { it.isNotBlank() && !it.startsWith("00000000-") }
+            ?.let { fallbackKeyId = it }
         return url
     }
 
@@ -144,14 +146,22 @@ class SiriusXmClient(
     private class XtraChannel(val stream: XtraStream) {
         val mutex = Mutex()
         var lastServedMs = 0L
-        var nextTuneMs = 0L
-        var reportedCutId: String? = null
+        /** Don't ask SiriusXM for more before this (after an attempt that brought nothing new). */
+        var nextRequestMs = 0L
+        /** Streams already in [stream], by SiriusXM's id. */
+        val added = LinkedHashSet<String>()
+        /** From the latest tune or peek, sent back when peeking for more. */
+        var sequenceToken: String? = null
+        var sourceContextId: String? = null
+        /** Where playback is on the stream's clock, as last reported by [onXtraHeard]. */
+        var heardAtMs: Long? = null
+        var reportedCut: SxmCut? = null
         var lastProgressMs = 0L
     }
 
     /**
-     * Where the player loads an Xtra channel from: a playlist served by [xtraPlaylist], which
-     * stitches the channel's tracks into one stream (see [XtraStream]).
+     * Where the player loads an Xtra channel or artist station from: a playlist served by
+     * [xtraPlaylist], which stitches its tracks into one stream (see [XtraStream]).
      */
     fun xtraUri(type: String, channelId: String): String =
         "$XTRA_SCHEME://xtra/${URLEncoder.encode(type, "UTF-8")}/${URLEncoder.encode(channelId, "UTF-8")}.m3u8"
@@ -162,70 +172,114 @@ class SiriusXmClient(
     }
 
     /**
-     * The playlist for an Xtra channel. It grows a track at a time: near the end of the newest
-     * track the channel is tuned again, which hands out the next track once SiriusXM has moved
-     * on, and its segments are appended. A channel nobody has loaded for a while starts afresh.
+     * The playlist for an Xtra channel or artist station. SiriusXM hands these out as a queue:
+     * tuning returns the next few tracks as separate streams, all of which are appended. When
+     * less than [XTRA_LEAD_MS] of the queue is left to play, more are asked for with "peek", as
+     * SiriusXM's web player does (tuning again would only return the same queue). A channel
+     * nobody has loaded for a while starts afresh.
      */
     suspend fun xtraPlaylist(type: String, channelId: String): String {
         val now = clock()
         val channel = xtraChannels[channelId]?.takeIf { now - it.lastServedMs < XTRA_IDLE_RESET_MS }
             ?: XtraChannel(XtraStream(now)).also { xtraChannels[channelId] = it }
         return channel.mutex.withLock {
-            if (channel.stream.isEmpty || now >= channel.nextTuneMs) {
-                try {
-                    tuneXtra(type, channelId, channel, now)
+            if (channel.stream.isEmpty) {
+                appendStreams(type, channelId, channel, tune(type, channelId), now, "tune")
+                if (channel.stream.isEmpty) throw IllegalStateException("SiriusXM sent nothing to play on this channel")
+            } else if (now >= channel.nextRequestMs && remainingMs(channel, now) < XTRA_LEAD_MS) {
+                val added = try {
+                    appendStreams(type, channelId, channel, peek(type, channelId, channel), now, "peek")
                 } catch (e: Exception) {
-                    recordDiagnostics("xtra tune failed", e.toString())
-                    // With music still queued, carry on and try again shortly.
-                    if (channel.stream.isEmpty) throw e
-                    channel.nextTuneMs = now + XTRA_RETUNE_MS
-                }
+                    recordDiagnostics("xtra peek failed", e.toString())
+                    0
+                }.takeIf { it > 0 } ?: runCatching {
+                    // Peeking didn't help: tuning again may still bring tracks not heard yet.
+                    appendStreams(type, channelId, channel, tune(type, channelId), now, "tune")
+                }.onFailure { recordDiagnostics("xtra tune failed", it.toString()) }.getOrDefault(0)
+                if (added == 0) channel.nextRequestMs = now + XTRA_RETRY_MS
             }
             channel.lastServedMs = now
             channel.stream.render()
         }
     }
 
-    private suspend fun tuneXtra(type: String, channelId: String, channel: XtraChannel, now: Long) {
-        val previous = channel.stream.lastTrack
-        val tuned = tune(type, channelId)
-        recordDiagnostics("tune $type $channelId", tuned.toString())
-        val streamUrl = streamOf(tuned)
-        val items = SiriusXmParser.trackItems((tuned["streams"] as? JsonArray)?.firstOrNull())
-        val cut = SiriusXmParser.parseXtraItems(items, now).firstOrNull()
-        var playlistUrl = streamUrl
-        var playlist = fetchPlaylist(streamUrl)
-        SiriusXmParser.pickVariant(playlist, streamUrl, maxBitrate)?.let { variant ->
-            playlistUrl = variant
-            playlist = fetchPlaylist(variant)
-        }
-        val keyed = SiriusXmParser.rewriteKeys(playlist, fallbackKeyId)
-        val key = cut?.id ?: playlistUrl.substringBefore('?')
-        val added = channel.stream.append(key, playlistUrl, keyed, cut, now)
-        val track = channel.stream.lastTrack ?: throw IllegalStateException("SiriusXM sent an empty playlist for this channel")
-        val isNew = previous == null || previous.key != track.key
-        channel.nextTuneMs = if (isNew && track.complete) {
-            // A whole track: ask for the next one shortly before it ends.
-            now + maxOf(XTRA_RETUNE_MS, track.durationMs - XTRA_LEAD_MS)
-        } else {
-            // Still growing, or SiriusXM hasn't moved on yet: ask again soon.
-            now + XTRA_RETUNE_MS
+    /** How much of the queue is left to play; before playback has reported, counted from the start. */
+    private fun remainingMs(channel: XtraChannel, now: Long): Long {
+        val position = channel.heardAtMs ?: (channel.stream.startTimeMs + (now - channel.stream.createdAtMs))
+        return channel.stream.endTimeMs - position
+    }
+
+    private suspend fun peek(type: String, channelId: String, channel: XtraChannel): JsonObject = call(
+        "POST",
+        "playback/play/v1/peek",
+        buildJsonObject {
+            put("id", channelId)
+            put("type", type)
+            put("hlsVersion", "V3")
+            put("mtcVersion", "V2")
+            put("manifestVariant", "FULL")
+            put("sourceContextId", channel.sourceContextId.orEmpty())
+            channel.sequenceToken?.let { put("sequenceToken", it) }
+        },
+    )
+
+    /** Appends every stream in a tune or peek response that isn't already queued; returns how many. */
+    private suspend fun appendStreams(
+        type: String,
+        channelId: String,
+        channel: XtraChannel,
+        response: JsonObject,
+        now: Long,
+        how: String,
+    ): Int {
+        recordDiagnostics("$how $type $channelId", response.toString())
+        (response["sequenceToken"] as? JsonPrimitive)?.contentOrNull?.let { channel.sequenceToken = it }
+        val streams = (response["streams"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+        var added = 0
+        val summary = StringBuilder()
+        for (stream in streams) {
+            val id = (stream["id"] as? JsonPrimitive)?.contentOrNull ?: continue
+            if (id in channel.added) continue
+            val (url, keyId) = primaryUrl(stream) ?: continue
+            val cut = SiriusXmParser.parseXtraItems(SiriusXmParser.trackItems(stream), now).firstOrNull()
+            (SiriusXmParser.dig(stream, "metadata", "xtra", "sourceContextId") as? JsonPrimitive)?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
+                ?.let { channel.sourceContextId = it }
+            var playlistUrl = url
+            var playlist = fetchPlaylist(url)
+            SiriusXmParser.pickVariant(playlist, url, maxBitrate)?.let { variant ->
+                playlistUrl = variant
+                playlist = fetchPlaylist(variant)
+            }
+            val segments = channel.stream.append(id, playlistUrl, SiriusXmParser.rewriteKeys(playlist, keyId ?: fallbackKeyId), cut, now)
+            channel.added += id
+            while (channel.added.size > 500) channel.added.remove(channel.added.first())
+            added++
+            summary.append("\n+ ${cut?.artist} – ${cut?.title} ($id): $segments segments, ${(cut?.durationMs ?: 0) / 1000}s")
         }
         recordDiagnostics(
             "xtra $channelId",
-            "${if (isNew) "new track" else "same track"} ${track.key} (${cut?.artist} – ${cut?.title}): " +
-                "+$added segments, ${track.durationMs / 1000}s, complete=${track.complete}, from $playlistUrl\n" +
-                playlist.lineSequence().take(12).joinToString("\n"),
+            "$how: ${streams.size} streams, $added new, queue ends in ${remainingMs(channel, now) / 1000}s$summary",
         )
+        return added
+    }
+
+    /** The primary URL of one stream, with its key id. */
+    private fun primaryUrl(stream: JsonObject): Pair<String, String?>? {
+        val urls = (stream["urls"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+        val choice = urls.firstOrNull { (it["isPrimary"] as? JsonPrimitive)?.contentOrNull == "true" } ?: urls.firstOrNull()
+        val url = (choice?.get("url") as? JsonPrimitive)?.contentOrNull ?: return null
+        val keyId = (choice["encryptionKeyId"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() && !it.startsWith("00000000-") }
+        return url to keyId
     }
 
     /**
-     * The Pandora station for [artist]. SiriusXM's page for the artist names the station when it
-     * has one; otherwise the artist's own id is used as the station to tune.
+     * The Pandora station for [artist]. Search usually returns the station itself; otherwise
+     * SiriusXM's page for the artist names it, and failing that the artist's own id is tuned.
      */
     suspend fun artistStation(artist: SxmArtist): SxmStation {
         val stationId = artist.stationId ?: runCatching {
-            val page = call("GET", "page/v1/page/artist/${artist.id}")
+            val page = call("GET", "page/v1/page/${artist.entityType}/${artist.id}")
             recordDiagnostics("artist page ${artist.id}", page.toString())
             SiriusXmParser.findEntityId(page, ARTIST_STATION)
         }.onFailure { recordDiagnostics("artist page ${artist.id} failed", it.toString()) }.getOrNull()
@@ -233,21 +287,18 @@ class SiriusXmClient(
     }
 
     /**
-     * Artists matching [query], through SiriusXM's search. The search request isn't documented
-     * anywhere public, so this is a best guess at it; the response is kept in the diagnostics.
+     * Pandora artist stations and artists matching [query], through SiriusXM's search, with the
+     * request SiriusXM's web player sends. Stations come first.
      */
     suspend fun searchArtists(query: String): List<SxmArtist> {
         val response = call(
             "POST",
             "search/v1/search",
             buildJsonObject {
-                put("query", query)
-                put("searchText", query)
-                put("resultSize", 20)
-                put("entityTypes", kotlinx.serialization.json.buildJsonArray {
-                    add(kotlinx.serialization.json.JsonPrimitive("artist"))
-                    add(kotlinx.serialization.json.JsonPrimitive(ARTIST_STATION))
-                })
+                put("searchString", query)
+                put("filterTypes", kotlinx.serialization.json.JsonArray(emptyList()))
+                put("preferredImageVariant", "default")
+                put("locale", "en-US")
             },
         )
         recordDiagnostics("search \"$query\"", response.toString())
@@ -264,11 +315,14 @@ class SiriusXmClient(
      */
     suspend fun onXtraHeard(type: String, channelId: String, heardAtMs: Long) {
         val channel = xtraChannels[channelId] ?: return
+        channel.heardAtMs = heardAtMs
         val cut = channel.stream.cutAt(heardAtMs) ?: return
         val elapsed = (heardAtMs - cut.startMs).coerceAtLeast(0)
         val now = clock()
-        if (cut.id != channel.reportedCutId) {
-            channel.reportedCutId = cut.id
+        if (cut.id != channel.reportedCut?.id) {
+            // Tell SiriusXM the previous track played to the end before the next one starts.
+            channel.reportedCut?.let { reportProgress(type, channelId, it.id, it.durationMs, start = false) }
+            channel.reportedCut = cut
             channel.lastProgressMs = now
             reportProgress(type, channelId, cut.id, elapsed, start = true)
         } else if (now - channel.lastProgressMs >= XTRA_PROGRESS_INTERVAL_MS) {
@@ -527,9 +581,9 @@ class SiriusXmClient(
         private const val STREAM_MAX_AGE_MS = 20 * 60_000L
         private const val SCHEDULE_MAX_AGE_MS = 3 * 60_000L
         const val XTRA_SCHEME = "sxmxtra"
-        /** How long before a track's end to ask for the next one, and how often to ask again. */
-        private const val XTRA_LEAD_MS = 45_000L
-        private const val XTRA_RETUNE_MS = 10_000L
+        /** Ask for more tracks when less than this is left to play, and wait this long between attempts. */
+        private const val XTRA_LEAD_MS = 60_000L
+        private const val XTRA_RETRY_MS = 10_000L
         private const val XTRA_PROGRESS_INTERVAL_MS = 30_000L
         /** The player reloads a live playlist every few seconds; a longer silence means it stopped. */
         private const val XTRA_IDLE_RESET_MS = 2 * 60_000L

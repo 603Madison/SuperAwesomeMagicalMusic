@@ -34,8 +34,17 @@ data class SxmChannel(
     }
 }
 
-/** An artist on SiriusXM; [stationId] is set when SiriusXM named the artist's Pandora station. */
-data class SxmArtist(val id: String, val name: String, val artworkUrl: String?, val stationId: String? = null)
+/**
+ * An artist on SiriusXM ([entityType] "talent" in its catalogue); [stationId] is set when
+ * SiriusXM named the artist's Pandora station.
+ */
+data class SxmArtist(
+    val id: String,
+    val name: String,
+    val artworkUrl: String?,
+    val stationId: String? = null,
+    val entityType: String = "talent",
+)
 
 /**
  * A Pandora artist station on SiriusXM: music by and like one artist, handed out a track at a

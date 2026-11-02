@@ -25,7 +25,11 @@ class SiriusXmClientTest {
     private val requests = mutableListOf<RecordedRequest>()
     private var rejectPassword = false
     private var expireNextKeyRequest = false
-    private var xtraCurrent = "intro"
+    /** The queue SiriusXM hands out when the channel is tuned, and what peeking adds. */
+    private var tuneQueue = listOf("intro", "song-1")
+    private var peekQueue = listOf("song-1", "song-2")
+
+    private var searchResponse = "{}"
 
     @Before
     fun setUp() {
@@ -40,8 +44,10 @@ class SiriusXmClientTest {
                     "/identity/v1/identities/authenticate/password" ->
                         if (rejectPassword) MockResponse().setResponseCode(401) else json("""{"grant":"identity-grant"}""")
                     "/session/v1/sessions/authenticated" -> json("""{"accessToken":"access-token","accessTokenExpiresAt":"2099-01-01T00:00:00Z"}""")
-                    "/playback/play/v1/tuneSource" -> xtraTune(xtraCurrent)
+                    "/playback/play/v1/tuneSource" -> xtraQueue(tuneQueue, sequenceToken = "seq-1")
+                    "/playback/play/v1/peek" -> xtraQueue(peekQueue, sequenceToken = "seq-2")
                     "/playback/telemetry/v2/actions" -> json("""{"failedActions":[]}""")
+                    "/search/v1/search" -> json(searchResponse)
                     "/relationship/v1/container/all-channels" ->
                         json("""{"container":{"sets":[{"items":[{"entity":{"id":"c1","texts":{"title":"Octane"}}}]}]}}""")
                     "/playback/key/v1/12345678-1234-1234-1234-123456789abc" ->
@@ -74,10 +80,16 @@ class SiriusXmClientTest {
     @After
     fun tearDown() = server.shutdown()
 
-    private fun xtraTune(trackId: String) = json(
-        """{"streams":[{"urls":[{"url":"${server.url("/cdn/$trackId/master.m3u8")}","isPrimary":true}],
-            "mtc":{"next":"enabled"},
-            "metadata":{"xtra":{"items":[{"id":"$trackId","name":"$trackId","artistName":"Artist","duration":20000}]}}}]}""",
+    /** A tune or peek response: one stream per queued track, as SiriusXM sends them. */
+    private fun xtraQueue(trackIds: List<String>, sequenceToken: String) = json(
+        """{"id":"x1","type":"channel-xtra","sequenceToken":"$sequenceToken","streams":[""" +
+            trackIds.joinToString(",") { trackId ->
+                """{"id":"$trackId","urls":[{"url":"${server.url("/cdn/$trackId/master.m3u8")}","isPrimary":true,
+                    "encryptionKeyId":"12345678-1234-1234-1234-123456789abc"}],
+                    "mtc":{"next":"ENABLED"},
+                    "metadata":{"xtra":{"sourceContextId":"x1#ctx","items":[{"id":"$trackId","name":"$trackId",
+                    "artistName":"Artist","duration":20000}]}}}"""
+            } + "]}",
     )
 
     private fun json(body: String) = MockResponse().setBody(body).addHeader("Content-Type", "application/json")
@@ -141,42 +153,59 @@ class SiriusXmClientTest {
     private fun tunes() = requests.count { it.path == "/playback/play/v1/tuneSource" }
 
     @Test
-    fun `xtra channels play as one stream that grows a track at a time`() = runTest {
+    fun `xtra channels queue every track SiriusXM hands out and peek for more`() = runTest {
         var now = 1_000_000L
         val client = client(clock = { now })
         client.maxBitrate = 128_000
-        val first = client.xtraPlaylist("channel-xtra", "x1")
+        val first = client.xtraPlaylist("channel-xtra", "x1").lines()
         assertFalse(first.contains("#EXT-X-ENDLIST"))
-        // The variant within the cap, with keys served by the app and the original IVs kept.
+        // Both queued tracks, in order, after a discontinuity, from the variant within the cap.
         assertTrue(first.contains(server.url("/cdn/intro/96k/intro_1.aac").toString()))
-        assertTrue(first.contains("URI=\"sxmkey://12345678-1234-1234-1234-123456789abc\",IV=0x00000000000000000000000000000005"))
+        val discontinuity = first.indexOf("#EXT-X-DISCONTINUITY")
+        assertTrue(discontinuity > first.indexOfFirst { it.endsWith("intro_2.aac") })
+        assertTrue(discontinuity < first.indexOfFirst { it.endsWith("song-1_1.aac") })
+        assertTrue(first.any { it.contains("URI=\"sxmkey://12345678-1234-1234-1234-123456789abc\",IV=0x00000000000000000000000000000005") })
         assertEquals("intro", client.cutAt("channel-xtra", "x1", now + 5_000)?.title)
+        assertEquals("song-1", client.cutAt("channel-xtra", "x1", now + 25_000)?.title)
+        assertEquals(0, requests.count { it.path == "/playback/play/v1/peek" })
 
-        // Reloading straight away doesn't tune again.
-        val tuned = tunes()
-        client.xtraPlaylist("channel-xtra", "x1")
-        assertEquals(tuned, tunes())
-
-        // SiriusXM hasn't moved on yet: the same track again adds nothing.
-        now += 10_000
-        val same = client.xtraPlaylist("channel-xtra", "x1")
-        assertEquals(tuned + 1, tunes())
-        assertEquals(2, same.lines().count { it.endsWith(".aac") })
-
-        // The next track is appended after a discontinuity, and the song changes with it.
-        xtraCurrent = "song-2"
-        now += 10_000
+        // Under a minute queued: peek for more, as SiriusXM's player does, sending back its tokens.
         val grown = client.xtraPlaylist("channel-xtra", "x1").lines()
-        assertEquals(4, grown.count { it.endsWith(".aac") })
-        val discontinuity = grown.indexOf("#EXT-X-DISCONTINUITY")
-        assertTrue(discontinuity > grown.indexOfFirst { it.endsWith("intro_2.aac") })
-        assertTrue(discontinuity < grown.indexOfFirst { it.endsWith("song-2_1.aac") })
-        assertEquals("song-2", client.cutAt("channel-xtra", "x1", 1_000_000L + 25_000)?.title)
+        val peek = requests.single { it.path == "/playback/play/v1/peek" }.body.readUtf8()
+        assertTrue(peek.contains("\"sourceContextId\":\"x1#ctx\"") && peek.contains("\"sequenceToken\":\"seq-1\""))
+        // song-1 was already queued; only song-2 is new.
+        assertEquals(6, grown.count { it.endsWith(".aac") })
+        assertEquals(1, grown.count { it.endsWith("song-1_1.aac") })
+        assertEquals("song-2", client.cutAt("channel-xtra", "x1", now + 45_000)?.title)
 
-        // What's heard is reported to SiriusXM.
-        client.onXtraHeard("channel-xtra", "x1", 1_000_000L + 25_000)
-        val telemetry = requests.last { it.path == "/playback/telemetry/v2/actions" }.body.readUtf8()
-        assertTrue(telemetry.contains("\"start\"") && telemetry.contains("\"id\":\"song-2\""))
+        // A minute queued: no more requests for now.
+        requests.clear()
+        client.xtraPlaylist("channel-xtra", "x1")
+        assertTrue(requests.none { it.path == "/playback/play/v1/peek" || it.path == "/playback/play/v1/tuneSource" })
+
+        // What's heard is reported; finishing a track reports it played through before the next starts.
+        client.onXtraHeard("channel-xtra", "x1", now + 5_000)
+        client.onXtraHeard("channel-xtra", "x1", now + 25_000)
+        val telemetry = requests.filter { it.path == "/playback/telemetry/v2/actions" }.map { it.body.readUtf8() }
+        assertTrue(telemetry[0].contains("\"start\"") && telemetry[0].contains("\"id\":\"intro\""))
+        assertTrue(telemetry[1].contains("\"progress\"") && telemetry[1].contains("\"id\":\"intro\"") && telemetry[1].contains("20000"))
+        assertTrue(telemetry[2].contains("\"start\"") && telemetry[2].contains("\"id\":\"song-1\""))
+    }
+
+    @Test
+    fun `nothing new from peeking waits before asking again`() = runTest {
+        var now = 1_000_000L
+        val client = client(clock = { now })
+        client.xtraPlaylist("channel-xtra", "x1")
+        peekQueue = listOf("song-1")
+        client.xtraPlaylist("channel-xtra", "x1")
+        // Peek brought nothing, so the channel was tuned again; then it waits.
+        assertEquals(2, requests.count { it.path == "/playback/play/v1/tuneSource" })
+        client.xtraPlaylist("channel-xtra", "x1")
+        assertEquals(1, requests.count { it.path == "/playback/play/v1/peek" })
+        now += 11_000
+        client.xtraPlaylist("channel-xtra", "x1")
+        assertEquals(2, requests.count { it.path == "/playback/play/v1/peek" })
     }
 
     @Test
@@ -184,11 +213,26 @@ class SiriusXmClientTest {
         var now = 1_000_000L
         val client = client(clock = { now })
         client.xtraPlaylist("channel-xtra", "x1")
-        xtraCurrent = "song-2"
+        tuneQueue = listOf("song-2")
         now += 10 * 60_000L
         val fresh = client.xtraPlaylist("channel-xtra", "x1")
         assertFalse(fresh.contains("intro_1.aac"))
         assertTrue(fresh.contains("song-2_1.aac"))
+    }
+
+    @Test
+    fun `artist search sends the web player's request and finds stations first`() = runTest {
+        val client = client()
+        searchResponse = """{"container":{"sets":[{"items":[
+            {"entity":{"id":"t1","type":"talent","texts":{"title":{"default":"Noah Kahan"}}}},
+            {"entity":{"id":"st1","type":"artist-station","texts":{"title":{"default":"Noah Kahan Radio"}}}},
+            {"entity":{"id":"t2","type":"talent","texts":{"title":{"default":"Gracie Abrams"}}}}]}]}}"""
+        val results = client.searchArtists("Noah Kahan")
+        val body = requests.single { it.path == "/search/v1/search" }.body.readUtf8()
+        assertTrue(body.contains("\"searchString\":\"Noah Kahan\"") && body.contains("\"filterTypes\":[]"))
+        assertEquals(listOf("Noah Kahan", "Gracie Abrams"), results.map { it.name })
+        assertEquals("st1", results[0].stationId)
+        assertEquals("st1", client.artistStation(results[0]).id)
     }
 
     @Test

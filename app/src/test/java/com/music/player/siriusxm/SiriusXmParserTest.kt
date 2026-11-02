@@ -156,9 +156,10 @@ class SiriusXmParserTest {
             ]}]}""",
         )
         val artists = SiriusXmParser.parseArtists(response)
-        assertEquals(listOf("girl in red", "Phoebe Bridgers"), artists.map { it.name })
-        assertEquals(null, artists[0].stationId)
-        assertEquals("st9", artists[1].stationId)
+        // Stations first: they play straight away.
+        assertEquals(listOf("Phoebe Bridgers", "girl in red"), artists.map { it.name })
+        assertEquals("st9", artists[0].stationId)
+        assertEquals(null, artists[1].stationId)
         assertEquals("st9", SiriusXmParser.findEntityId(response, "artist-station"))
     }
 

@@ -19,6 +19,8 @@ import java.util.Base64
 object SiriusXmParser {
     const val IMAGE_BASE = "https://imgsrv-sxm-prod-device.streaming.siriusxm.com/"
     private val GUID = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+    /** Entity types search returns for artists ("talent") and their Pandora stations. */
+    private val ARTIST_TYPES = setOf("talent", "artist", SiriusXmClient.ARTIST_STATION)
     private val BANDWIDTH = Regex("""(?<![A-Z-])BANDWIDTH=(\d+)""")
     private val KEY_URI = Regex("URI=\"[^\"]*\"")
 
@@ -144,11 +146,13 @@ object SiriusXmParser {
                     val name = texts?.let { text(it, "title") }?.takeIf { it.isNotBlank() }
                         ?: element["name"].string()
                         ?: element["title"].string()
-                    if (id != null && !name.isNullOrBlank() && (type == "artist" || type == SiriusXmClient.ARTIST_STATION)) {
+                    if (id != null && !name.isNullOrBlank() && type in ARTIST_TYPES) {
                         val artwork = pickImage(element["images"] as? JsonObject, 300)
-                        val artist = if (type == "artist") SxmArtist(id, name, artwork)
+                        val artist = if (type != SiriusXmClient.ARTIST_STATION) SxmArtist(id, name, artwork, entityType = type!!)
                         else SxmArtist(id, name.removeSuffix(" Radio").removeSuffix(" Station"), artwork, stationId = id)
-                        found.putIfAbsent(artist.name.lowercase(), artist)
+                        val key = artist.name.lowercase()
+                        // A station beats a plain artist of the same name: it can be played straight away.
+                        if (found[key]?.stationId == null) found[key] = artist
                     }
                     element.values.forEach(::visit)
                 }
@@ -157,7 +161,7 @@ object SiriusXmParser {
             }
         }
         visit(json)
-        return found.values.toList()
+        return found.values.sortedBy { it.stationId == null }
     }
 
     /**

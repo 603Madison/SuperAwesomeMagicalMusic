@@ -86,19 +86,29 @@ class RadioBrowserClient(
                 Log.i(TAG, "Radio Browser server $server failed", e)
             }
         }
+        // Look the servers up afresh next time; the ones found may have gone away.
+        servers = null
         throw lastError ?: IllegalStateException("No Radio Browser server answered")
     }
 
+    /**
+     * The servers DNS lists, in random order, then the long-standing ones: DNS can return a
+     * single server that is down, which on its own would make every search fail.
+     */
     private suspend fun servers(): List<String> {
         servers?.let { return it }
-        val found = runCatching { lookUpServers() }.getOrDefault(emptyList()).ifEmpty { FALLBACK_SERVERS }.shuffled()
-        servers = found
-        return found
+        val fromDns = runCatching { lookUpServers() }.getOrDefault(emptyList()).shuffled()
+        val all = (fromDns + FALLBACK_SERVERS.shuffled() + ROUND_ROBIN).distinct()
+        servers = all
+        return all
     }
 
     companion object {
         private const val TAG = "RadioBrowser"
         private val FALLBACK_SERVERS = listOf("de1.api.radio-browser.info", "de2.api.radio-browser.info")
+
+        /** Any server, chosen by DNS; its certificate covers *.api.radio-browser.info. */
+        private const val ROUND_ROBIN = "all.api.radio-browser.info"
 
         /** The servers behind all.api.radio-browser.info, by name (needed for HTTPS). */
         suspend fun serversFromDns(): List<String> = withContext(Dispatchers.IO) {
