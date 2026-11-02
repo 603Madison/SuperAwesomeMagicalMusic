@@ -22,6 +22,8 @@ data class RadioStation(
     val hls: Int = 0,
     @SerialName("geo_lat") val latitude: Double? = null,
     @SerialName("geo_long") val longitude: Double? = null,
+    /** How often it's been played through the directory: its popularity. */
+    @SerialName("clickcount") val clickCount: Int = 0,
 ) {
     /** The address to play: the directory's resolved stream when it has one. */
     val streamUrl: String get() = urlResolved.ifBlank { url }

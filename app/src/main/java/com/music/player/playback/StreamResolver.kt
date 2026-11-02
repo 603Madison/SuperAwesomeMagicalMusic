@@ -20,6 +20,7 @@ import com.music.player.sources.SourceStream
 import com.music.player.sources.SourceUnavailableException
 import com.music.player.sources.siriusxm.SiriusXmClient
 import com.music.player.sources.siriusxm.SxmChannel
+import com.music.player.sources.siriusxm.SxmStationTrack
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -88,8 +89,19 @@ class StreamResolver(
 
     /** Returns the URI and HTTP headers ExoPlayer should load for [track]. */
     suspend fun resolveForPlayback(track: Track): Pair<String, Map<String, String>> {
+        SxmStationTrack.idOf(track)?.let { (_, trackId) ->
+            if (!network.state.value.isOnline) throw OfflineException("SiriusXM needs a connection")
+            val url = siriusXm.stationTrackUrl(trackId)
+                ?: throw SourceUnavailableException("This station track has expired; play the station again")
+            publishOrigin(track.key, PlaybackOrigin(SourceType.SIRIUSXM, "SiriusXM · Pandora station"))
+            return url to mapOf("User-Agent" to SiriusXmClient.USER_AGENT)
+        }
         SxmChannel.idOf(track)?.let { (type, channelId) ->
             if (!network.state.value.isOnline) throw OfflineException("SiriusXM needs a connection")
+            if (type == SiriusXmClient.ARTIST_STATION) {
+                // Stations are played as their tracks (see LibraryCallback); this one wasn't expanded.
+                throw SourceUnavailableException("Couldn't start the station; try playing it again")
+            }
             val xtra = type != SiriusXmClient.LINEAR
             val url = if (xtra) siriusXm.xtraUri(type, channelId) else siriusXm.streamUrl(type, channelId)
             publishOrigin(track.key, PlaybackOrigin(SourceType.SIRIUSXM, if (xtra) "SiriusXM · Xtra" else "SiriusXM · Live"))

@@ -168,7 +168,7 @@ class AppContainer(val context: Context) {
     }
 
     fun reportPlaybackError(message: String) {
-        _playbackErrors.tryEmit(message)
+        _playbackErrors.tryEmit(readableError(message))
     }
 
     private fun onPlaylistsChanged() {
@@ -177,3 +177,15 @@ class AppContainer(val context: Context) {
         if (nextcloud.isConfigured && nextcloud.autoSync) PlaylistSyncWorker.enqueue(context)
     }
 }
+
+/**
+ * An error message fit to show: printable text only, kept short. Errors can quote whatever a
+ * server sent, which may be binary (an audio file read as a playlist filled the screen once).
+ */
+fun readableError(message: String): String {
+    val printable = message.filter { it == ' ' || (!it.isISOControl() && it != '\uFFFD' && Character.isDefined(it)) }
+    val text = if (printable.length < message.length * 0.9) printable.take(80).trimEnd() + "… (unreadable data)" else printable
+    return if (text.length > MAX_ERROR_LENGTH) text.take(MAX_ERROR_LENGTH).trimEnd() + "…" else text
+}
+
+private const val MAX_ERROR_LENGTH = 240

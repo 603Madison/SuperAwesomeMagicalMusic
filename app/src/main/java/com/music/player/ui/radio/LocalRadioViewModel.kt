@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.player.AppContainer
 import com.music.player.location.CoarseLocation
+import com.music.player.sources.radio.RadioBrowserClient
 import com.music.player.sources.radio.RadioStation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,7 +42,12 @@ class LocalRadioViewModel(private val container: AppContainer) : ViewModel() {
     init {
         viewModelScope.launch {
             container.settings.settings.collect { settings ->
-                _state.update { it.copy(favorites = settings.radioFavorites, nearby = settings.radioNearby) }
+                _state.update {
+                    it.copy(
+                        favorites = settings.radioFavorites,
+                        nearby = RadioBrowserClient.withoutDuplicates(settings.radioNearby),
+                    )
+                }
             }
         }
     }
@@ -58,14 +64,15 @@ class LocalRadioViewModel(private val container: AppContainer) : ViewModel() {
                     }
                     return@launch
                 }
-                val stations = container.radio.nearby(location.latitude, location.longitude)
+                val (state, countryCode) = CoarseLocation.region(container.context, location.latitude, location.longitude)
+                val stations = container.radio.nearby(location.latitude, location.longitude, state, countryCode)
                 container.settings.setRadioNearby(stations.take(NEARBY_KEPT))
                 _state.update {
                     it.copy(
                         loading = false,
                         latitude = location.latitude,
                         longitude = location.longitude,
-                        message = if (stations.isEmpty()) "No stations listed within 80 km of you. Try searching by name." else null,
+                        message = if (stations.isEmpty()) "No stations listed near you. Try searching by name." else null,
                     )
                 }
             } catch (e: CancellationException) {

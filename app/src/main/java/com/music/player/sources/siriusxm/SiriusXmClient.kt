@@ -110,8 +110,65 @@ class SiriusXmClient(
             put("hlsVersion", "V3")
             put("manifestVariant", if (type == LINEAR) "WEB" else "FULL")
             put("mtcVersion", "V2")
+            mediaFormat(type)?.let { put("mediaFormat", it) }
         },
     )
+
+    /** The media format SiriusXM's web player asks for, by source type: MP4 files for artist stations. */
+    private fun mediaFormat(type: String): String? = if (type == ARTIST_STATION) "MP4" else null
+
+    private class StationQueue {
+        var sequenceToken: String? = null
+        val queued = LinkedHashSet<String>()
+    }
+
+    private val stationQueues = ConcurrentHashMap<String, StationQueue>()
+    private val stationTrackUrls = ConcurrentHashMap<String, String>()
+
+    /**
+     * Tracks of a Pandora artist station: the first few when [more] is false (tuning it afresh),
+     * else the next ones after those already handed out, asked for with "peek" as SiriusXM's
+     * web player does.
+     */
+    suspend fun stationTracks(stationId: String, more: Boolean): List<SxmStationTrack> {
+        val queue = stationQueues[stationId]?.takeIf { more } ?: StationQueue().also { stationQueues[stationId] = it }
+        val response = if (more) {
+            call(
+                "POST",
+                "playback/play/v1/peek",
+                buildJsonObject {
+                    put("id", stationId)
+                    put("type", ARTIST_STATION)
+                    put("hlsVersion", "V3")
+                    put("mtcVersion", "V2")
+                    put("manifestVariant", "FULL")
+                    put("sourceContextId", "")
+                    put("mediaFormat", "MP4")
+                    queue.sequenceToken?.let { put("sequenceToken", it) }
+                },
+            )
+        } else {
+            tune(ARTIST_STATION, stationId)
+        }
+        recordDiagnostics("${if (more) "peek" else "tune"} station $stationId", response.toString())
+        (response["sequenceToken"] as? JsonPrimitive)?.contentOrNull?.let { queue.sequenceToken = it }
+        val now = clock()
+        return (response["streams"] as? JsonArray).orEmpty().mapNotNull { element ->
+            val stream = element as? JsonObject ?: return@mapNotNull null
+            val id = (stream["id"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+            if (!queue.queued.add(id)) return@mapNotNull null
+            val (url, _) = primaryUrl(stream) ?: return@mapNotNull null
+            stationTrackUrls[id] = url
+            SxmStationTrack(stationId, id, url, SiriusXmParser.parseXtraItems(SiriusXmParser.trackItems(stream), now).firstOrNull())
+        }
+    }
+
+    /** The audio file of a station track handed out this session, or null once it's been forgotten. */
+    fun stationTrackUrl(trackId: String): String? = stationTrackUrls[trackId]
+
+    /** Tells SiriusXM a station track started, or played for [elapsedMs]. */
+    suspend fun onStationTrack(stationId: String, trackId: String, elapsedMs: Long, start: Boolean) =
+        reportProgress(ARTIST_STATION, stationId, trackId, elapsedMs, start)
 
     /** Takes the stream URL and the schedule from a tune response. */
     private fun applyTune(channelId: String, type: String, tuned: JsonObject): String {
@@ -305,8 +362,15 @@ class SiriusXmClient(
         return SiriusXmParser.parseArtists(response)
     }
 
-    private suspend fun fetchPlaylist(url: String): String =
-        http.fetchString(Request.Builder().url(url).header("User-Agent", USER_AGENT).build())
+    private suspend fun fetchPlaylist(url: String): String {
+        val body = http.fetchString(Request.Builder().url(url).header("User-Agent", USER_AGENT).build())
+        // Never parse anything else (an audio file, say) as a playlist.
+        if (!body.trimStart().startsWith("#EXTM3U")) {
+            recordDiagnostics("not a playlist", "${url.substringBefore('?').substringAfterLast('/')}: ${body.length} characters")
+            throw IllegalStateException("SiriusXM sent something other than a playlist")
+        }
+        return body
+    }
 
     /**
      * Reports the Xtra track being heard to SiriusXM, as its own players do: "start" when a

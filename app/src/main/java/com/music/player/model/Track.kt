@@ -39,9 +39,13 @@ data class Track(
     val isSiriusXmChannel: Boolean get() = source == SourceType.SIRIUSXM && sourceId.startsWith(CHANNEL_PREFIX)
 
     /** A live stream (a SiriusXM channel or a radio station): no seeking, saving or downloading. */
-    val isLive: Boolean get() = isSiriusXmChannel || source == SourceType.RADIO
+    val isLive: Boolean get() = isSiriusXmChannel || isSiriusXmStationTrack || source == SourceType.RADIO
+
+    /** A track of a Pandora artist station on SiriusXM; its stream link only lasts a while. */
+    val isSiriusXmStationTrack: Boolean get() = source == SourceType.SIRIUSXM && sourceId.startsWith(STATION_TRACK_PREFIX)
 
     companion object {
         const val CHANNEL_PREFIX = "channel:"
+        const val STATION_TRACK_PREFIX = "stationtrack:"
     }
 }

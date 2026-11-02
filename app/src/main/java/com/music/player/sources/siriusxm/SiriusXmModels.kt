@@ -63,6 +63,32 @@ data class SxmStation(val id: String, val name: String, val artworkUrl: String? 
     )
 }
 
+/**
+ * One track of a Pandora artist station. SiriusXM sends station tracks as plain MP4 files, one
+ * per track (its web player plays them with an ordinary audio element), so each becomes its own
+ * item in the player's queue rather than part of a stitched stream like Xtra channels.
+ */
+data class SxmStationTrack(val stationId: String, val id: String, val url: String, val cut: SxmCut?) {
+    fun toTrack(stationName: String): Track = Track(
+        source = SourceType.SIRIUSXM,
+        sourceId = "${Track.STATION_TRACK_PREFIX}$stationId:$id",
+        title = cut?.title?.takeIf { it.isNotBlank() } ?: stationName,
+        artist = cut?.artist?.takeIf { it.isNotBlank() } ?: "Pandora station",
+        album = cut?.album ?: stationName,
+        durationMs = cut?.durationMs?.takeIf { it > 0 },
+        artworkUrl = cut?.artworkUrl,
+    )
+
+    companion object {
+        /** (station id, track id) of a station track. */
+        fun idOf(track: Track): Pair<String, String>? {
+            if (!track.isSiriusXmStationTrack) return null
+            val parts = track.sourceId.removePrefix(Track.STATION_TRACK_PREFIX).split(":", limit = 2)
+            return if (parts.size == 2) parts[0] to parts[1] else null
+        }
+    }
+}
+
 /** One item ("cut") in a channel's schedule: usually a song, sometimes talk or an ad break. */
 data class SxmCut(
     val id: String,

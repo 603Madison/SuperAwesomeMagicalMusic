@@ -4,13 +4,17 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.os.CancellationSignal
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Locale
 import kotlin.coroutines.resume
 import kotlin.math.asin
 import kotlin.math.cos
@@ -46,6 +50,15 @@ object CoarseLocation {
             .mapNotNull { runCatching { manager.getLastKnownLocation(it) }.getOrNull() }
             .maxByOrNull { it.time }
     }
+
+    /** The state (or province) and country code at a location, e.g. ("New Hampshire", "US"), via Android's geocoder. */
+    suspend fun region(context: Context, latitude: Double, longitude: Double): Pair<String?, String?> =
+        withContext(Dispatchers.IO) {
+            if (!Geocoder.isPresent()) return@withContext null to null
+            @Suppress("DEPRECATION") // The listener version needs API 33; this runs off the main thread.
+            val address = runCatching { Geocoder(context, Locale.US).getFromLocation(latitude, longitude, 1)?.firstOrNull() }.getOrNull()
+            address?.adminArea to address?.countryCode
+        }
 
     /** Great-circle distance in kilometres. */
     fun distanceKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

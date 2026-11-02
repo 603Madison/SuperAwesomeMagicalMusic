@@ -35,6 +35,7 @@ import com.music.player.sources.siriusxm.SiriusXmDataSource
 import com.music.player.sources.siriusxm.SxmChannel
 import com.music.player.sources.siriusxm.SxmCut
 import com.music.player.sources.siriusxm.SxmNowPlaying
+import com.music.player.sources.siriusxm.SxmStationTrack
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -244,6 +245,7 @@ class PlaybackService : MediaLibraryService() {
      */
     private inner class TrackChanges(private val player: ExoPlayer) : Player.Listener {
         private var previousKey: String? = null
+        private var previousTrack: com.music.player.model.Track? = null
 
         override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
             val key = previousKey
@@ -251,8 +253,49 @@ class PlaybackService : MediaLibraryService() {
             if (key != null && key != mediaItem?.mediaId) container.resolver.release(key)
             // The next song may have been resolved (and its copy found) before it started.
             mediaItem?.let { container.resolver.origins.value[it.mediaId]?.playing }?.let { showCopyDetails(player, it) }
+
+            val finished = previousTrack
+            val current = mediaItem?.toTrack()
+            previousTrack = current
+            onStationTrackChange(player, finished, current)
         }
     }
+
+    /**
+     * Pandora station tracks: tells SiriusXM which played, and when the last one queued for a
+     * station starts, adds the next few after it (as SiriusXM's own player asks for more).
+     */
+    private fun onStationTrackChange(player: ExoPlayer, finished: com.music.player.model.Track?, current: com.music.player.model.Track?) {
+        finished?.let(SxmStationTrack::idOf)?.takeIf { finished.key != current?.key }?.let { (stationId, trackId) ->
+            scope.launch { container.siriusXm.onStationTrack(stationId, trackId, finished.durationMs ?: 0, start = false) }
+        }
+        val (stationId, trackId) = current?.let(SxmStationTrack::idOf) ?: return
+        scope.launch { container.siriusXm.onStationTrack(stationId, trackId, 0, start = true) }
+        val index = player.currentMediaItemIndex
+        val laterFromStation = (index + 1 until player.mediaItemCount).any {
+            player.getMediaItemAt(it).toTrack()?.let(SxmStationTrack::idOf)?.first == stationId
+        }
+        if (laterFromStation || !moreStationTracksRequested.add(trackId)) return
+        val stationName = container.settingsState.value.siriusXmStations.firstOrNull { it.id == stationId }?.name ?: "Pandora station"
+        scope.launch {
+            val more = try {
+                container.siriusXm.stationTracks(stationId, more = true)
+            } catch (e: Exception) {
+                container.appLog.log("player", "more tracks for station $stationId failed: $e")
+                emptyList()
+            }
+            container.appLog.log("player", "station $stationId: ${more.size} more tracks")
+            if (more.isEmpty()) return@launch
+            // After the last track of this station still in the queue.
+            val last = (0 until player.mediaItemCount).lastOrNull {
+                player.getMediaItemAt(it).toTrack()?.let(SxmStationTrack::idOf)?.first == stationId
+            } ?: return@launch
+            player.addMediaItems(last + 1, more.map { it.toTrack(stationName).toMediaItem() })
+        }
+    }
+
+    /** Station tracks more were already asked for after, so a replay doesn't ask again. */
+    private val moreStationTracksRequested = HashSet<String>()
 
     /** Fills in the current song's artwork and album from the copy playing, where it has none. */
     private fun showCopyDetails(player: ExoPlayer, copy: com.music.player.model.Track) {

@@ -27,6 +27,11 @@ class RadioBrowserClientTest {
         {"stationuuid":"s3","name":"No stream","url":"","url_resolved":""}
     ]"""
 
+    private val stateStations = """[
+        {"stationuuid":"s1","name":"WXYZ 101.1","url_resolved":"http://stream/a.mp3","clickcount":5},
+        {"stationuuid":"s4","name":"Granite Public Radio","url_resolved":"http://stream/gpr.aac","clickcount":50}
+    ]"""
+
     @Before
     fun setUp() {
         server = MockWebServer()
@@ -34,7 +39,9 @@ class RadioBrowserClientTest {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 requests += request
                 return when (request.requestUrl!!.encodedPath) {
-                    "/json/stations/search" -> MockResponse().setBody(stations)
+                    "/json/stations/search" ->
+                        if (request.requestUrl!!.queryParameter("state") != null) MockResponse().setBody(stateStations)
+                        else MockResponse().setBody(stations)
                     "/json/stations/byuuid/s9" -> MockResponse().setBody("""[{"stationuuid":"s9","name":"Late","url_resolved":"http://s9"}]""")
                     "/json/url/s1" -> MockResponse().setBody("""{"ok":true}""")
                     else -> MockResponse().setResponseCode(404)
@@ -48,7 +55,7 @@ class RadioBrowserClientTest {
     fun tearDown() = server.shutdown()
 
     private fun client(servers: List<String> = listOf("${server.hostName}:${server.port}")) =
-        RadioBrowserClient(OkHttpClient(), userAgent = "MusicApp/test", lookUpServers = { servers }, scheme = "http")
+        RadioBrowserClient(OkHttpClient(), userAgent = "MusicApp/test", lookUpServers = { servers }, scheme = "http", knownServers = emptyList())
 
     @Test
     fun `nearby stations are searched by location, most played first, without broken ones`() = runTest {
@@ -97,5 +104,36 @@ class RadioBrowserClientTest {
         assertEquals("s1" to false, RadioStation.idOf(track))
         assertEquals("s2" to true, RadioStation.idOf(hls.toTrack()))
         assertEquals("https://hls/live.m3u8", hls.streamUrl)
+    }
+
+    @Test
+    fun `stations near you combine those listed nearby and in your state, most played first`() = runTest {
+        val found = client().nearby(43.0, -71.0, state = "New Hampshire", countryCode = "US")
+        assertEquals(listOf("s4", "s1", "s2"), found.map { it.id })
+        val stateQuery = requests.single { it.requestUrl!!.queryParameter("state") != null }.requestUrl!!
+        assertEquals("New Hampshire", stateQuery.queryParameter("state"))
+        assertEquals("US", stateQuery.queryParameter("countrycode"))
+    }
+
+    @Test
+    fun `the same station listed twice shows once`() {
+        val a = RadioStation("a", "KISS 108 - WXKS-FM 107.9 Boston", urlResolved = "https://x/kiss")
+        val b = RadioStation("b", "KISS 108 WXKS FM 107.9 Boston", urlResolved = "https://y/other")
+        val c = RadioStation("c", "Different name", urlResolved = "http://x/kiss/")
+        val d = RadioStation("d", "WBZ", urlResolved = "https://wbz")
+        assertEquals(listOf("a", "d"), RadioBrowserClient.withoutDuplicates(listOf(a, b, c, d)).map { it.id })
+    }
+
+    @Test
+    fun `the server that answered is asked first next time`() = runTest {
+        val good = "${server.hostName}:${server.port}"
+        val client = client(servers = listOf("127.0.0.1:1", good))
+        client.search("a")
+        val failedFirst = requests.size
+        requests.clear()
+        client.search("b")
+        // Straight to the server that worked, no failed attempt first.
+        assertEquals(1, requests.size)
+        assertTrue(failedFirst >= 1)
     }
 }

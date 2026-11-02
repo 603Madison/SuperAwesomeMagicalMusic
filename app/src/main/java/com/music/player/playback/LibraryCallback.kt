@@ -26,7 +26,9 @@ import com.music.player.data.DownloadStatus
 import com.music.player.model.Track
 import com.music.player.net.AppJson
 import com.music.player.sources.TrackMatcher
+import com.music.player.sources.siriusxm.SiriusXmClient
 import com.music.player.sources.siriusxm.SxmChannel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
@@ -250,25 +252,65 @@ class LibraryCallback(
     ): ListenableFuture<MediaItemsWithStartPosition> = scope.future {
         log("play ${mediaItems.size} item(s) from ${controller.packageName}: ${mediaItems.firstOrNull()?.mediaId?.take(80)}")
         val single = mediaItems.singleOrNull()
-        if (single != null) {
-            expand(single.mediaId)?.let { (tracks, index) ->
-                return@future MediaItemsWithStartPosition(tracks.map(Track::toMediaItem), index, C.TIME_UNSET)
+        val (items, index, position) = run {
+            if (single != null) {
+                expand(single.mediaId)?.let { (tracks, index) ->
+                    return@run Triple(tracks.map(Track::toMediaItem), index, C.TIME_UNSET)
+                }
+                val query = single.requestMetadata.searchQuery
+                if (query != null && single.localConfiguration == null && single.toTrack() == null) {
+                    // A voice request such as "play Get Lucky on Music".
+                    return@run Triple(voiceSearch(query).map(Track::toMediaItem), 0, C.TIME_UNSET)
+                }
             }
-            val query = single.requestMetadata.searchQuery
-            if (query != null && single.localConfiguration == null && single.toTrack() == null) {
-                // A voice request such as "play Get Lucky on Music".
-                val tracks = voiceSearch(query)
-                return@future MediaItemsWithStartPosition(tracks.map(Track::toMediaItem), 0, C.TIME_UNSET)
-            }
+            Triple(resolve(mediaItems), startIndex, startPositionMs)
         }
-        MediaItemsWithStartPosition(resolve(mediaItems), startIndex, startPositionMs)
+        val (expanded, start) = withStationTracks(items, index)
+        MediaItemsWithStartPosition(expanded, start, position)
     }
+
+    /**
+     * Pandora artist stations play as their tracks (plain audio files): each station in a queue
+     * is replaced by its first few tracks, and more are added as they play (see PlaybackService).
+     */
+    private suspend fun withStationTracks(items: List<MediaItem>, startIndex: Int): Pair<List<MediaItem>, Int> {
+        if (items.none { stationOf(it) != null }) return items to startIndex
+        val expanded = mutableListOf<MediaItem>()
+        var start = startIndex
+        items.forEachIndexed { index, item ->
+            if (index == startIndex) start = expanded.size
+            val stationId = stationOf(item)
+            if (stationId == null) {
+                expanded += item
+                return@forEachIndexed
+            }
+            val name = item.toTrack()?.title.orEmpty()
+            val tracks = try {
+                container.siriusXm.stationTracks(stationId, more = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Couldn't start station $stationId", e)
+                log("station $stationId failed: $e")
+                container.reportPlaybackError("Couldn't start $name: ${e.message ?: e.javaClass.simpleName}")
+                emptyList()
+            }
+            log("station $stationId: ${tracks.size} tracks")
+            if (tracks.isEmpty()) expanded += item else expanded += tracks.map { it.toTrack(name).toMediaItem() }
+        }
+        return expanded to start
+    }
+
+    private fun stationOf(item: MediaItem): String? =
+        item.toTrack()?.let(SxmChannel::idOf)?.takeIf { it.first == SiriusXmClient.ARTIST_STATION }?.second
 
     override fun onAddMediaItems(
         mediaSession: MediaSession,
         controller: MediaSession.ControllerInfo,
         mediaItems: MutableList<MediaItem>,
-    ): ListenableFuture<MutableList<MediaItem>> = scope.future { resolve(mediaItems).toMutableList() }
+    ): ListenableFuture<MutableList<MediaItem>> = scope.future {
+        withStationTracks(resolve(mediaItems), C.INDEX_UNSET).first.toMutableList()
+    }
 
     private suspend fun resolve(items: List<MediaItem>): List<MediaItem> = items.flatMap { item ->
         item.withPlaybackUri()?.let { return@flatMap listOf(it) }

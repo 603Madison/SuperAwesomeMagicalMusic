@@ -58,6 +58,7 @@ class SiriusXmClientTest {
                             json("""{"key":"${Base64.getEncoder().encodeToString(ByteArray(16) { it.toByte() })}"}""")
                         }
                     else -> when {
+                        path.startsWith("/cdn/binary/") -> MockResponse().setBody("\u0000\u0000\u0000 ftypmp42 stts stsc stsz mlmlml")
                         path.startsWith("/cdn/") && path.endsWith("/master.m3u8") -> MockResponse().setBody(
                             "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=281600\n256k/media.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=105600\n96k/media.m3u8",
                         )
@@ -243,6 +244,39 @@ class SiriusXmClientTest {
             fail("Expected SiriusXmAuthException")
         } catch (e: SiriusXmAuthException) {
             assertTrue(e.message!!.contains("rejected"))
+        }
+    }
+
+    @Test
+    fun `pandora stations hand out their tracks as audio files, and more on request`() = runTest {
+        val client = client()
+        val first = client.stationTracks("st1", more = false)
+        val tune = requests.single { it.path == "/playback/play/v1/tuneSource" }.body.readUtf8()
+        assertTrue(tune.contains("\"type\":\"artist-station\"") && tune.contains("\"mediaFormat\":\"MP4\""))
+        assertEquals(listOf("intro", "song-1"), first.map { it.id })
+        assertEquals(server.url("/cdn/song-1/master.m3u8").toString(), client.stationTrackUrl("song-1"))
+        val track = first[1].toTrack("Noah Kahan Radio")
+        assertTrue(track.isSiriusXmStationTrack && track.isLive)
+        assertEquals("song-1", track.title)
+        assertEquals("st1" to "song-1", com.music.player.sources.siriusxm.SxmStationTrack.idOf(track))
+
+        // More: only tracks not handed out yet, asking with the station's sequence token.
+        val more = client.stationTracks("st1", more = true)
+        assertEquals(listOf("song-2"), more.map { it.id })
+        val peek = requests.single { it.path == "/playback/play/v1/peek" }.body.readUtf8()
+        assertTrue(peek.contains("\"sequenceToken\":\"seq-1\"") && peek.contains("\"mediaFormat\":\"MP4\""))
+    }
+
+    @Test
+    fun `an audio file is never read as a playlist`() = runTest {
+        var now = 1_000_000L
+        val client = client(clock = { now })
+        tuneQueue = listOf("binary")
+        try {
+            client.xtraPlaylist("channel-xtra", "x1")
+            fail("Expected an error")
+        } catch (e: IllegalStateException) {
+            assertEquals("SiriusXM sent something other than a playlist", e.message)
         }
     }
 }

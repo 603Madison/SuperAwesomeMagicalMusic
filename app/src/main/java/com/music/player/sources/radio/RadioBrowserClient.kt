@@ -4,6 +4,8 @@ import android.util.Log
 import com.music.player.net.AppJson
 import com.music.player.net.fetchString
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import okhttp3.HttpUrl
@@ -12,6 +14,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.InetAddress
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 /**
  * Radio stations from Radio Browser (radio-browser.info), a free, open directory of tens of
@@ -21,22 +24,58 @@ import java.util.concurrent.ConcurrentHashMap
  * a fallback), the app identifies itself in the User-Agent, and each station played is counted.
  */
 class RadioBrowserClient(
-    private val http: OkHttpClient,
+    http: OkHttpClient,
     private val userAgent: String,
     private val lookUpServers: suspend () -> List<String> = ::serversFromDns,
     private val scheme: String = "https",
+    /** Long-standing servers, tried before the ones DNS lists. */
+    private val knownServers: List<String> = FALLBACK_SERVERS,
 ) {
+    // A server that's down should cost seconds, not the patient timeouts satellite links need.
+    private val http = http.newBuilder()
+        .connectTimeout(6, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(30, TimeUnit.SECONDS)
+        .build()
     private var servers: List<String>? = null
+
+    /** The server that answered last, tried first next time. */
+    @Volatile
+    private var lastGood: String? = null
     private val known = ConcurrentHashMap<String, RadioStation>()
 
-    /** Stations within [radiusKm] of a location, most listened to first. */
-    suspend fun nearby(latitude: Double, longitude: Double, radiusKm: Int = 80, limit: Int = 100): List<RadioStation> =
-        stations("json/stations/search") {
-            addQueryParameter("geo_lat", latitude.toString())
-            addQueryParameter("geo_long", longitude.toString())
-            addQueryParameter("geo_distance", (radiusKm * 1000).toString())
-            popularFirst(limit)
+    /**
+     * Stations near a location, most listened to first: those listed within [radiusKm] (only
+     * some stations give a location), together with those listed in your [state], if known.
+     */
+    suspend fun nearby(
+        latitude: Double,
+        longitude: Double,
+        state: String? = null,
+        countryCode: String? = null,
+        radiusKm: Int = 80,
+        limit: Int = 100,
+    ): List<RadioStation> = coroutineScope {
+        val byLocation = async {
+            stations("json/stations/search") {
+                addQueryParameter("geo_lat", latitude.toString())
+                addQueryParameter("geo_long", longitude.toString())
+                addQueryParameter("geo_distance", (radiusKm * 1000).toString())
+                popularFirst(limit)
+            }
         }
+        val byState = async {
+            if (state.isNullOrBlank()) emptyList()
+            else runCatching {
+                stations("json/stations/search") {
+                    addQueryParameter("state", state)
+                    countryCode?.takeIf { it.isNotBlank() }?.let { addQueryParameter("countrycode", it) }
+                    popularFirst(limit)
+                }
+            }.getOrDefault(emptyList())
+        }
+        withoutDuplicates(byLocation.await() + byState.await()).sortedByDescending { it.clickCount }.take(limit)
+    }
 
     /** Stations whose name matches [query], most listened to first; [countryCode] narrows it. */
     suspend fun search(query: String, countryCode: String? = null, limit: Int = 60): List<RadioStation> =
@@ -67,9 +106,9 @@ class RadioBrowserClient(
 
     private suspend fun stations(path: String, query: HttpUrl.Builder.() -> Unit): List<RadioStation> {
         val body = request(path, query)
-        val stations = AppJson.decodeFromString(ListSerializer(RadioStation.serializer()), body)
-            .filter { it.streamUrl.startsWith("http") }
-            .distinctBy { it.id }
+        val stations = withoutDuplicates(
+            AppJson.decodeFromString(ListSerializer(RadioStation.serializer()), body).filter { it.streamUrl.startsWith("http") },
+        )
         stations.forEach { known[it.id] = it }
         return stations
     }
@@ -81,6 +120,7 @@ class RadioBrowserClient(
             val url = "$scheme://$server/$path".toHttpUrl().newBuilder().apply(query).build()
             try {
                 return http.fetchString(Request.Builder().url(url).header("User-Agent", userAgent).build())
+                    .also { lastGood = server }
             } catch (e: Exception) {
                 lastError = e
                 Log.i(TAG, "Radio Browser server $server failed", e)
@@ -92,23 +132,36 @@ class RadioBrowserClient(
     }
 
     /**
-     * The servers DNS lists, in random order, then the long-standing ones: DNS can return a
-     * single server that is down, which on its own would make every search fail.
+     * The server that answered last, then the long-standing ones, then any others DNS lists.
+     * DNS can list a server that's down (it once listed only that one), so it doesn't go first.
      */
     private suspend fun servers(): List<String> {
-        servers?.let { return it }
-        val fromDns = runCatching { lookUpServers() }.getOrDefault(emptyList()).shuffled()
-        val all = (fromDns + FALLBACK_SERVERS.shuffled() + ROUND_ROBIN).distinct()
-        servers = all
-        return all
+        val list = servers ?: (knownServers.shuffled() + runCatching { lookUpServers() }.getOrDefault(emptyList()).shuffled())
+            .distinct()
+            .also { servers = it }
+        val good = lastGood ?: return list
+        return listOf(good) + (list - good)
     }
 
     companion object {
         private const val TAG = "RadioBrowser"
         private val FALLBACK_SERVERS = listOf("de1.api.radio-browser.info", "de2.api.radio-browser.info")
 
-        /** Any server, chosen by DNS; its certificate covers *.api.radio-browser.info. */
-        private const val ROUND_ROBIN = "all.api.radio-browser.info"
+        /**
+         * The directory often lists a station several times (e.g. "KISS 108 - WXKS-FM" and
+         * "KISS 108 WXKS FM"): keep the first (most listened to) of each name or stream.
+         */
+        fun withoutDuplicates(stations: List<RadioStation>): List<RadioStation> {
+            val names = HashSet<String>()
+            val streams = HashSet<String>()
+            return stations.filter { station ->
+                val name = station.name.lowercase().filter { it.isLetterOrDigit() }
+                val stream = station.streamUrl.substringAfter("://").substringBefore('?').trimEnd('/').lowercase()
+                val newName = name.isEmpty() || names.add(name)
+                val newStream = streams.add(stream)
+                newName && newStream
+            }
+        }
 
         /** The servers behind all.api.radio-browser.info, by name (needed for HTTPS). */
         suspend fun serversFromDns(): List<String> = withContext(Dispatchers.IO) {

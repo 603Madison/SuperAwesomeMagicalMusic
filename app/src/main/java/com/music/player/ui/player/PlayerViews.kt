@@ -55,6 +55,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
+import com.music.player.sources.siriusxm.SxmCut
+import com.music.player.sources.siriusxm.SxmStationTrack
 import com.music.player.ui.LocalAppContainer
 import com.music.player.ui.LocalTrackActions
 import com.music.player.ui.components.Artwork
@@ -198,6 +200,16 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
                                 IconButton(onClick = { actions.download(listOf(track)) }) {
                                     Icon(Icons.Default.Download, contentDescription = "Download")
                                 }
+                            }
+                        }
+                        SxmStationTrack.idOf(track)?.let { (_, trackId) ->
+                            // Station tracks' links expire, so save the song itself (Jellyfin first, as usual).
+                            IconButton(onClick = {
+                                actions.saveHeardSong(
+                                    SxmCut(trackId, track.title, track.artist, track.album, 0, track.durationMs ?: 0, track.artworkUrl, interstitial = false),
+                                )
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Save song")
                             }
                         }
                         IconButton(onClick = { actions.info(track) }) {
