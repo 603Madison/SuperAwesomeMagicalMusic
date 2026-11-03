@@ -26,6 +26,11 @@ class PlaylistRepository(
     @OptIn(ExperimentalCoroutinesApi::class)
     val playlists: Flow<List<PlaylistSummary>> = owner.distinctUntilChanged().flatMapLatest { dao.observeSummaries(it) }
 
+    /** Up to four different pieces of artwork per playlist, from its first songs: its cover. */
+    val covers: Flow<Map<String, List<String>>> = dao.observeArtwork().map { rows ->
+        rows.groupBy({ it.playlistId }, { it.artworkUrl }).mapValues { (_, urls) -> urls.distinct().take(4) }
+    }
+
     suspend fun currentOwner(): String? = owner.first()
 
     suspend fun active(): List<PlaylistEntity> = dao.active(currentOwner())

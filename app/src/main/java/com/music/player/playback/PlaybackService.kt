@@ -20,6 +20,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -85,6 +86,7 @@ class PlaybackService : MediaLibraryService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
         player.addListener(ErrorHandler(player))
+        player.addAnalyticsListener(DetailsListener())
         player.addListener(TrackChanges(player))
 
         val openApp = PendingIntent.getActivity(
@@ -332,6 +334,37 @@ class PlaybackService : MediaLibraryService() {
         if (metadata != item.mediaMetadata) {
             // Same stream, new metadata: ExoPlayer updates it without interrupting playback.
             player.replaceMediaItem(player.currentMediaItemIndex, item.buildUpon().setMediaMetadata(metadata).build())
+        }
+    }
+
+    /** Records the decoder's input format and the bitrate of what's downloaded, per item (see PlaybackDetails). */
+    private inner class DetailsListener : AnalyticsListener {
+        private val window = Timeline.Window()
+
+        private fun mediaId(eventTime: AnalyticsListener.EventTime): String? {
+            val timeline = eventTime.timeline
+            if (timeline.isEmpty || eventTime.windowIndex >= timeline.windowCount) return null
+            return timeline.getWindow(eventTime.windowIndex, window).mediaItem.mediaId
+        }
+
+        override fun onAudioInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: androidx.media3.common.Format,
+            decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+        ) {
+            mediaId(eventTime)?.let { container.playbackDetails.onFormat(it, format) }
+        }
+
+        override fun onLoadCompleted(
+            eventTime: AnalyticsListener.EventTime,
+            loadEventInfo: androidx.media3.exoplayer.source.LoadEventInfo,
+            mediaLoadData: androidx.media3.exoplayer.source.MediaLoadData,
+        ) {
+            // Segments of streams (HLS) say which stretch of audio they hold; whole files don't.
+            if (mediaLoadData.dataType != C.DATA_TYPE_MEDIA) return
+            if (mediaLoadData.mediaStartTimeMs == C.TIME_UNSET || mediaLoadData.mediaEndTimeMs == C.TIME_UNSET) return
+            val id = mediaId(eventTime) ?: return
+            container.playbackDetails.onSegment(id, loadEventInfo.bytesLoaded, mediaLoadData.mediaEndTimeMs - mediaLoadData.mediaStartTimeMs)
         }
     }
 

@@ -21,7 +21,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,6 +29,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.player.model.SourceType
 import com.music.player.model.Track
@@ -48,10 +55,23 @@ fun SearchScreen() {
     val focus = LocalFocusManager.current
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        OutlinedTextField(
+        Text(
+            "Search",
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
+        )
+        // A filled, pill-shaped field rather than an outlined box.
+        TextField(
             value = state.query,
             onValueChange = viewModel::onQueryChange,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            shape = CircleShape,
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+            ),
             placeholder = { Text("Songs, artists, albums") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
@@ -68,18 +88,35 @@ fun SearchScreen() {
                 focus.clearFocus()
             }),
         )
-        NetworkStatusRow(Modifier.padding(horizontal = 16.dp))
+        NetworkStatusRow(Modifier.padding(horizontal = 24.dp))
 
         LazyColumn(Modifier.fillMaxSize()) {
             if (state.query.isBlank()) {
                 item {
-                    Text(
-                        "Search your Jellyfin library first; songs it doesn't have can stream from " +
-                            "Qobuz or YouTube Music, and their artists are sent to Lidarr.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp),
-                    )
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 72.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(88.dp)) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.LibraryMusic,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(44.dp),
+                                )
+                            }
+                        }
+                        Text("Find something to play", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+                        Text(
+                            "Search your Jellyfin library first; songs it doesn't have can stream from " +
+                                "Qobuz or YouTube Music, and their artists are sent to Lidarr.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
             state.offlineResults?.let { offline ->
@@ -119,7 +156,7 @@ fun SearchScreen() {
 private fun LazyListScope.header(title: String, source: SourceType?) {
     item(key = "header-$title") {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {

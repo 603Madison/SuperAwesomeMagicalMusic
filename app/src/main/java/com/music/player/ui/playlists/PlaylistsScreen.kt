@@ -1,5 +1,15 @@
 package com.music.player.ui.playlists
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import com.music.player.ui.components.Artwork
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +57,7 @@ import kotlinx.coroutines.withContext
 fun PlaylistsScreen(onOpen: (String) -> Unit) {
     val container = LocalAppContainer.current
     val playlists by container.playlists.playlists.collectAsStateWithLifecycle(emptyList())
+    val covers by container.playlists.covers.collectAsStateWithLifecycle(emptyMap())
     val settings by container.settingsState.collectAsStateWithLifecycle()
     val syncStatus by container.playlistSync.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -117,28 +128,40 @@ fun PlaylistsScreen(onOpen: (String) -> Unit) {
                 }
             }
             items(playlists, key = { it.id }) { playlist ->
-                ListItem(
-                    modifier = Modifier.clickable { onOpen(playlist.id) },
-                    leadingContent = { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null) },
-                    headlineContent = { Text(playlist.name) },
-                    supportingContent = { Text("${playlist.trackCount} ${if (playlist.trackCount == 1) "song" else "songs"}") },
-                    trailingContent = {
+                ElevatedCard(
+                    onClick = { onOpen(playlist.id) },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PlaylistCover(covers[playlist.id].orEmpty(), 72.dp)
+                        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                            Text(playlist.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                "${playlist.trackCount} ${if (playlist.trackCount == 1) "song" else "songs"}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         if (playlist.keepDownloaded) {
                             Icon(
                                 Icons.Default.DownloadForOffline,
                                 contentDescription = "Kept downloaded",
                                 tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(end = 6.dp),
                             )
                         } else if (nextcloudReady && playlist.needsUpload) {
                             Icon(
                                 Icons.Default.CloudUpload,
                                 contentDescription = "Not yet synced",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(end = 6.dp),
                             )
                         }
-                    },
-                )
+                    }
+                }
             }
+            item { Spacer(Modifier.height(88.dp)) } // Room above the "New playlist" button.
         }
     }
 
@@ -156,5 +179,19 @@ fun PlaylistsScreen(onOpen: (String) -> Unit) {
                 }
             },
         )
+    }
+}
+
+/** A playlist's cover: its first song's artwork, or a 2×2 mosaic once it has four different ones. */
+@Composable
+private fun PlaylistCover(artwork: List<String>, size: Dp) {
+    if (artwork.size < 4) {
+        Artwork(artwork.firstOrNull(), size, corner = 14.dp)
+        return
+    }
+    Column(Modifier.size(size).clip(RoundedCornerShape(14.dp))) {
+        artwork.chunked(2).forEach { row ->
+            Row { row.forEach { Artwork(it, size / 2, corner = 0.dp) } }
+        }
     }
 }

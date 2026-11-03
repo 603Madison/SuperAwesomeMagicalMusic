@@ -22,6 +22,7 @@ import com.music.player.data.DownloadEntity
 import com.music.player.data.DownloadStatus
 import com.music.player.model.Track
 import com.music.player.playback.AudioFormatInfo
+import com.music.player.playback.MediaDetails
 import com.music.player.playback.PlaybackOrigin
 import com.music.player.playback.PlayerUiState
 import com.music.player.ui.LocalAppContainer
@@ -83,8 +84,11 @@ private fun ColumnScope.NowPlayingInfo(origin: PlaybackOrigin?, player: PlayerUi
     origin?.playing?.takeIf { it.key != player.current?.key }?.let { copy ->
         Info("Copy", "${copy.source.label}: ${copy.artist} – ${copy.title}")
     }
-    player.format?.let { Info("Format", describe(it)) }
-    bitrate(player.format, origin)?.let { Info("Bitrate", it) }
+    val decoded = LocalAppContainer.current.playbackDetails.state.collectAsStateWithLifecycle().value[player.current?.key]
+    val codec = decoded?.codec ?: player.format?.codec
+    codec?.let { Info("Codec", listOfNotNull(it, decoded?.codecString?.takeIf { code -> code != it.lowercase() }).joinToString(" · ")) }
+    describe(decoded, player.format)?.let { Info("Audio", it) }
+    bitrate(decoded, player.format, origin)?.let { Info("Bitrate", it) }
     origin?.quality?.let { Info("Bitrate cap", "${it.label} (picked on $networkLabel)") }
     val remainingMs = (player.durationMs - player.positionMs).coerceAtLeast(0)
     val buffered = formatTime(player.totalBufferedMs)
@@ -114,24 +118,32 @@ private fun ColumnScope.DownloadInfo(download: DownloadEntity) {
     }
 }
 
-private fun describe(format: AudioFormatInfo): String = listOfNotNull(
-    format.codec,
-    format.sampleRateHz?.let { if (it % 1000 == 0) "${it / 1000} kHz" else "%.1f kHz".format(it / 1000.0) },
-    format.channels?.let {
+/** Sample rate and channels, e.g. "44.1 kHz · stereo": what the decoder gets where known. */
+private fun describe(decoded: MediaDetails?, format: AudioFormatInfo?): String? = listOfNotNull(
+    (decoded?.sampleRateHz ?: format?.sampleRateHz)?.let { if (it % 1000 == 0) "${it / 1000} kHz" else "%.1f kHz".format(it / 1000.0) },
+    (decoded?.channels ?: format?.channels)?.let {
         when (it) {
             1 -> "mono"
             2 -> "stereo"
             else -> "$it channels"
         }
     },
-).joinToString(" · ")
+).joinToString(" · ").ifEmpty { null }
 
-/** The decoder's bitrate when the stream declares one, otherwise the source's nominal figure. */
-private fun bitrate(format: AudioFormatInfo?, origin: PlaybackOrigin?): String? {
-    format?.kbps?.let { return "$it kbps" }
-    val lossless = format?.codec in setOf("FLAC", "ALAC", "PCM")
+/**
+ * The bitrate: what the stream declares and what's measured from the audio downloaded (the two
+ * differ a little: segments carry some overhead), else the source's nominal figure.
+ */
+private fun bitrate(decoded: MediaDetails?, format: AudioFormatInfo?, origin: PlaybackOrigin?): String? {
+    val declared = decoded?.declaredKbps ?: format?.kbps
+    val measured = decoded?.measuredKbps
+    val codec = decoded?.codec ?: format?.codec
+    val lossless = codec in setOf("FLAC", "ALAC", "PCM")
     val nominal = origin?.kbps
     return when {
+        declared != null && measured != null -> "$declared kbps (measured $measured kbps)"
+        declared != null -> "$declared kbps"
+        measured != null -> "$measured kbps (measured from the stream)"
         lossless && nominal != null -> "Lossless (about $nominal kbps)"
         lossless -> "Lossless"
         nominal != null -> "$nominal kbps"

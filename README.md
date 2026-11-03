@@ -128,8 +128,10 @@ the buffer is full and resumes once a quarter of it has played. The buffer uses 
 memory, which a lossless song reaches first. The progress bars show how far ahead has loaded.
 
 **Song info:** "Info" in a song's menu, or ⓘ in the player, shows the service the song was saved
-from and, while it plays, the copy that's playing: service, format, sample rate, bitrate, the cap
-that applied and how much is buffered. Downloads show where the file came from, its bitrate and
+from and, while it plays, the copy that's playing: service, the codec the decoder actually gets
+(e.g. HE-AAC · mp4a.40.5), sample rate, channels, the bitrate (declared by the stream, and measured
+from the audio downloaded, which is how SiriusXM and radio streams get one), the cap that applied
+and how much is buffered. Downloads show where the file came from, its bitrate and
 size.
 
 ### 3. Offline listening, from every source

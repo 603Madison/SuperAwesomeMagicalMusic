@@ -1,6 +1,18 @@
 package com.music.player.ui.player
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.lerp
+import com.music.player.ui.components.contentColorOn
+import com.music.player.ui.components.rememberArtworkColor
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -70,23 +82,24 @@ fun MiniPlayer(onExpand: () -> Unit) {
     val container = LocalAppContainer.current
     val state by container.player.state.collectAsStateWithLifecycle()
     val track = state.current ?: return
-    Surface(tonalElevation = 3.dp) {
-        Column {
-            val duration = state.durationMs
-            BufferedProgress(
-                played = if (duration > 0) state.positionMs.toFloat() / duration else 0f,
-                buffered = if (duration > 0) state.bufferedPositionMs.toFloat() / duration else 0f,
-                modifier = Modifier.fillMaxWidth().height(3.dp),
-                rounded = false,
-            )
+    val accent by animateColorAsState(rememberArtworkColor(track.artworkUrl) ?: MaterialTheme.colorScheme.primary, label = "mini-accent")
+    // A floating card, tinted toward the artwork.
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+        shape = MaterialTheme.shapes.large,
+        color = lerp(MaterialTheme.colorScheme.surfaceContainerHigh, accent, 0.18f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shadowElevation = 6.dp,
+    ) {
+        Column(Modifier.clickable(onClick = onExpand)) {
             Row(
-                Modifier.fillMaxWidth().clickable(onClick = onExpand).padding(horizontal = 12.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Artwork(track.artworkUrl, 44.dp)
+                Artwork(track.artworkUrl, 48.dp, corner = 12.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+                    Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
                     Text(
                         track.artist,
                         maxLines = 1,
@@ -95,7 +108,10 @@ fun MiniPlayer(onExpand: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                IconButton(onClick = container.player::togglePlayPause) {
+                FilledIconButton(
+                    onClick = container.player::togglePlayPause,
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent, contentColor = contentColorOn(accent)),
+                ) {
                     Icon(
                         if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (state.isPlaying) "Pause" else "Play",
@@ -103,6 +119,13 @@ fun MiniPlayer(onExpand: () -> Unit) {
                 }
                 IconButton(onClick = container.player::next) { Icon(Icons.Default.SkipNext, contentDescription = "Next") }
             }
+            val duration = state.durationMs
+            BufferedProgress(
+                played = if (duration > 0) state.positionMs.toFloat() / duration else 0f,
+                buffered = if (duration > 0) state.bufferedPositionMs.toFloat() / duration else 0f,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 8.dp).height(3.dp),
+                color = accent,
+            )
         }
     }
 }
@@ -119,75 +142,119 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val track = state.current
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    val accent by animateColorAsState(rememberArtworkColor(track?.artworkUrl) ?: MaterialTheme.colorScheme.primary, label = "sheet-accent")
+
+    // The artwork's colour fills the top of the sheet (handle included) and fades into the page below.
+    val surface = MaterialTheme.colorScheme.surface
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = lerp(surface, accent, 0.3f), contentColor = MaterialTheme.colorScheme.onSurface) {
         if (track == null) {
             Text("Nothing playing", modifier = Modifier.padding(24.dp))
             return@ModalBottomSheet
         }
-        LazyColumn(Modifier.fillMaxWidth()) {
+        LazyColumn(
+            Modifier.fillMaxWidth().background(
+                Brush.verticalGradient(0f to Color.Transparent, 0.3f to surface.copy(alpha = 0.35f), 0.75f to surface),
+            ),
+        ) {
             item {
                 Column(
                     Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Artwork(track.artworkUrl, 280.dp, modifier = Modifier.aspectRatio(1f), corner = 12.dp)
-                    Text(track.title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
-                    Text(
-                        listOfNotNull(track.artist, track.album).joinToString(" · "),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val origin = origins[track.key]
-                        origin?.source?.let { SourceBadge(it) }
-                        Text(
-                            origin?.description ?: "Finding the best source…",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp), contentAlignment = Alignment.Center) {
+                        val side = minOf(maxWidth, 340.dp)
+                        Artwork(
+                            track.artworkUrl,
+                            side,
+                            corner = 24.dp,
+                            modifier = Modifier.shadow(24.dp, RoundedCornerShape(24.dp), ambientColor = accent, spotColor = accent),
                         )
+                    }
+                    Text(
+                        track.title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        track.artist,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = lerp(MaterialTheme.colorScheme.onSurface, accent, 0.45f),
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    track.album?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.8f)) {
+                        Row(
+                            Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            val origin = origins[track.key]
+                            origin?.source?.let { SourceBadge(it) }
+                            Text(
+                                origin?.description ?: "Finding the best source…",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                     NetworkStatusRow()
                     if (!track.isLive) {
-                        SeekBar(state.positionMs, state.bufferedPositionMs, state.durationMs, player::seekTo)
+                        SeekBar(state.positionMs, state.bufferedPositionMs, state.durationMs, player::seekTo, accent)
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         IconButton(onClick = player::toggleShuffle) {
                             Icon(
                                 Icons.Default.Shuffle,
                                 contentDescription = "Shuffle",
-                                tint = if (state.shuffle) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (state.shuffle) accent else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        IconButton(onClick = player::previous) {
-                            Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", modifier = Modifier.size(32.dp))
+                        IconButton(onClick = player::previous, modifier = Modifier.size(56.dp)) {
+                            Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", modifier = Modifier.size(36.dp))
                         }
                         FilledIconButton(
                             onClick = player::togglePlayPause,
-                            modifier = Modifier.size(64.dp),
-                            colors = IconButtonDefaults.filledIconButtonColors(),
+                            modifier = Modifier.size(76.dp),
+                            shape = RoundedCornerShape(26.dp),
+                            colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent, contentColor = contentColorOn(accent)),
                         ) {
                             Icon(
                                 if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (state.isPlaying) "Pause" else "Play",
-                                modifier = Modifier.size(36.dp),
+                                modifier = Modifier.size(40.dp),
                             )
                         }
-                        IconButton(onClick = player::next) {
-                            Icon(Icons.Default.SkipNext, contentDescription = "Next", modifier = Modifier.size(32.dp))
+                        IconButton(onClick = player::next, modifier = Modifier.size(56.dp)) {
+                            Icon(Icons.Default.SkipNext, contentDescription = "Next", modifier = Modifier.size(36.dp))
                         }
                         IconButton(onClick = player::cycleRepeat) {
                             Icon(
                                 if (state.repeatMode == Player.REPEAT_MODE_ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
                                 contentDescription = "Repeat",
-                                tint = if (state.repeatMode != Player.REPEAT_MODE_OFF) MaterialTheme.colorScheme.primary
+                                tint = if (state.repeatMode != Player.REPEAT_MODE_OFF) accent
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
                     if (track.isSiriusXmChannel) NowPlayingCard()
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                    Row(Modifier.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (!track.isLive) {
                             IconButton(onClick = { actions.addToPlaylist(listOf(track)) }) {
                                 Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Add to playlist")
@@ -216,22 +283,24 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
                             Icon(Icons.Outlined.Info, contentDescription = "Info")
                         }
                     }
+                    }
                     Text(
                         "Up next",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp),
                     )
                 }
             }
             itemsIndexed(state.queue, key = { index, item -> "$index-${item.key}" }) { index, item ->
                 ListItem(
-                    modifier = Modifier.clickable { player.skipTo(index) },
-                    colors = if (index == state.currentIndex) {
-                        ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                    } else {
-                        ListItemDefaults.colors()
-                    },
-                    leadingContent = { Artwork(item.artworkUrl, 40.dp) },
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 2.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable { player.skipTo(index) },
+                    colors = ListItemDefaults.colors(
+                        containerColor = if (index == state.currentIndex) accent.copy(alpha = 0.16f) else Color.Transparent,
+                    ),
+                    leadingContent = { Artwork(item.artworkUrl, 44.dp, corner = 10.dp) },
                     headlineContent = { Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     supportingContent = { Text(item.artist, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     trailingContent = {
@@ -249,7 +318,7 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SeekBar(positionMs: Long, bufferedMs: Long, durationMs: Long, onSeek: (Long) -> Unit) {
+private fun SeekBar(positionMs: Long, bufferedMs: Long, durationMs: Long, onSeek: (Long) -> Unit, color: Color) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     val duration = durationMs.coerceAtLeast(1)
     val fraction = dragging ?: (positionMs.toFloat() / duration).coerceIn(0f, 1f)
@@ -262,11 +331,13 @@ private fun SeekBar(positionMs: Long, bufferedMs: Long, durationMs: Long, onSeek
                 dragging = null
             },
             enabled = durationMs > 0,
+            colors = SliderDefaults.colors(thumbColor = color),
             track = { sliderState ->
                 BufferedProgress(
                     played = sliderState.value,
                     buffered = bufferedMs.toFloat() / duration,
                     modifier = Modifier.fillMaxWidth().height(6.dp),
+                    color = color,
                 )
             },
         )
@@ -280,9 +351,15 @@ private fun SeekBar(positionMs: Long, bufferedMs: Long, durationMs: Long, onSeek
 
 /** A progress bar that also shows, lighter, how far ahead the song has loaded. */
 @Composable
-private fun BufferedProgress(played: Float, buffered: Float, modifier: Modifier = Modifier, rounded: Boolean = true) {
-    val playedColor = MaterialTheme.colorScheme.primary
-    val bufferedColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+private fun BufferedProgress(
+    played: Float,
+    buffered: Float,
+    modifier: Modifier = Modifier,
+    rounded: Boolean = true,
+    color: Color = MaterialTheme.colorScheme.primary,
+) {
+    val playedColor = color
+    val bufferedColor = color.copy(alpha = 0.35f)
     val emptyColor = MaterialTheme.colorScheme.surfaceContainerHighest
     Canvas(modifier) {
         val corner = if (rounded) CornerRadius(size.height / 2) else CornerRadius.Zero

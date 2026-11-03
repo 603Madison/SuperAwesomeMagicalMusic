@@ -5,6 +5,7 @@ import android.util.Log
 import com.music.player.data.AppDatabase
 import com.music.player.diagnostics.AppLog
 import com.music.player.data.MissingDetails
+import com.music.player.playback.PlaybackDetails
 import com.music.player.sources.radio.RadioBrowserClient
 import com.music.player.downloads.DownloadRepository
 import com.music.player.downloads.OfflinePlaylistWorker
@@ -121,6 +122,9 @@ class AppContainer(val context: Context) {
     val nextcloudSignIn = NextcloudSignIn(nextcloud, settings, database.playlists(), playlistSync, appScope)
 
     val player = PlayerController(context, MainScope())
+
+    /** What's actually being decoded and downloaded for each queue item (filled in by the playback service). */
+    val playbackDetails = PlaybackDetails()
 
     private val _playbackErrors = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val playbackErrors: SharedFlow<String> = _playbackErrors

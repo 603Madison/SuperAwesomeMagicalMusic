@@ -28,6 +28,10 @@ interface PlaylistDao {
     )
     fun observeSummaries(owner: String?): Flow<List<PlaylistSummary>>
 
+    /** Every entry's artwork, in playlist order, for building playlist covers. */
+    @Query("SELECT playlistId, track_artworkUrl AS artworkUrl FROM playlist_entries WHERE track_artworkUrl IS NOT NULL ORDER BY playlistId, position")
+    fun observeArtwork(): Flow<List<PlaylistArtwork>>
+
     @Query("SELECT * FROM playlists WHERE deleted = 0 AND ownerId IS :owner ORDER BY name COLLATE NOCASE")
     suspend fun active(owner: String?): List<PlaylistEntity>
 
@@ -156,3 +160,6 @@ interface DownloadDao {
     @Query("DELETE FROM downloads WHERE trackKey = :key")
     suspend fun delete(key: String)
 }
+
+/** One playlist entry's artwork (see PlaylistDao.observeArtwork). */
+data class PlaylistArtwork(val playlistId: String, val artworkUrl: String)
