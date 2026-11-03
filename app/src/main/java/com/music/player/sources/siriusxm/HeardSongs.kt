@@ -31,8 +31,11 @@ class HeardSongs(
     /** Another service's copy with artwork, for songs SiriusXM sent without (Jellyfin excluded). */
     private val findCopy: suspend (Track) -> Track? = { null },
 ) {
-    suspend fun capture(cut: SxmCut): CapturedSong {
-        val heard = withArtwork(cut.toTrack())
+    suspend fun capture(cut: SxmCut): CapturedSong = capture(cut.toTrack())
+
+    /** As [capture], for a song heard earlier and kept as a track (e.g. bookmarked while driving). */
+    suspend fun capture(heardTrack: Track): CapturedSong {
+        val heard = withArtwork(heardTrack)
         if (jellyfin.isAvailable()) {
             val match = try {
                 jellyfin.findMatch(heard)

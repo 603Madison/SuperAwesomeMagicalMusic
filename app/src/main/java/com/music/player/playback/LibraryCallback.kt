@@ -9,7 +9,6 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService.LibraryParams
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
@@ -26,6 +25,7 @@ import com.music.player.data.DownloadStatus
 import com.music.player.model.Track
 import com.music.player.net.AppJson
 import com.music.player.sources.TrackMatcher
+import com.music.player.sources.siriusxm.SxmThumb
 import com.music.player.sources.siriusxm.SiriusXmClient
 import com.music.player.sources.siriusxm.SxmChannel
 import kotlinx.coroutines.CancellationException
@@ -77,12 +77,14 @@ object LibraryIds {
 
 /**
  * The media library Android Auto browses: playlists, downloads and SiriusXM channels, plus
- * search, voice requests ("play … on Music") and a "Save song" button for what's playing.
+ * search, voice requests ("play … on Music") and the extra buttons of [SessionButtons]: bookmark
+ * what's playing, and thumbs on Pandora station songs.
  */
 @OptIn(UnstableApi::class)
 class LibraryCallback(
     private val container: AppContainer,
     private val scope: CoroutineScope,
+    private val buttons: SessionButtons = SessionButtons(container),
 ) : MediaLibrarySession.Callback {
     private val searches = ConcurrentHashMap<String, Deferred<List<Track>>>()
 
@@ -90,8 +92,13 @@ class LibraryCallback(
 
     override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
         log("connect from ${controller.packageName} (Media3 ${controller.controllerVersion}, interface ${controller.interfaceVersion})")
-        val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon().add(SAVE_SONG).build()
-        return MediaSession.ConnectionResult.AcceptedResultBuilder(session).setAvailableSessionCommands(commands).build()
+        val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+            .apply { SessionButtons.COMMANDS.forEach(::add) }
+            .build()
+        return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            .setAvailableSessionCommands(commands)
+            .setMediaButtonPreferences(buttons.buttons(session.player))
+            .build()
     }
 
     override fun onCustomCommand(
@@ -100,26 +107,22 @@ class LibraryCallback(
         customCommand: SessionCommand,
         args: Bundle,
     ): ListenableFuture<SessionResult> = scope.future {
-        if (customCommand.customAction != SAVE_SONG.customAction) return@future SessionResult(SessionError.ERROR_NOT_SUPPORTED)
-        val saved = saveCurrentSong(session)
-        SessionResult(if (saved) SessionResult.RESULT_SUCCESS else SessionError.ERROR_BAD_VALUE)
-    }
-
-    /** Saves the song on SiriusXM (or the current track) to a playlist. */
-    private suspend fun saveCurrentSong(session: MediaSession): Boolean {
-        val current = session.player.currentMediaItem?.toTrack() ?: return false
-        return try {
-            if (current.isSiriusXmChannel) {
-                val cut = container.siriusXm.nowPlaying.value?.cut?.takeIf { it.isSong } ?: return false
-                container.heardSongs.saveToHeardPlaylist(cut)
-            } else {
-                container.playlists.addTracks(container.playlists.getOrCreate(SAVED_PLAYLIST), listOf(current))
+        val player = session.player
+        val done = try {
+            when (customCommand.customAction) {
+                SessionButtons.BOOKMARK.customAction -> buttons.toggleBookmark(player) != null
+                SessionButtons.THUMB_UP.customAction -> buttons.rate(player, SxmThumb.UP)
+                SessionButtons.THUMB_DOWN.customAction -> buttons.rate(player, SxmThumb.DOWN)
+                else -> return@future SessionResult(SessionError.ERROR_NOT_SUPPORTED)
             }
-            true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.w(TAG, "Couldn't save the current song", e)
+            Log.w(TAG, "${customCommand.customAction} failed", e)
+            log("${customCommand.customAction} failed: $e")
             false
         }
+        SessionResult(if (done) SessionResult.RESULT_SUCCESS else SessionError.ERROR_BAD_VALUE)
     }
 
     /**
@@ -413,13 +416,5 @@ class LibraryCallback(
     companion object {
         private const val TAG = "LibraryCallback"
         private const val BROWSE_TIMEOUT_MS = 15_000L
-        const val SAVED_PLAYLIST = "Saved songs"
-        val SAVE_SONG = SessionCommand("com.music.player.SAVE_SONG", Bundle.EMPTY)
-
-        /** The "Save song" button shown in Android Auto and the media notification. */
-        val SAVE_SONG_BUTTON: CommandButton = CommandButton.Builder(CommandButton.ICON_HEART_UNFILLED)
-            .setDisplayName("Save song")
-            .setSessionCommand(SAVE_SONG)
-            .build()
     }
 }

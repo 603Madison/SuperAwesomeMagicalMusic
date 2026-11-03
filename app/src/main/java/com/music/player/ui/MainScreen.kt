@@ -33,6 +33,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -44,6 +46,7 @@ import com.music.player.lidarr.LidarrEvent
 import com.music.player.model.Track
 import com.music.player.quality.NetworkClass
 import com.music.player.ui.components.AddToPlaylistDialog
+import com.music.player.ui.components.BookmarkDialog
 import com.music.player.ui.components.TrackInfoDialog
 import com.music.player.ui.downloads.DownloadsScreen
 import com.music.player.ui.player.MiniPlayer
@@ -76,6 +79,10 @@ fun MusicAppUi() {
     var showPlayer by remember { mutableStateOf(false) }
     val network by container.networkMonitor.state.collectAsStateWithLifecycle()
     val settings by container.settingsState.collectAsStateWithLifecycle()
+    val bookmarks by container.bookmarks.items.collectAsStateWithLifecycle()
+    // Bookmarks put off with "Later" until the app is next opened.
+    var bookmarksLater by remember { mutableStateOf(emptySet<String>()) }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { bookmarksLater = emptySet() }
 
     val actions = remember {
         TrackActions(
@@ -142,6 +149,17 @@ fun MusicAppUi() {
 
         if (showPlayer) NowPlayingSheet(onDismiss = { showPlayer = false })
         infoFor?.let { track -> TrackInfoDialog(track, onDismiss = { infoFor = null }) }
+        if (addToPlaylist == null && infoFor == null) {
+            val waiting = bookmarks.filterNot { it.id in bookmarksLater }
+            waiting.firstOrNull()?.let { bookmark ->
+                BookmarkDialog(
+                    bookmark = bookmark,
+                    waiting = waiting.size,
+                    onLater = { bookmarksLater = bookmarksLater + waiting.map { it.id } },
+                    onMessage = { message -> scope.launch { snackbar.showSnackbar(message) } },
+                )
+            }
+        }
         addToPlaylist?.let { tracks ->
             AddToPlaylistDialog(
                 tracks = tracks,

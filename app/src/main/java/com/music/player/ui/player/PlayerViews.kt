@@ -38,7 +38,11 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -46,6 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
@@ -69,6 +74,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
 import com.music.player.sources.siriusxm.SxmCut
 import com.music.player.sources.siriusxm.SxmStationTrack
+import com.music.player.sources.siriusxm.SxmThumb
 import com.music.player.ui.LocalAppContainer
 import com.music.player.ui.LocalTrackActions
 import com.music.player.ui.components.Artwork
@@ -139,6 +145,7 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
     val state by player.state.collectAsStateWithLifecycle()
     val origins by container.resolver.origins.collectAsStateWithLifecycle()
     val downloaded by container.downloads.completedKeys.collectAsStateWithLifecycle(emptySet())
+    val thumbs by container.siriusXm.thumbs.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val track = state.current
 
@@ -267,6 +274,23 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
                                 IconButton(onClick = { actions.download(listOf(track)) }) {
                                     Icon(Icons.Default.Download, contentDescription = "Download")
                                 }
+                            }
+                        }
+                        SxmStationTrack.idOf(track)?.let { (_, trackId) ->
+                            val thumb = thumbs[trackId]
+                            IconButton(onClick = { actions.rate(track, SxmThumb.DOWN) }) {
+                                Icon(
+                                    if (thumb == SxmThumb.DOWN) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
+                                    contentDescription = if (thumb == SxmThumb.DOWN) "Remove thumbs down" else "Thumbs down",
+                                    tint = if (thumb == SxmThumb.DOWN) accent else LocalContentColor.current,
+                                )
+                            }
+                            IconButton(onClick = { actions.rate(track, SxmThumb.UP) }) {
+                                Icon(
+                                    if (thumb == SxmThumb.UP) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                                    contentDescription = if (thumb == SxmThumb.UP) "Remove thumbs up" else "Thumbs up",
+                                    tint = if (thumb == SxmThumb.UP) accent else LocalContentColor.current,
+                                )
                             }
                         }
                         SxmStationTrack.idOf(track)?.let { (_, trackId) ->

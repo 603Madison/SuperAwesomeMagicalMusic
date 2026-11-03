@@ -4,6 +4,8 @@ import com.music.player.AppContainer
 import com.music.player.model.Track
 import com.music.player.sources.siriusxm.SxmArtist
 import com.music.player.sources.siriusxm.SxmCut
+import com.music.player.sources.siriusxm.SxmStationTrack
+import com.music.player.sources.siriusxm.SxmThumb
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -56,6 +58,25 @@ class TrackActions(
                 captured.inLibrary -> showMessage("\"${cut.title}\" is in your Jellyfin library")
                 captured.requestedFromLidarr && container.settingsState.value.lidarr.isConfigured ->
                     showMessage("Not in Jellyfin yet — requested ${cut.artist} from Lidarr")
+            }
+        }
+    }
+
+    /**
+     * Thumbs a Pandora station song up or down; the same thumb again takes it back. A thumb
+     * down skips the song, as in SiriusXM's own app.
+     */
+    fun rate(track: Track, thumb: SxmThumb) {
+        val (stationId, trackId) = SxmStationTrack.idOf(track) ?: return
+        val wanted = if (container.siriusXm.thumbs.value[trackId] == thumb) SxmThumb.NONE else thumb
+        val positionMs = container.player.state.value.positionMs
+        if (wanted == SxmThumb.DOWN && container.player.state.value.current?.key == track.key) container.player.next()
+        scope.launch {
+            val sent = container.siriusXm.rateStationTrack(stationId, trackId, wanted, positionMs)
+            when {
+                !sent -> showMessage("Couldn't send the thumb to SiriusXM")
+                wanted == SxmThumb.DOWN -> showMessage("Thumbs down: the station will play fewer songs like \"${track.title}\"")
+                wanted == SxmThumb.UP -> showMessage("Thumbs up: the station will play more like \"${track.title}\"")
             }
         }
     }

@@ -63,6 +63,10 @@ class SiriusXmClient(
     /** Updated by the playback service while a channel is playing. */
     val nowPlaying: StateFlow<SxmNowPlaying?> = _nowPlaying.asStateFlow()
 
+    private val _thumbs = MutableStateFlow<Map<String, SxmThumb>>(emptyMap())
+    /** Thumbs given this session, by station track id. */
+    val thumbs: StateFlow<Map<String, SxmThumb>> = _thumbs.asStateFlow()
+
     fun publishNowPlaying(value: SxmNowPlaying?) {
         _nowPlaying.value = value
     }
@@ -395,35 +399,82 @@ class SiriusXmClient(
         }
     }
 
+    /** What SiriusXM's players send about the item playing, in every telemetry action. */
+    private fun telemetryAction(type: String, channelId: String, trackId: String, elapsedMs: Long) = buildJsonObject {
+        put("source", buildJsonObject {
+            put("type", type)
+            put("id", channelId)
+        })
+        put("item", buildJsonObject {
+            put("type", if (type == ARTIST_STATION) "artist-station-track" else "xtra-channel-track")
+            put("id", trackId)
+        })
+        put("position", buildJsonObject { put("elapsedTimeMs", elapsedMs) })
+        put("sourceTimestamp", SiriusXmParser.isoUtc(clock()))
+        put("logicalClock", buildJsonObject {
+            put("counter", telemetryCounter.incrementAndGet())
+            put("epoch", 0)
+        })
+    }
+
+    private suspend fun sendTelemetry(name: String, action: JsonElement): JsonObject = call(
+        "POST",
+        "playback/telemetry/v2/actions",
+        buildJsonObject {
+            put("actions", kotlinx.serialization.json.buildJsonArray {
+                add(buildJsonObject { put(name, action) })
+            })
+        },
+    )
+
     private suspend fun reportProgress(type: String, channelId: String, trackId: String, elapsedMs: Long, start: Boolean) {
         runCatching {
-            val action = buildJsonObject {
-                put("source", buildJsonObject {
-                    put("type", type)
-                    put("id", channelId)
-                })
-                put("item", buildJsonObject {
-                    put("type", if (type == ARTIST_STATION) "artist-station-track" else "xtra-channel-track")
-                    put("id", trackId)
-                })
-                put("position", buildJsonObject { put("elapsedTimeMs", elapsedMs) })
-                put("sourceTimestamp", SiriusXmParser.isoUtc(clock()))
-                put("logicalClock", buildJsonObject {
-                    put("counter", telemetryCounter.incrementAndGet())
-                    put("epoch", 0)
-                })
-            }
-            val response = call(
+            val response = sendTelemetry(if (start) "start" else "progress", telemetryAction(type, channelId, trackId, elapsedMs))
+            recordDiagnostics("telemetry ${if (start) "start" else "progress"} $trackId at ${elapsedMs / 1000}s", response.toString())
+        }.onFailure { recordDiagnostics("telemetry failed", it.toString()) }
+    }
+
+    /**
+     * Gives a Pandora station track a thumb up or down (or takes it back with [SxmThumb.NONE]),
+     * which tunes what the station plays next. Sent both ways SiriusXM's web player has sent
+     * thumbs: as a feedback signal and as a telemetry feedback action. Returns whether SiriusXM
+     * took it.
+     */
+    suspend fun rateStationTrack(stationId: String, trackId: String, thumb: SxmThumb, elapsedMs: Long): Boolean {
+        val previous = _thumbs.value[trackId]
+        setThumb(trackId, thumb)
+        val signal = runCatching {
+            call(
                 "POST",
-                "playback/telemetry/v2/actions",
+                "playback/signal/v1/feedback",
                 buildJsonObject {
-                    put("actions", kotlinx.serialization.json.buildJsonArray {
-                        add(buildJsonObject { put(if (start) "start" else "progress", action) })
+                    put("feedbackType", thumb.feedbackType)
+                    put("item", buildJsonObject { put("stationTrack", trackId) })
+                    put("context", buildJsonObject {
+                        put("playback", buildJsonObject {
+                            put("source", buildJsonObject {
+                                put("type", ARTIST_STATION)
+                                put("id", stationId)
+                            })
+                            put("sourceTimestamp", SiriusXmParser.isoUtc(clock()))
+                            put("contentDeliveryMethod", "IP")
+                        })
                     })
                 },
             )
-            recordDiagnostics("telemetry ${if (start) "start" else "progress"} $trackId at ${elapsedMs / 1000}s", response.toString())
-        }.onFailure { recordDiagnostics("telemetry failed", it.toString()) }
+        }
+        recordDiagnostics("feedback ${thumb.feedbackType} $trackId", signal.fold({ it.toString() }, { it.toString() }))
+        val telemetry = runCatching {
+            sendTelemetry("feedback", buildJsonObject { put(thumb.telemetryName, telemetryAction(ARTIST_STATION, stationId, trackId, elapsedMs)) })
+        }
+        recordDiagnostics("telemetry ${thumb.telemetryName} $trackId", telemetry.fold({ it.toString() }, { it.toString() }))
+        val sent = signal.isSuccess || telemetry.isSuccess
+        if (!sent) setThumb(trackId, previous ?: SxmThumb.NONE)
+        return sent
+    }
+
+    private fun setThumb(trackId: String, thumb: SxmThumb) {
+        _thumbs.value = if (thumb == SxmThumb.NONE) _thumbs.value - trackId else _thumbs.value + (trackId to thumb)
     }
 
     /** What SiriusXM sent recently, for troubleshooting (no passwords or session tokens). */

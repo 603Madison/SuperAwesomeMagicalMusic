@@ -89,6 +89,13 @@ data class SxmStationTrack(val stationId: String, val id: String, val url: Strin
     }
 }
 
+/** A thumb on a Pandora station track, as SiriusXM names it in each kind of request. */
+enum class SxmThumb(val feedbackType: String, val telemetryName: String) {
+    UP("THUMBS_UP", "thumbsUp"),
+    DOWN("THUMBS_DOWN", "thumbsDown"),
+    NONE("REMOVE_THUMB", "removeThumb"),
+}
+
 /** One item ("cut") in a channel's schedule: usually a song, sometimes talk or an ad break. */
 data class SxmCut(
     val id: String,

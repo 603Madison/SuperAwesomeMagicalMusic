@@ -95,9 +95,10 @@ class PlaybackService : MediaLibraryService() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        session = MediaLibrarySession.Builder(this, player, LibraryCallback(container, scope))
+        val buttons = SessionButtons(container)
+        session = MediaLibrarySession.Builder(this, player, LibraryCallback(container, scope, buttons))
             .setSessionActivity(openApp)
-            .setMediaButtonPreferences(listOf(LibraryCallback.SAVE_SONG_BUTTON))
+            .setMediaButtonPreferences(buttons.buttons(player))
             .setBitmapLoader(
                 NetworkAwareBitmapLoader(
                     DataSourceBitmapLoader.Builder(this)
@@ -106,6 +107,19 @@ class PlaybackService : MediaLibraryService() {
                 ) { artworkAllowed() },
             )
             .build()
+
+        // Android Auto's buttons follow what's playing: thumbs on station songs, and the
+        // bookmark button turns into a tick once the song is bookmarked.
+        val refreshButtons = { session?.setMediaButtonPreferences(buttons.buttons(player)) }
+        player.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                refreshButtons()
+            }
+        })
+        scope.launch {
+            combine(container.bookmarks.items, container.siriusXm.thumbs, container.siriusXm.nowPlaying) { _, _, _ -> }
+                .collect { refreshButtons() }
+        }
 
         // On a network change (e.g. Wi-Fi -> satellite), queued songs re-pick their bitrate. The
         // current song keeps its stream so seeking within it stays consistent.
@@ -353,6 +367,13 @@ class PlaybackService : MediaLibraryService() {
             decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
         ) {
             mediaId(eventTime)?.let { container.playbackDetails.onFormat(it, format) }
+        }
+
+        override fun onAudioTrackInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            audioTrackConfig: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig,
+        ) {
+            mediaId(eventTime)?.let { container.playbackDetails.onOutput(it, audioTrackConfig.sampleRate) }
         }
 
         override fun onLoadCompleted(

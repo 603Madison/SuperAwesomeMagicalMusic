@@ -67,7 +67,11 @@ Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Andro
 SiriusXM includes Pandora artist stations: music by and like one artist. Tap **Artist station** on
 a song playing on SiriusXM to start one for that artist, or **New station** on the Radio tab to
 search for an artist. Stations are saved on the Radio tab and in Android Auto (SiriusXM › Pandora
-artist stations). They play a track at a time like Xtra channels, stitched into one stream.
+artist stations). Each track is its own item in the queue, with more fetched as you near the end.
+**Thumbs up / down** (in the player and Android Auto) tell the station what you like, as in
+SiriusXM's app; thumbs down also skips the song. SiriusXM sends station tracks as single
+64 kbps AAC files (HE-AAC, the decoder usually finds), and as far as its web player shows, there's
+no higher-quality version to ask for.
 SiriusXM's search request isn't documented anywhere public, so artist search is a best guess;
 starting a station from a song you're hearing doesn't depend on it.
 
@@ -85,8 +89,11 @@ Android Auto under **Radio**. Next and previous move between stations in the lis
 The app appears as a media source in Android Auto. You can browse **Playlists**, **Downloads**
 and **SiriusXM** channels by category, search, and ask the Assistant to "play … on Music": a
 SiriusXM channel name plays that channel, anything else searches Jellyfin first. The
-**Save song** (heart) button adds the SiriusXM song you're hearing to a "Heard on SiriusXM"
-playlist (or, for other music, the current song to "Saved songs").
+**Bookmark** (+) button keeps the song you're hearing (on SiriusXM, a Pandora station, or
+anything else) for later and turns into a tick; press it again to take the bookmark back. The next
+time you open the app on your phone, it asks which playlist each bookmarked song goes in, so you
+never have to pick one while driving. On Pandora station songs, **thumbs up / down** buttons appear
+as well.
 
 ### 2. Bitrates per network, including satellite
 

@@ -25,6 +25,13 @@ data class MediaDetails(
     val declaredKbps: Int? = null,
     /** Bytes downloaded per second of audio, over the most recent segments. */
     val measuredKbps: Int? = null,
+    /** The sample rate the stream declares, before any doubling by SBR. */
+    val codedSampleRateHz: Int? = null,
+    /**
+     * HE-AAC whose stream declares only its AAC-LC core (implicit SBR): found from the decoder
+     * putting out twice the declared sample rate.
+     */
+    val implicitSbr: Boolean = false,
 )
 
 class PlaybackDetails {
@@ -37,14 +44,21 @@ class PlaybackDetails {
     /** The format the audio decoder was given for [mediaId]. */
     @OptIn(UnstableApi::class)
     fun onFormat(mediaId: String, format: Format) {
-        val codec = codecName(format.codecs, format.sampleMimeType)
+        val coded = format.sampleRate.takeIf { rate -> rate != Format.NO_VALUE }
+        val declared = codecName(format.codecs, format.sampleMimeType)
+        // The same kind of stream as one found to be implicit HE-AAC (the audio output may not
+        // be set up again for it, so there'd be nothing new to go on).
+        val implicit = declared == "AAC-LC" && coded != null && implicitSbrSeen == format.codecs to coded
+        val codec = if (implicit) "HE-AAC" else declared
         val sbr = codec == "HE-AAC" || codec == "HE-AAC v2"
         update(mediaId) {
             it.copy(
                 codec = codec,
                 codecString = format.codecs,
+                codedSampleRateHz = coded,
+                implicitSbr = implicit,
                 // HE-AAC carries half the sample rate; spectral band replication restores the rest.
-                sampleRateHz = format.sampleRate.takeIf { rate -> rate != Format.NO_VALUE }?.let { rate -> if (sbr && rate <= 24_000) rate * 2 else rate },
+                sampleRateHz = coded?.let { rate -> if (sbr && rate <= 24_000) rate * 2 else rate },
                 channels = format.channelCount.takeIf { count -> count != Format.NO_VALUE },
                 declaredKbps = (format.averageBitrate.takeIf { rate -> rate != Format.NO_VALUE } ?: format.bitrate.takeIf { rate -> rate != Format.NO_VALUE })
                     ?.let { rate -> (rate + 500) / 1000 }
@@ -52,6 +66,21 @@ class PlaybackDetails {
             )
         }
     }
+
+    /**
+     * The audio output was set up for [mediaId] at [sampleRateHz]. AAC-LC decoded to twice its
+     * declared rate is HE-AAC with implicit SBR: the stream only declared its core.
+     */
+    fun onOutput(mediaId: String, sampleRateHz: Int) {
+        val details = _state.value[mediaId] ?: return
+        val coded = details.codedSampleRateHz ?: return
+        if (details.codec != "AAC-LC" || sampleRateHz != coded * 2) return
+        implicitSbrSeen = details.codecString to coded
+        update(mediaId) { it.copy(codec = "HE-AAC", sampleRateHz = sampleRateHz, implicitSbr = true) }
+    }
+
+    @Volatile
+    private var implicitSbrSeen: Pair<String?, Int>? = null
 
     /** A segment of [mediaId]'s audio was downloaded: [bytes] for [durationMs] of audio. */
     @Synchronized

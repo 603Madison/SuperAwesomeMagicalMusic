@@ -86,7 +86,14 @@ private fun ColumnScope.NowPlayingInfo(origin: PlaybackOrigin?, player: PlayerUi
     }
     val decoded = LocalAppContainer.current.playbackDetails.state.collectAsStateWithLifecycle().value[player.current?.key]
     val codec = decoded?.codec ?: player.format?.codec
-    codec?.let { Info("Codec", listOfNotNull(it, decoded?.codecString?.takeIf { code -> code != it.lowercase() }).joinToString(" · ")) }
+    codec?.let {
+        val parts = listOfNotNull(
+            it,
+            decoded?.codecString?.takeIf { code -> code != it.lowercase() },
+            "SBR found by the decoder".takeIf { decoded?.implicitSbr == true },
+        )
+        Info("Codec", parts.joinToString(" · "))
+    }
     describe(decoded, player.format)?.let { Info("Audio", it) }
     bitrate(decoded, player.format, origin)?.let { Info("Bitrate", it) }
     origin?.quality?.let { Info("Bitrate cap", "${it.label} (picked on $networkLabel)") }

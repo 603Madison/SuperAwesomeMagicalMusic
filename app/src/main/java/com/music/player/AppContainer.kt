@@ -125,6 +125,7 @@ class AppContainer(val context: Context) {
 
     /** What's actually being decoded and downloaded for each queue item (filled in by the playback service). */
     val playbackDetails = PlaybackDetails()
+    val bookmarks = com.music.player.bookmarks.Bookmarks(File(context.filesDir, "bookmarks.json"))
 
     private val _playbackErrors = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val playbackErrors: SharedFlow<String> = _playbackErrors
