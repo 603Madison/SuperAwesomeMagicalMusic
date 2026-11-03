@@ -93,4 +93,36 @@ class TrackMatcherTest {
         assertEquals("near", TrackMatcher.bestMatch(wanted, listOf(far, near))?.sourceId)
         assertNull(TrackMatcher.bestMatch(wanted, listOf(track("Other", "Artist"))))
     }
+    @Test
+    fun `a different version of a song is not the song heard`() {
+        val heard = track("Scarlett", "Holly Humberstone", durationMs = 200_000, source = SourceType.SIRIUSXM)
+        val garden = track("Scarlett (garden version)", "Holly Humberstone", durationMs = 188_000, source = SourceType.JELLYFIN)
+        assertFalse(TrackMatcher.matches(garden, heard))
+        assertNull(TrackMatcher.bestMatch(heard, listOf(garden)))
+        val original = track("Scarlett", "Holly Humberstone", durationMs = 230_000, source = SourceType.JELLYFIN, id = "original")
+        assertEquals("original", TrackMatcher.bestMatch(heard, listOf(garden, original))?.sourceId)
+        assertFalse(TrackMatcher.matches(track("Song (Live)", "Artist"), track("Song", "Artist")))
+        assertFalse(TrackMatcher.matches(track("Song (Acoustic)", "Artist"), track("Song (Live)", "Artist")))
+        assertFalse(TrackMatcher.matches(track("Song - Remix", "Artist"), track("Song", "Artist")))
+    }
+
+    @Test
+    fun `remaster, explicit and credit tags are still the same song`() {
+        assertTrue(TrackMatcher.variant("Here Comes The Sun - Remastered 2009").isEmpty())
+        assertTrue(TrackMatcher.variant("Despacito (feat. Daddy Yankee) [Explicit]").isEmpty())
+        assertTrue(TrackMatcher.variant("Song (From \"Some Movie\") (Official Audio)").isEmpty())
+        assertTrue(TrackMatcher.variant("Get Lucky - Radio Edit").isEmpty())
+        assertEquals(setOf("garden"), TrackMatcher.variant("Scarlett (garden version)"))
+        assertTrue(TrackMatcher.matches(track("Song (2011 Remaster)", "Artist"), track("Song", "Artist")))
+        assertTrue(TrackMatcher.matches(track("Song (Live at Wembley)", "Artist"), track("Song (Live)", "Artist")))
+        assertTrue(TrackMatcher.matches(track("All Too Well (Taylor's Version)", "Taylor Swift"), track("All Too Well (Taylors Version)", "Taylor Swift")))
+    }
+
+    @Test
+    fun `the same tags win over a closer duration`() {
+        val wanted = track("Song (Live)", "Artist", durationMs = 200_000)
+        val liveAt = track("Song (Live at Wembley)", "Artist", durationMs = 200_000, id = "wembley")
+        val live = track("Song (Live)", "Artist", durationMs = 208_000, id = "live")
+        assertEquals("live", TrackMatcher.bestMatch(wanted, listOf(liveAt, live))?.sourceId)
+    }
 }
