@@ -67,7 +67,8 @@ class PlaybackService : MediaLibraryService() {
         container.appLog.log("service", "playback service started")
 
         val http = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(container.httpClient))
-        val upstream = SiriusXmDataSource.Factory(http, container.siriusXm)
+        // YouTube streams are read in short ranges (see ChunkedDataSource).
+        val upstream = ChunkedDataSource.Factory(SiriusXmDataSource.Factory(http, container.siriusXm))
         val dataSourceFactory = ResolvingDataSource.Factory(upstream) { dataSpec -> resolve(dataSpec) }
         val extractors = DefaultExtractorsFactory()
             // Lets transcoded MP3/AAC streams of unknown length be seekable.
