@@ -105,3 +105,51 @@ data class DownloadEntity(
     val effectiveKbps: Int?
         get() = kbps ?: track.durationMs?.takeIf { it > 0 && sizeBytes > 0 }?.let { (sizeBytes * 8 / it).toInt() }
 }
+
+/** A song played (or heard on SiriusXM): the listening history, newest first. */
+@Entity(tableName = "history", indices = [Index("playedAt")])
+data class HistoryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @Embedded(prefix = "track_") val track: Track,
+    val playedAt: Long,
+    /** Where it was heard (a SiriusXM channel or Pandora station), or null for music you chose. */
+    val heardOn: String? = null,
+    /** Heard on SiriusXM: saving it looks for the library copy first, as for any heard song. */
+    val heard: Boolean = false,
+)
+
+/** A listen waiting to be scrobbled (sent once online). */
+@Entity(tableName = "pending_scrobbles")
+data class PendingScrobbleEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @Embedded(prefix = "track_") val track: Track,
+    /** When the song started, as scrobbling services want it. */
+    val playedAt: Long,
+    val attempts: Int = 0,
+    /** Sent to each service separately, so a retry never sends one twice. */
+    val listenBrainzDone: Boolean = false,
+    val lastFmDone: Boolean = false,
+)
+
+/** An artist added to Lidarr, watched until their music has been downloaded. */
+@Entity(tableName = "lidarr_added")
+data class LidarrAddedEntity(
+    @PrimaryKey val artistId: Int,
+    val artistName: String,
+    val addedAt: Long,
+)
+
+/** A song saved whole in the playback cache, which plays from there when offline. */
+@Entity(tableName = "cached_copies")
+data class CachedCopyEntity(
+    /** The queued song. */
+    @PrimaryKey val trackKey: String,
+    /** The key of the cached bytes (identifies the exact copy and format). */
+    val cacheKey: String,
+    /** The copy that was cached (may be another service's copy of the song). */
+    @Embedded(prefix = "copy_") val copy: Track,
+    val description: String,
+    val kbps: Int? = null,
+    val gainDb: Float? = null,
+    val cachedAt: Long,
+)

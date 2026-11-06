@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
+import com.music.player.model.Track
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -174,3 +175,93 @@ interface DownloadDao {
 
 /** One playlist entry's artwork (see PlaylistDao.observeArtwork). */
 data class PlaylistArtwork(val playlistId: String, val artworkUrl: String)
+
+/** How often a song was played, for "most played". */
+data class PlayCount(
+    @androidx.room.Embedded(prefix = "track_") val track: Track,
+    val plays: Int,
+)
+
+@Dao
+interface HistoryDao {
+    @Insert
+    suspend fun insert(entry: HistoryEntity)
+
+    @Query("SELECT * FROM history ORDER BY playedAt DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<HistoryEntity>>
+
+    @Query("SELECT * FROM history ORDER BY playedAt DESC LIMIT 1")
+    suspend fun latest(): HistoryEntity?
+
+    @Query("SELECT * FROM history ORDER BY playedAt DESC LIMIT :limit")
+    suspend fun recent(limit: Int): List<HistoryEntity>
+
+    /** Songs you chose to play (not ones heard on the radio), most played first. */
+    @Query(
+        "SELECT track_source, track_sourceId, track_title, track_artist, track_album, track_durationMs, track_artworkUrl, track_isrc, " +
+            "COUNT(*) AS plays FROM history WHERE heard = 0 AND playedAt >= :since " +
+            "GROUP BY track_source, track_sourceId ORDER BY plays DESC, MAX(playedAt) DESC LIMIT :limit",
+    )
+    suspend fun mostPlayed(since: Long, limit: Int): List<PlayCount>
+
+    /** Keeps the newest [keep] entries. */
+    @Query("DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY playedAt DESC LIMIT :keep)")
+    suspend fun trim(keep: Int)
+
+    @Query("DELETE FROM history")
+    suspend fun clear()
+}
+
+@Dao
+interface ScrobbleDao {
+    @Insert
+    suspend fun insert(listen: PendingScrobbleEntity)
+
+    @Query("SELECT * FROM pending_scrobbles ORDER BY playedAt LIMIT :limit")
+    suspend fun oldest(limit: Int): List<PendingScrobbleEntity>
+
+    @Query("DELETE FROM pending_scrobbles WHERE id IN (:ids)")
+    suspend fun delete(ids: List<Long>)
+
+    @Query("UPDATE pending_scrobbles SET attempts = attempts + 1 WHERE id IN (:ids)")
+    suspend fun recordAttempt(ids: List<Long>)
+
+    @Query("UPDATE pending_scrobbles SET listenBrainzDone = 1 WHERE id IN (:ids)")
+    suspend fun markListenBrainzDone(ids: List<Long>)
+
+    @Query("UPDATE pending_scrobbles SET lastFmDone = 1 WHERE id IN (:ids)")
+    suspend fun markLastFmDone(ids: List<Long>)
+
+    @Query("SELECT COUNT(*) FROM pending_scrobbles")
+    fun observeCount(): Flow<Int>
+}
+
+@Dao
+interface LidarrAddedDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(artist: LidarrAddedEntity)
+
+    @Query("SELECT * FROM lidarr_added ORDER BY addedAt")
+    suspend fun all(): List<LidarrAddedEntity>
+
+    @Query("SELECT * FROM lidarr_added ORDER BY addedAt")
+    fun observeAll(): Flow<List<LidarrAddedEntity>>
+
+    @Query("DELETE FROM lidarr_added WHERE artistId = :artistId")
+    suspend fun delete(artistId: Int)
+}
+
+@Dao
+interface CachedCopyDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(copy: CachedCopyEntity)
+
+    @Query("SELECT * FROM cached_copies WHERE trackKey = :trackKey")
+    suspend fun get(trackKey: String): CachedCopyEntity?
+
+    @Query("DELETE FROM cached_copies WHERE trackKey = :trackKey")
+    suspend fun delete(trackKey: String)
+
+    @Query("DELETE FROM cached_copies")
+    suspend fun clear()
+}

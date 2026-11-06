@@ -3,6 +3,8 @@ package com.music.player.lidarr
 import android.util.Log
 import com.music.player.data.LidarrRequestDao
 import com.music.player.data.LidarrRequestEntity
+import com.music.player.data.LidarrAddedEntity
+import com.music.player.data.LidarrAddedDao
 import com.music.player.model.SourceType
 import com.music.player.model.Track
 import com.music.player.net.HttpException
@@ -26,6 +28,8 @@ sealed interface LidarrEvent {
     data class ArtistAdded(val artist: String) : LidarrEvent
     data class ArtistNotFound(val artist: String) : LidarrEvent
     data class Failed(val artist: String, val message: String) : LidarrEvent
+    /** Lidarr has downloaded music by an artist it added for you. */
+    data class ArtistDownloaded(val artist: String) : LidarrEvent
 }
 
 /** Whether the Lidarr server answered the last time the queue was processed. */
@@ -50,7 +54,14 @@ class LidarrService(
     private val queue: LidarrRequestDao,
     private val scope: CoroutineScope,
     private val clock: () -> Long = System::currentTimeMillis,
+    /** Artists added for you, watched until Lidarr has their music (null: not watched). */
+    private val added: LidarrAddedDao? = null,
 ) {
+    /** Artists added for you whose music Lidarr hasn't downloaded yet. */
+    val waitingForDownloads: Flow<List<LidarrAddedEntity>> = added?.observeAll() ?: kotlinx.coroutines.flow.flowOf(emptyList())
+
+    private var downloadsCheckedAt = 0L
+
     private val _events = MutableSharedFlow<LidarrEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<LidarrEvent> = _events
 
@@ -101,7 +112,8 @@ class LidarrService(
         val settings = config()
         if (!settings.isConfigured) return 0
         val requests = queue.all()
-        if (requests.isEmpty()) return 0
+        val watched = added?.all().orEmpty()
+        if (requests.isEmpty() && (watched.isEmpty() || clock() - downloadsCheckedAt < DOWNLOAD_CHECK_MS)) return 0
 
         try {
             client.testConnection(settings)
@@ -116,7 +128,10 @@ class LidarrService(
         for (request in requests) {
             try {
                 when (val outcome = ensureArtist(settings, request.artistName)) {
-                    is Outcome.Added -> _events.tryEmit(LidarrEvent.ArtistAdded(outcome.name))
+                    is Outcome.Added -> {
+                        _events.tryEmit(LidarrEvent.ArtistAdded(outcome.name))
+                        if (outcome.id > 0) added?.upsert(LidarrAddedEntity(outcome.id, outcome.name, clock()))
+                    }
                     Outcome.AlreadyPresent -> Unit
                     Outcome.NotFound -> _events.tryEmit(LidarrEvent.ArtistNotFound(request.artistName))
                 }
@@ -138,11 +153,18 @@ class LidarrService(
                 _events.tryEmit(LidarrEvent.Failed(request.artistName, message))
             }
         }
+        if (_reachability.value is LidarrReachability.Reachable && clock() - downloadsCheckedAt >= DOWNLOAD_CHECK_MS) {
+            try {
+                checkDownloads(settings)
+            } catch (e: IOException) {
+                Log.i(TAG, "Couldn't check Lidarr downloads", e)
+            }
+        }
         completed
     }
 
     private sealed interface Outcome {
-        data class Added(val name: String) : Outcome
+        data class Added(val name: String, val id: Int) : Outcome
         data object AlreadyPresent : Outcome
         data object NotFound : Outcome
     }
@@ -163,7 +185,31 @@ class LidarrService(
 
         val added = addWithDefaults(settings, match)
         cachedArtists = existing + added
-        return Outcome.Added(added.artistName)
+        return Outcome.Added(added.artistName, added.id)
+    }
+
+    /**
+     * Checks on artists added for you: once Lidarr has downloaded some of their music, says so
+     * and stops watching. Gives up on an artist after a month (nothing found to download).
+     */
+    private suspend fun checkDownloads(settings: LidarrConfig) {
+        val dao = added ?: return
+        downloadsCheckedAt = clock()
+        for (artist in dao.all()) {
+            val files = try {
+                client.trackFileCount(settings, artist.artistId)
+            } catch (e: HttpException) {
+                continue
+            }
+            when {
+                files == null -> dao.delete(artist.artistId)
+                files > 0 -> {
+                    _events.tryEmit(LidarrEvent.ArtistDownloaded(artist.artistName))
+                    dao.delete(artist.artistId)
+                }
+                clock() - artist.addedAt > GIVE_UP_MS -> dao.delete(artist.artistId)
+            }
+        }
     }
 
     private suspend fun addWithDefaults(settings: LidarrConfig, lookupResult: JsonObject): LidarrArtist {
@@ -208,6 +254,10 @@ class LidarrService(
     private companion object {
         const val TAG = "LidarrService"
         const val CACHE_MS = 10 * 60 * 1000L
+
+        /** How often to ask Lidarr whether added artists' music has arrived. */
+        const val DOWNLOAD_CHECK_MS = 15 * 60 * 1000L
+        const val GIVE_UP_MS = 30L * 24 * 3600 * 1000
 
         /** After finding Lidarr unreachable, new requests just wait in the queue this long. */
         const val RETRY_UNREACHABLE_MS = 5 * 60 * 1000L

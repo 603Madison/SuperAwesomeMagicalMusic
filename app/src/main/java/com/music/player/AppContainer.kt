@@ -79,7 +79,7 @@ class AppContainer(val context: Context) {
     val lidarrClient = LidarrClient(
         httpClient.newBuilder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build(),
     )
-    val lidarr = LidarrService(lidarrClient, { settings.current().lidarr }, database.lidarrRequests(), appScope)
+    val lidarr = LidarrService(lidarrClient, { settings.current().lidarr }, database.lidarrRequests(), appScope, added = database.lidarrAdded())
 
     val siriusXm = SiriusXmClient(
         http = httpClient,
@@ -91,6 +91,14 @@ class AppContainer(val context: Context) {
     val downloads = DownloadRepository(context, database.downloads(), settings)
     val missingDetails = MissingDetails(database.playlists(), database.downloads())
     val radio = RadioBrowserClient(httpClient, userAgent = "SuperAwesomeMagicalMusic/${versionDescription.substringBefore(' ')}")
+    /** Songs kept for dead zones (see PlaybackCache). */
+    val playbackCache = com.music.player.playback.PlaybackCache(
+        context,
+        database.cachedCopies(),
+        maxBytes = { settingsState.value.cache.sizeMb * 1024L * 1024L },
+        enabled = { settingsState.value.cache.enabled },
+    )
+
     val resolver = StreamResolver(
         catalog,
         database.downloads(),
@@ -101,6 +109,7 @@ class AppContainer(val context: Context) {
         missingDetails,
         appScope,
         radio,
+        playbackCache,
     )
 
     val nextcloud = NextcloudClient(httpClient)
@@ -110,6 +119,13 @@ class AppContainer(val context: Context) {
         owner = settings.settings.map { it.nextcloud.owner },
         onChanged = ::onPlaylistsChanged,
     )
+    val scrobbler = com.music.player.scrobble.Scrobbler(
+        database.scrobbles(),
+        { settings.current().scrobbling },
+        com.music.player.scrobble.ListenBrainzClient(httpClient),
+        com.music.player.scrobble.LastFmClient(httpClient),
+    ) { networkMonitor.state.value.isOnline }
+    val listening = com.music.player.history.ListeningTracker(database.history(), scrobbler, appScope)
     val heardSongs = HeardSongs(jellyfin, lidarr, playlists) { catalog.findCopyWithArtwork(it, includeJellyfin = false) }
     val offlinePlaylists = OfflinePlaylists(
         database.playlists(),
@@ -128,6 +144,7 @@ class AppContainer(val context: Context) {
     /** The player's volume leveller (see PlaybackService). */
     val loudness = com.music.player.playback.LoudnessProcessor()
     val sleepTimer = com.music.player.playback.SleepTimer()
+    val queueStore = com.music.player.playback.QueueStore(File(context.filesDir, "queue.json"))
     val lyrics = com.music.player.lyrics.LyricsRepository(
         httpClient,
         jellyfin,
@@ -168,6 +185,8 @@ class AppContainer(val context: Context) {
                 if (networkClass != NetworkClass.NONE) {
                     delay(3_000)
                     lidarr.processInBackground()
+                    // Listens made offline go out once back online.
+                    runCatching { scrobbler.flush() }.onFailure { Log.w("AppContainer", "Scrobbling failed", it) }
                 }
             }
         }

@@ -154,6 +154,25 @@ class SettingsRepository(context: Context) {
     suspend fun setPlayback(playback: PlaybackSettings) = store.edit {
         it[Keys.LEVEL_VOLUME] = playback.levelVolume
         it[Keys.SXM_FROM_SONG_START] = playback.siriusXmFromSongStart
+        it[Keys.LIKED_ON_PANDORA] = playback.likedOnPandoraPlaylist
+        it[Keys.RESUME_IN_CAR] = playback.resumeInCar
+    }
+
+    suspend fun setCache(cache: CacheSettings) = store.edit {
+        it[Keys.CACHE_ENABLED] = cache.enabled
+        it[Keys.CACHE_SIZE_MB] = cache.sizeMb
+        it[Keys.CACHE_AHEAD] = cache.songsAhead
+        it[Keys.CACHE_CELLULAR] = cache.onCellular
+    }
+
+    suspend fun setScrobbling(scrobbling: ScrobbleSettings) = store.edit {
+        it[Keys.LB_TOKEN] = scrobbling.listenBrainzToken
+        it[Keys.LB_URL] = scrobbling.listenBrainzUrl
+        it[Keys.LASTFM_KEY] = scrobbling.lastFmApiKey
+        it[Keys.LASTFM_SECRET] = scrobbling.lastFmSecret
+        it[Keys.LASTFM_USER] = scrobbling.lastFmUser
+        it[Keys.LASTFM_SESSION] = scrobbling.lastFmSession
+        it[Keys.SCROBBLE_RADIO] = scrobbling.includeRadio
     }
 
     private fun Preferences.toAppSettings(): AppSettings {
@@ -218,6 +237,23 @@ class SettingsRepository(context: Context) {
             playback = PlaybackSettings(
                 levelVolume = this[Keys.LEVEL_VOLUME] ?: defaults.playback.levelVolume,
                 siriusXmFromSongStart = this[Keys.SXM_FROM_SONG_START] ?: defaults.playback.siriusXmFromSongStart,
+                likedOnPandoraPlaylist = this[Keys.LIKED_ON_PANDORA] ?: defaults.playback.likedOnPandoraPlaylist,
+                resumeInCar = this[Keys.RESUME_IN_CAR] ?: defaults.playback.resumeInCar,
+            ),
+            cache = CacheSettings(
+                enabled = this[Keys.CACHE_ENABLED] ?: defaults.cache.enabled,
+                sizeMb = this[Keys.CACHE_SIZE_MB] ?: defaults.cache.sizeMb,
+                songsAhead = this[Keys.CACHE_AHEAD] ?: defaults.cache.songsAhead,
+                onCellular = this[Keys.CACHE_CELLULAR] ?: defaults.cache.onCellular,
+            ),
+            scrobbling = ScrobbleSettings(
+                listenBrainzToken = this[Keys.LB_TOKEN].orEmpty(),
+                listenBrainzUrl = this[Keys.LB_URL]?.takeIf { it.isNotBlank() } ?: ScrobbleSettings.DEFAULT_LISTENBRAINZ_URL,
+                lastFmApiKey = this[Keys.LASTFM_KEY].orEmpty(),
+                lastFmSecret = this[Keys.LASTFM_SECRET].orEmpty(),
+                lastFmUser = this[Keys.LASTFM_USER].orEmpty(),
+                lastFmSession = this[Keys.LASTFM_SESSION].orEmpty(),
+                includeRadio = this[Keys.SCROBBLE_RADIO] ?: defaults.scrobbling.includeRadio,
             ),
         )
     }
@@ -290,5 +326,18 @@ class SettingsRepository(context: Context) {
         val BUFFER_AHEAD = intPreferencesKey("buffer_ahead_seconds")
         val LEVEL_VOLUME = booleanPreferencesKey("level_volume")
         val SXM_FROM_SONG_START = booleanPreferencesKey("sxm_from_song_start")
+        val LIKED_ON_PANDORA = booleanPreferencesKey("liked_on_pandora_playlist")
+        val RESUME_IN_CAR = booleanPreferencesKey("resume_in_car")
+        val CACHE_ENABLED = booleanPreferencesKey("cache_enabled")
+        val CACHE_SIZE_MB = intPreferencesKey("cache_size_mb")
+        val CACHE_AHEAD = intPreferencesKey("cache_songs_ahead")
+        val CACHE_CELLULAR = booleanPreferencesKey("cache_on_cellular")
+        val LB_TOKEN = stringPreferencesKey("listenbrainz_token")
+        val LB_URL = stringPreferencesKey("listenbrainz_url")
+        val LASTFM_KEY = stringPreferencesKey("lastfm_api_key")
+        val LASTFM_SECRET = stringPreferencesKey("lastfm_secret")
+        val LASTFM_USER = stringPreferencesKey("lastfm_user")
+        val LASTFM_SESSION = stringPreferencesKey("lastfm_session")
+        val SCROBBLE_RADIO = booleanPreferencesKey("scrobble_radio")
     }
 }

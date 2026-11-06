@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.DropdownMenu
@@ -26,6 +27,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.music.player.ui.LocalAppContainer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -104,6 +107,10 @@ fun ColumnScope.StandardTrackMenuItems(track: Track, downloaded: Boolean, dismis
     MenuItem("Play next", Icons.Default.SkipNext) { dismiss(); actions.playNext(track) }
     MenuItem("Add to queue", Icons.AutoMirrored.Filled.QueueMusic) { dismiss(); actions.addToQueue(listOf(track)) }
     MenuItem("Info", Icons.Outlined.Info) { dismiss(); actions.info(track) }
+    val siriusXm = LocalAppContainer.current.settingsState.collectAsStateWithLifecycle().value.siriusXm.isConfigured
+    if (siriusXm && !track.isSiriusXmChannel && track.source != SourceType.RADIO) {
+        MenuItem("Start artist station", Icons.Default.Radio) { dismiss(); actions.startStationFor(track) }
+    }
     // Live channels and stations can't be saved or downloaded; SiriusXM songs can (see the radio screen).
     if (track.isLive) return
     MenuItem("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) { dismiss(); actions.addToPlaylist(listOf(track)) }

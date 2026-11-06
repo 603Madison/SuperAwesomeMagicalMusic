@@ -81,4 +81,23 @@ class DatabaseTest {
     private companion object {
         const val DB = "migration-test"
     }
+
+    @Test
+    fun `version 3 upgrades to 4 with empty history, scrobble, lidarr and cache tables`() {
+        migrations.createDatabase(DB, 3).use { db ->
+            db.execSQL("INSERT INTO playlists (id, name, createdAt, updatedAt, deleted, ownerId, keepDownloaded) VALUES ('p1', 'Mix', 1, 2, 0, NULL, 0)")
+        }
+        migrations.runMigrationsAndValidate(DB, 4, true, AppDatabase.MIGRATION_3_4).use { db ->
+            listOf("history", "pending_scrobbles", "lidarr_added", "cached_copies").forEach { table ->
+                db.query("SELECT COUNT(*) FROM $table").use { cursor ->
+                    cursor.moveToFirst()
+                    assertEquals(0, cursor.getInt(0))
+                }
+            }
+            db.query("SELECT name FROM playlists").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("Mix", cursor.getString(0))
+            }
+        }
+    }
 }

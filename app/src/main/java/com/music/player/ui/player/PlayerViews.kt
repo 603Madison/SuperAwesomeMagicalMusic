@@ -303,11 +303,7 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
                         }
                         SxmStationTrack.idOf(track)?.let { (_, trackId) ->
                             // Station tracks' links expire, so save the song itself (Jellyfin first, as usual).
-                            IconButton(onClick = {
-                                actions.saveHeardSong(
-                                    SxmCut(trackId, track.title, track.artist, track.album, 0, track.durationMs ?: 0, track.artworkUrl, interstitial = false),
-                                )
-                            }) {
+                            IconButton(onClick = { SxmStationTrack.asCut(track)?.let(actions::saveHeardSong) }) {
                                 Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Save song")
                             }
                         }

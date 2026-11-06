@@ -2,6 +2,9 @@ package com.music.player.playback
 
 import android.app.PendingIntent
 import android.content.Intent
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -74,7 +77,9 @@ class PlaybackService : MediaLibraryService() {
         val http = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(container.httpClient))
         // YouTube streams are read in short ranges (see ChunkedDataSource).
         val upstream = ChunkedDataSource.Factory(SiriusXmDataSource.Factory(http, container.siriusXm))
-        val dataSourceFactory = ResolvingDataSource.Factory(upstream) { dataSpec -> resolve(dataSpec) }
+        // Songs with a cache key are read through the playback cache (see PlaybackCache).
+        val dataSourceFactory = ResolvingDataSource.Factory(container.playbackCache.dataSourceFactory(upstream)) { dataSpec -> resolve(dataSpec) }
+        prefetchUpstream = upstream
         val extractors = DefaultExtractorsFactory()
             // Lets transcoded MP3/AAC streams of unknown length be seekable.
             .setConstantBitrateSeekingEnabled(true)
@@ -124,6 +129,31 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         scope.launch { runSleepTimer(player) }
+        player.addListener(ListeningListener(player))
+        prefetcher = Prefetcher(player)
+        player.addListener(object : Player.Listener {
+            override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) prefetcher?.schedule()
+            }
+        })
+        scope.launch {
+            combine(container.networkMonitor.state, container.settings.settings.map { it.cache }) { _, _ -> }
+                .collect { prefetcher?.schedule() }
+        }
+        // The queue is remembered, to pick up where it left off (see LibraryCallback.onPlaybackResumption).
+        player.addListener(object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_IS_PLAYING_CHANGED)) {
+                    saveQueueSoon(player)
+                }
+            }
+        })
+        scope.launch {
+            while (isActive) {
+                delay(QUEUE_SAVE_INTERVAL_MS)
+                if (player.isPlaying) saveQueueSoon(player)
+            }
+        }
 
         // Volume levelling: Jellyfin's own loudness value where the song has one, else by ear.
         scope.launch {
@@ -221,6 +251,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         container.appLog.log("service", "playback service stopped")
+        container.listening.finish()
         scope.cancel()
         container.siriusXm.publishNowPlaying(null)
         session?.run {
@@ -234,7 +265,7 @@ class PlaybackService : MediaLibraryService() {
     /** Called on ExoPlayer's loading thread whenever a `music://` item is opened. */
     private fun resolve(dataSpec: DataSpec): DataSpec {
         val track = TrackUri.decode(dataSpec.uri) ?: return dataSpec
-        val (uri, headers) = try {
+        val resolved = try {
             runBlocking { container.resolver.resolveForPlayback(track) }
         } catch (e: IOException) {
             throw e
@@ -242,8 +273,9 @@ class PlaybackService : MediaLibraryService() {
             throw IOException(e.message, e)
         }
         return dataSpec.buildUpon()
-            .setUri(uri.toUri())
-            .setHttpRequestHeaders(dataSpec.httpRequestHeaders + headers)
+            .setUri(resolved.uri.toUri())
+            .setHttpRequestHeaders(dataSpec.httpRequestHeaders + resolved.headers)
+            .setKey(resolved.cacheKey)
             .build()
     }
 
@@ -276,6 +308,11 @@ class PlaybackService : MediaLibraryService() {
                 if (nowPlaying != container.siriusXm.nowPlaying.value) {
                     container.siriusXm.publishNowPlaying(nowPlaying)
                     showSong(player, cut)
+                    if (cut?.isSong == true) {
+                        container.listening.songStarted(cut.toTrack(), heardOn = track.title, heard = true, playing = player.isPlaying)
+                    } else {
+                        container.listening.finish()
+                    }
                 }
                 refreshButtons()
             }
@@ -319,7 +356,12 @@ class PlaybackService : MediaLibraryService() {
         override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
             val key = previousKey
             previousKey = mediaItem?.mediaId
-            if (key != null && key != mediaItem?.mediaId) container.resolver.release(key)
+            if (key != null && key != mediaItem?.mediaId) {
+                container.resolver.release(key)
+                // Played to the end (or far enough): it can now play with no connection.
+                scope.launch { container.playbackCache.recordIfComplete(key) }
+            }
+            prefetcher?.schedule()
             // The next song may have been resolved (and its copy found) before it started.
             mediaItem?.let { container.resolver.origins.value[it.mediaId]?.playing }?.let { showCopyDetails(player, it) }
 
@@ -394,6 +436,138 @@ class PlaybackService : MediaLibraryService() {
                 if (timer.state.value == state) timer.cancel()
             }
         }
+    }
+
+    /**
+     * Feeds the listening history and scrobbling: songs from the queue as they start, songs on a
+     * Pandora station likewise, and songs on SiriusXM channels as the schedule moves on
+     * (see trackSiriusXmNowPlaying).
+     */
+    private inner class ListeningListener(private val player: ExoPlayer) : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+            val track = mediaItem?.toTrack()
+            val listening = container.listening
+            val station = track?.let(SxmStationTrack::idOf)
+            when {
+                track == null || track.isSiriusXmChannel || track.source == com.music.player.model.SourceType.RADIO -> listening.finish()
+                station != null -> {
+                    val name = container.settingsState.value.siriusXmStations.firstOrNull { it.id == station.first }?.name
+                    val song = SxmStationTrack.asCut(track) ?: return
+                    listening.songStarted(song.toTrack(), name ?: "Pandora station", heard = true, playing = player.isPlaying)
+                }
+                else -> listening.songStarted(track, heardOn = null, heard = false, playing = player.isPlaying)
+            }
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) = container.listening.playingChanged(isPlaying)
+    }
+
+    private var prefetchUpstream: androidx.media3.datasource.DataSource.Factory? = null
+    private var prefetcher: Prefetcher? = null
+
+    /**
+     * Fetches the next few songs into the playback cache while the connection is good (Wi-Fi, or
+     * cellular if allowed; never satellite or with Data Saver on), so a dead zone doesn't stop
+     * the music. Each song is fetched as the copy it will play as.
+     */
+    private inner class Prefetcher(private val player: ExoPlayer) {
+        private var job: kotlinx.coroutines.Job? = null
+
+        fun schedule() {
+            job?.cancel()
+            job = scope.launch {
+                delay(PREFETCH_DELAY_MS)
+                runCatching { prefetch() }.onFailure {
+                    if (it is kotlinx.coroutines.CancellationException) throw it
+                    container.appLog.log("cache", "fetching ahead failed: $it")
+                }
+            }
+        }
+
+        private fun allowed(): Boolean {
+            val settings = container.settingsState.value.cache
+            val network = container.networkMonitor.state.value
+            return settings.enabled && when (network.networkClass) {
+                NetworkClass.WIFI -> true
+                NetworkClass.CELLULAR -> settings.onCellular && !network.savingData
+                else -> false
+            }
+        }
+
+        private suspend fun prefetch() {
+            if (!allowed()) return
+            val cache = container.playbackCache
+            val ahead = container.settingsState.value.cache.songsAhead
+            val start = player.currentMediaItemIndex + 1
+            val upcoming = (start until minOf(player.mediaItemCount, start + ahead)).mapNotNull { player.getMediaItemAt(it).toTrack() }
+            for (track in upcoming) {
+                if (track.isLive && !track.isSiriusXmStationTrack) continue
+                if (container.database.downloads().completed(track.key)?.filePath?.let { java.io.File(it).exists() } == true) continue
+                if (cache.completeCopy(track.key) != null) continue
+                if (!allowed()) return
+                val resolved = try {
+                    container.resolver.resolveForPlayback(track)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    continue // Not playable now (unavailable, offline…); it gets its own chance when it plays.
+                }
+                val key = resolved.cacheKey ?: continue
+                if (!resolved.uri.startsWith("http")) continue
+                fetchWhole(resolved, key, track.key)
+            }
+        }
+
+        private suspend fun fetchWhole(resolved: Resolved, key: String, trackKey: String) = withContext(Dispatchers.IO) {
+            val cache = container.playbackCache
+            val upstream = prefetchUpstream ?: return@withContext
+            // A transcode can't be resumed partway: start it afresh.
+            if (key.startsWith(PlaybackCache.WHOLE)) cache.discard(key)
+            val spec = DataSpec.Builder().setUri(resolved.uri).setHttpRequestHeaders(resolved.headers).setKey(key).build()
+            val writer = CacheWriter(cache.writer(upstream.createDataSource()), spec, null, null)
+            val stop = coroutineContext[kotlinx.coroutines.Job]?.invokeOnCompletion { if (it != null) writer.cancel() }
+            try {
+                writer.cache()
+                cache.recordIfComplete(trackKey)
+                container.appLog.log("cache", "fetched ahead: $trackKey")
+            } catch (e: IOException) {
+                if (key.startsWith(PlaybackCache.WHOLE)) cache.discard(key)
+                if (isActive) container.appLog.log("cache", "couldn't fetch $trackKey ahead: $e")
+            } finally {
+                stop?.dispose()
+            }
+        }
+    }
+
+    private var queueSave: kotlinx.coroutines.Job? = null
+
+    private fun saveQueueSoon(player: Player) {
+        queueSave?.cancel()
+        queueSave = scope.launch {
+            delay(2_000)
+            snapshotQueue(player)?.let { container.queueStore.save(it) }
+        }
+    }
+
+    /**
+     * The queue to remember. Pandora station songs' links expire, so a run of them is remembered
+     * as their station, which hands out fresh songs when played again.
+     */
+    private fun snapshotQueue(player: Player): SavedQueue? {
+        val tracks = ArrayList<com.music.player.model.Track>()
+        var index = 0
+        val stations = container.settingsState.value.siriusXmStations
+        for (i in 0 until player.mediaItemCount) {
+            val track = player.getMediaItemAt(i).toTrack() ?: continue
+            val saved = SxmStationTrack.idOf(track)?.let { (stationId, _) ->
+                (stations.firstOrNull { it.id == stationId } ?: com.music.player.sources.siriusxm.SxmStation(stationId, track.album ?: "Pandora station")).toTrack()
+            } ?: track
+            if (tracks.lastOrNull()?.key != saved.key) tracks += saved
+            if (i == player.currentMediaItemIndex) index = tracks.size - 1
+        }
+        if (tracks.isEmpty()) return null
+        val position = if (tracks[index].isLive) 0 else player.currentPosition.coerceAtLeast(0)
+        return SavedQueue(tracks, index, position, System.currentTimeMillis())
     }
 
     /** Updates Android Auto's buttons for what's playing (set up in onCreate). */
@@ -575,6 +749,8 @@ class PlaybackService : MediaLibraryService() {
         const val NOW_PLAYING_INTERVAL_MS = 10_000L
         const val RETUNE_INTERVAL_MS = 30_000L
         const val SLEEP_FADE_MS = 8_000L
+        const val QUEUE_SAVE_INTERVAL_MS = 30_000L
+        const val PREFETCH_DELAY_MS = 5_000L
 
         /** How far into a song a tuned channel may be for it to start from the beginning. */
         val SONG_START_RANGE_MS = 5_000L..8 * 60_000L

@@ -93,6 +93,8 @@ fun SettingsScreen() {
             QualitySection(settings, viewModel)
             BufferSection(settings, viewModel)
             PlaybackSection(settings, viewModel)
+            CacheSection(settings, viewModel)
+            ScrobblingSection(settings, viewModel)
             JellyfinSection(settings, viewModel)
             StreamingServicesSection(settings, viewModel)
             SiriusXmSection(settings, viewModel)
@@ -211,6 +213,120 @@ private fun PlaybackSection(settings: AppSettings, viewModel: SettingsViewModel)
             "Tuning to a channel starts the song that's on from its start, not midway",
             playback.siriusXmFromSongStart,
         ) { viewModel.setPlayback(playback.copy(siriusXmFromSongStart = it)) }
+        ToggleRow(
+            "Save Pandora thumbs-ups",
+            "A thumbs up on a station song also adds it to a \"Liked on Pandora\" playlist",
+            playback.likedOnPandoraPlaylist,
+        ) { viewModel.setPlayback(playback.copy(likedOnPandoraPlaylist = it)) }
+        ToggleRow(
+            "Resume in the car",
+            "Start playing where you left off when Android Auto connects",
+            playback.resumeInCar,
+        ) { viewModel.setPlayback(playback.copy(resumeInCar = it)) }
+    }
+}
+
+@Composable
+private fun CacheSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    val cache = settings.cache
+    val used by viewModel.cacheUsedBytes.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.refreshCacheUsage() }
+    Section("Dead-zone cache") {
+        Hint(
+            "Keeps the songs you play, and fetches the next few ahead of time while the connection is good, " +
+                "so a dead zone or a stretch on satellite doesn't stop the music. Songs cached whole play with " +
+                "no connection at all. Downloads are separate and never removed.",
+        )
+        ToggleRow("Cache songs", null, cache.enabled) { viewModel.setCache(cache.copy(enabled = it)) }
+        if (cache.enabled) {
+            Text("Space to use", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.music.player.settings.CacheSettings.SIZES_MB.forEach { mb ->
+                    FilterChip(
+                        selected = cache.sizeMb == mb,
+                        onClick = { viewModel.setCache(cache.copy(sizeMb = mb)) },
+                        label = { Text(if (mb < 1024) "$mb MB" else "${mb / 1024} GB") },
+                    )
+                }
+            }
+            Text("Songs to fetch ahead", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.music.player.settings.CacheSettings.SONGS_AHEAD.forEach { count ->
+                    FilterChip(
+                        selected = cache.songsAhead == count,
+                        onClick = { viewModel.setCache(cache.copy(songsAhead = count)) },
+                        label = { Text("$count") },
+                    )
+                }
+            }
+            ToggleRow(
+                "Fetch ahead on cellular",
+                "Otherwise only on Wi-Fi. Never on satellite, or while Data Saver is on",
+                cache.onCellular,
+            ) { viewModel.setCache(cache.copy(onCellular = it)) }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("${android.text.format.Formatter.formatShortFileSize(context, used)} used", modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = viewModel::clearCache) { Text("Clear cache") }
+        }
+    }
+}
+
+@Composable
+private fun ScrobblingSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    val scrobbling = settings.scrobbling
+    val status by viewModel.scrobblingStatus.collectAsStateWithLifecycle()
+    val pending by viewModel.pendingScrobbles.collectAsStateWithLifecycle()
+    Section("Scrobbling") {
+        Hint(
+            "Record what you listen to on ListenBrainz (or a server with its API, such as Maloja) and Last.fm. " +
+                "Listens made offline are sent once you're back online.",
+        )
+        if (scrobbling.listenBrainzEnabled) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("ListenBrainz: ${scrobbling.listenBrainzUrl.substringAfter("://")}", modifier = Modifier.weight(1f))
+                TextButton(onClick = viewModel::disconnectListenBrainz) { Text("Disconnect") }
+            }
+        } else {
+            var url by rememberSaveable { mutableStateOf(com.music.player.settings.ScrobbleSettings.DEFAULT_LISTENBRAINZ_URL) }
+            var token by rememberSaveable { mutableStateOf("") }
+            Field("ListenBrainz server", url, { url = it }, keyboardType = KeyboardType.Uri)
+            Field("User token (from your ListenBrainz settings)", token, { token = it }, secret = true)
+            ActionButton("Connect ListenBrainz", status, enabled = token.isNotBlank()) { viewModel.connectListenBrainz(url, token) }
+        }
+        HorizontalDivider()
+        if (scrobbling.lastFmEnabled) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Last.fm: ${scrobbling.lastFmUser}", modifier = Modifier.weight(1f))
+                TextButton(onClick = viewModel::disconnectLastFm) { Text("Disconnect") }
+            }
+        } else {
+            var key by rememberSaveable { mutableStateOf("") }
+            var secret by rememberSaveable { mutableStateOf("") }
+            var user by rememberSaveable { mutableStateOf("") }
+            var password by remember { mutableStateOf("") }
+            Hint("Last.fm needs an API key and secret of your own: create them at last.fm/api/account/create.")
+            Field("API key", key, { key = it })
+            Field("Shared secret", secret, { secret = it }, secret = true)
+            Field("Username", user, { user = it })
+            Field("Password (used once to sign in, not kept)", password, { password = it }, secret = true)
+            ActionButton(
+                "Sign in to Last.fm",
+                status,
+                enabled = key.isNotBlank() && secret.isNotBlank() && user.isNotBlank() && password.isNotBlank(),
+            ) { viewModel.signInLastFm(key, secret, user, password) }
+        }
+        StatusText(status)
+        if (scrobbling.enabled) {
+            ToggleRow(
+                "Include SiriusXM and Pandora",
+                "Also scrobble songs heard on channels and stations",
+                scrobbling.includeRadio,
+                viewModel::setScrobbleRadio,
+            )
+            if (pending > 0) Hint("$pending listens waiting to be sent")
+        }
     }
 }
 
@@ -399,6 +515,11 @@ private fun LidarrSection(settings: AppSettings, viewModel: SettingsViewModel) {
                 viewModel.updateLidarr { it.copy(searchForMissingAlbums = enabled) }
             }
             LidarrQueue(queue, reachability, viewModel)
+            val waiting by viewModel.lidarrWaiting.collectAsStateWithLifecycle()
+            if (waiting.isNotEmpty()) {
+                Text("Waiting for Lidarr to download", style = MaterialTheme.typography.labelLarge)
+                Hint(waiting.joinToString(", ") { it.artistName } + ". You'll get a note when their music arrives.")
+            }
             options?.let { server ->
                 Picker(
                     "Root folder",

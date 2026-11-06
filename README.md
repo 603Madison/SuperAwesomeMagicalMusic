@@ -110,6 +110,23 @@ as well.
   free lyrics database. Only the song's title, artist, album and length are sent, and only when
   you open lyrics. On SiriusXM they're the lyrics of the song on the channel.
 - **Sleep timer** (the moon button): stop after 15–90 minutes, fading out, or at the end of the song.
+- **Dead-zone cache** (Settings › Dead-zone cache): songs you play are kept, and the next few are
+  fetched ahead while the connection is good (Wi-Fi, or cellular if allowed; never satellite or
+  with Data Saver on), so a dead zone doesn't stop the music. A song cached whole plays with no
+  connection at all. 512 MB–4 GB, least recently played first out; downloads are separate.
+- **Listening history** (Playlists › Listening history) of everything played and heard, SiriusXM
+  channels and Pandora stations included, with one-tap save; the latest show under **Recently
+  played** on the Search tab.
+- **Scrobbling** to ListenBrainz (or a server with its API, such as Maloja) and Last.fm (with your
+  own API key), SiriusXM and Pandora songs optional. Listens made offline are sent later.
+- **Artist station from any song** (the song's menu), through SiriusXM's Pandora stations.
+- **Save Pandora thumbs-ups** to a "Liked on Pandora" playlist (Settings › Playback).
+- **Resume in the car:** the last queue is remembered, so Android Auto's "start music
+  automatically", a car's play button or the system's media controls pick up where you left off.
+  Settings › Playback › Resume in the car also starts it whenever Android Auto connects.
+- **Get ready for a trip** (Downloads › Trip): download your most played songs, what you've played
+  lately and any playlists you pick, in one go.
+- **Lidarr:** once Lidarr has downloaded music by an artist it added for you, you get a note.
 
 ### 2. Bitrates per network, including satellite
 

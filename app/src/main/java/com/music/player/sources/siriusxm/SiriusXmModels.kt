@@ -80,6 +80,15 @@ data class SxmStationTrack(val stationId: String, val id: String, val url: Strin
     )
 
     companion object {
+        /**
+         * The song a station track plays, as a heard song: station tracks' links expire, so it's
+         * kept (saved, bookmarked, remembered) as the song itself, found again when played.
+         */
+        fun asCut(track: Track): SxmCut? {
+            val (_, trackId) = idOf(track) ?: return null
+            return SxmCut(trackId, track.title, track.artist, track.album, 0, track.durationMs ?: 0, track.artworkUrl, interstitial = false)
+        }
+
         /** (station id, track id) of a station track. */
         fun idOf(track: Track): Pair<String, String>? {
             if (!track.isSiriusXmStationTrack) return null

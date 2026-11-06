@@ -111,6 +111,7 @@ fun MusicAppUi() {
                     is LidarrEvent.ArtistAdded -> "Added ${event.artist} to Lidarr"
                     is LidarrEvent.ArtistNotFound -> "Lidarr couldn't find ${event.artist}"
                     is LidarrEvent.Failed -> "Lidarr: ${event.message}"
+                    is LidarrEvent.ArtistDownloaded -> "${event.artist}'s music is now in your library"
                 }
             },
         ).collect { snackbar.showSnackbar(it) }
@@ -133,7 +134,10 @@ fun MusicAppUi() {
             NavHost(navController, startDestination = Tab.SEARCH.route, modifier = Modifier.padding(padding)) {
                 composable(Tab.SEARCH.route) { SearchScreen() }
                 composable(Tab.PLAYLISTS.route) {
-                    PlaylistsScreen(onOpen = { id -> navController.navigate("playlist/$id") })
+                    PlaylistsScreen(
+                        onOpen = { id -> navController.navigate("playlist/$id") },
+                        onOpenHistory = { navController.navigate("history") },
+                    )
                 }
                 composable("playlist/{id}") { entry ->
                     PlaylistDetailScreen(
@@ -141,6 +145,7 @@ fun MusicAppUi() {
                         onBack = { navController.popBackStack() },
                     )
                 }
+                composable("history") { com.music.player.ui.history.HistoryScreen(onBack = { navController.popBackStack() }) }
                 composable(Tab.RADIO.route) { RadioScreen() }
                 composable(Tab.DOWNLOADS.route) { DownloadsScreen() }
                 composable(Tab.SETTINGS.route) { SettingsScreen() }
@@ -179,7 +184,7 @@ private fun BottomBar(navController: NavHostController) {
     val route = backStack?.destination?.route
     NavigationBar {
         Tab.entries.forEach { tab ->
-            val selected = route == tab.route || (tab == Tab.PLAYLISTS && route?.startsWith("playlist/") == true)
+            val selected = route == tab.route || (tab == Tab.PLAYLISTS && (route?.startsWith("playlist/") == true || route == "history"))
             NavigationBarItem(
                 selected = selected,
                 onClick = {

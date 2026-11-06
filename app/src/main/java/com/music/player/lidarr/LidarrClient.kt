@@ -1,6 +1,7 @@
 package com.music.player.lidarr
 
 import com.music.player.net.AppJson
+import com.music.player.net.HttpException
 import com.music.player.net.Http
 import com.music.player.net.fetchString
 import com.music.player.settings.LidarrConfig
@@ -79,6 +80,14 @@ class LidarrClient(private val http: OkHttpClient) {
             .post(AppJson.encodeToString(JsonObject.serializer(), body).toRequestBody(JSON))
             .build()
         return AppJson.decodeFromString(http.fetchString(request))
+    }
+
+    /** How many track files Lidarr has for an artist it has; null if it no longer has the artist. */
+    suspend fun trackFileCount(config: LidarrConfig, artistId: Int): Int? = try {
+        val artist = AppJson.decodeFromString<JsonObject>(get(config, "artist/$artistId"))
+        (artist["statistics"] as? JsonObject)?.get("trackFileCount")?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+    } catch (e: HttpException) {
+        if (e.code == 404) null else throw e
     }
 
     suspend fun testConnection(config: LidarrConfig): String {

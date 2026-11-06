@@ -112,7 +112,48 @@ data class PlaybackSettings(
     val levelVolume: Boolean = true,
     /** On SiriusXM channels, start at the beginning of the song that's on, as SiriusXM's app does. */
     val siriusXmFromSongStart: Boolean = true,
+    /** Thumbs up on a Pandora station song also saves it to the "Liked on Pandora" playlist. */
+    val likedOnPandoraPlaylist: Boolean = false,
+    /** Start playing again (where you left off) when Android Auto connects. */
+    val resumeInCar: Boolean = false,
 )
+
+/** Songs kept in the playback cache so dead zones don't interrupt them (see PlaybackCache). */
+data class CacheSettings(
+    val enabled: Boolean = true,
+    val sizeMb: Int = 1024,
+    /** How many upcoming songs to fetch ahead of time while the connection is good. */
+    val songsAhead: Int = 3,
+    /** Fetch ahead on cellular too, not just Wi-Fi (never on satellite or with Data Saver on). */
+    val onCellular: Boolean = true,
+) {
+    companion object {
+        val SIZES_MB = listOf(512, 1024, 2048, 4096)
+        val SONGS_AHEAD = listOf(2, 3, 5, 10)
+    }
+}
+
+/** Where listens are scrobbled. */
+data class ScrobbleSettings(
+    val listenBrainzToken: String = "",
+    /** ListenBrainz itself, or a self-hosted server with its API (e.g. Maloja, Koito). */
+    val listenBrainzUrl: String = DEFAULT_LISTENBRAINZ_URL,
+    val lastFmApiKey: String = "",
+    val lastFmSecret: String = "",
+    val lastFmUser: String = "",
+    /** Last.fm's session key from signing in (the password itself isn't kept). */
+    val lastFmSession: String = "",
+    /** Also scrobble songs heard on SiriusXM channels and Pandora stations. */
+    val includeRadio: Boolean = true,
+) {
+    val listenBrainzEnabled: Boolean get() = listenBrainzToken.isNotBlank()
+    val lastFmEnabled: Boolean get() = lastFmApiKey.isNotBlank() && lastFmSecret.isNotBlank() && lastFmSession.isNotBlank()
+    val enabled: Boolean get() = listenBrainzEnabled || lastFmEnabled
+
+    companion object {
+        const val DEFAULT_LISTENBRAINZ_URL = "https://api.listenbrainz.org"
+    }
+}
 
 data class AppSettings(
     val deviceId: String = "",
@@ -139,6 +180,8 @@ data class AppSettings(
     /** How much music to load ahead of what's playing, running on into the next songs. */
     val bufferAheadSeconds: Int = DEFAULT_BUFFER_AHEAD_SECONDS,
     val playback: PlaybackSettings = PlaybackSettings(),
+    val cache: CacheSettings = CacheSettings(),
+    val scrobbling: ScrobbleSettings = ScrobbleSettings(),
 ) {
     companion object {
         const val DEFAULT_BUFFER_AHEAD_SECONDS = 300

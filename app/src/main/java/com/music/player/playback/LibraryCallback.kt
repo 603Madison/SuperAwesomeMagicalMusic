@@ -32,6 +32,7 @@ import com.music.player.sources.siriusxm.SiriusXmClient
 import com.music.player.sources.siriusxm.SxmChannel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
@@ -106,6 +107,9 @@ class LibraryCallback(
                         .build(),
                 )
                 .build()
+        }
+        if (controller.packageName == ANDROID_AUTO && controller.isPackageNameVerified) {
+            scope.launch { resumeInCar(session) }
         }
         val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
             .apply { SessionButtons.COMMANDS.forEach(::add) }
@@ -436,6 +440,47 @@ class LibraryCallback(
      * (granted notification access or the media-control permission), and the known car,
      * Assistant and watch clients.
      */
+    /**
+     * Picks up where you left off: called for Android Auto's "start music automatically", a
+     * car's or headset's play button, or the system's media controls after the app was stopped.
+     */
+    override fun onPlaybackResumption(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        isForPlayback: Boolean,
+    ): ListenableFuture<MediaItemsWithStartPosition> = scope.future {
+        val saved = container.queueStore.load() ?: throw UnsupportedOperationException("Nothing played yet")
+        log("resuming ${saved.tracks.size} item(s) for ${controller.packageName}")
+        resumable(saved)
+    }
+
+    override fun onPlaybackResumption(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+    ): ListenableFuture<MediaItemsWithStartPosition> = onPlaybackResumption(mediaSession, controller, true)
+
+    private suspend fun resumable(saved: SavedQueue): MediaItemsWithStartPosition {
+        val index = saved.index.coerceIn(saved.tracks.indices)
+        val (items, start) = withStationTracks(saved.tracks.map(Track::toMediaItem), index)
+        val live = saved.tracks[index].isLive
+        return MediaItemsWithStartPosition(items, start, if (live) C.TIME_UNSET else saved.positionMs)
+    }
+
+    /** With "resume in the car" on: when Android Auto connects, play again where you left off. */
+    private suspend fun resumeInCar(session: MediaSession) {
+        if (!container.settings.current().playback.resumeInCar) return
+        val player = session.player
+        if (player.isPlaying) return
+        if (player.mediaItemCount == 0) {
+            val saved = container.queueStore.load() ?: return
+            val resumed = resumable(saved)
+            player.setMediaItems(resumed.mediaItems, resumed.startIndex, resumed.startPositionMs)
+        }
+        log("resuming in the car")
+        player.prepare()
+        player.play()
+    }
+
     internal fun mayBrowse(controller: MediaSession.ControllerInfo): Boolean =
         controller.isTrusted ||
             // Only a name Android vouches for (checked against the caller's user id): another
@@ -444,8 +489,10 @@ class LibraryCallback(
 
     companion object {
         /** Android Auto, Android Automotive's media app, the Assistant and Wear OS. */
+        private const val ANDROID_AUTO = "com.google.android.projection.gearhead"
+
         val MEDIA_CLIENTS = setOf(
-            "com.google.android.projection.gearhead",
+            ANDROID_AUTO,
             "com.android.car.media",
             "com.google.android.carassistant",
             "com.google.android.googlequicksearchbox",

@@ -58,6 +58,13 @@ class HeardSongs(
         return MissingDetails.with(track, copy)
     }
 
+    /** Saves a Pandora station song you gave a thumbs up to the "Liked on Pandora" playlist. */
+    suspend fun saveLiked(song: SxmCut): CapturedSong {
+        val captured = capture(song)
+        playlists.addTracks(playlists.getOrCreate(LIKED_PLAYLIST), listOf(captured.track))
+        return captured
+    }
+
     /** One-tap save (e.g. from Android Auto) to the "Heard on SiriusXM" playlist. */
     suspend fun saveToHeardPlaylist(cut: SxmCut): CapturedSong {
         val captured = capture(cut)
@@ -67,6 +74,7 @@ class HeardSongs(
 
     companion object {
         const val PLAYLIST_NAME = "Heard on SiriusXM"
+        const val LIKED_PLAYLIST = "Liked on Pandora"
         private const val TAG = "HeardSongs"
         private const val COPY_LOOKUP_MS = 8_000L
     }

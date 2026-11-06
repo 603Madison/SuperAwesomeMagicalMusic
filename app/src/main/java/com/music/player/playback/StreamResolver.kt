@@ -51,6 +51,9 @@ data class PlaybackOrigin(
 
 class OfflineException(message: String) : IOException(message)
 
+/** Where ExoPlayer should load a song from, and the cache key its bytes are kept under (if any). */
+data class Resolved(val uri: String, val headers: Map<String, String> = emptyMap(), val cacheKey: String? = null)
+
 /**
  * Turns a [Track] into something playable: a downloaded copy always wins, otherwise
  * [SourceSelector] picks a source (Jellyfin first, then streaming services, involving Lidarr when
@@ -69,6 +72,7 @@ class StreamResolver(
     private val details: MissingDetails,
     private val scope: CoroutineScope,
     private val radio: RadioBrowserClient,
+    private val cache: PlaybackCache? = null,
 ) {
     /** Radio stations whose play was already counted this session (the directory counts once a day). */
     private val playsCounted: MutableSet<String> = ConcurrentHashMap.newKeySet()
@@ -79,6 +83,7 @@ class StreamResolver(
     private sealed interface Pin {
         data class Local(val path: String) : Pin
         data class Remote(val track: Track, val quality: StreamQuality) : Pin
+        data class Cached(val cacheKey: String) : Pin
     }
 
     private data class CachedStream(val stream: SourceStream, val fetchedAt: Long)
@@ -89,14 +94,21 @@ class StreamResolver(
     private val _origins = MutableStateFlow<Map<String, PlaybackOrigin>>(emptyMap())
     val origins: StateFlow<Map<String, PlaybackOrigin>> = _origins.asStateFlow()
 
-    /** Returns the URI and HTTP headers ExoPlayer should load for [track]. */
-    suspend fun resolveForPlayback(track: Track): Pair<String, Map<String, String>> {
+    /** Returns where ExoPlayer should load [track] from. */
+    suspend fun resolveForPlayback(track: Track): Resolved {
         SxmStationTrack.idOf(track)?.let { (_, trackId) ->
+            // Fetched ahead (or played before) whole: plays from the phone, even in a dead zone.
+            cache?.completeCopy(track.key)?.let { cached ->
+                publishOrigin(track.key, PlaybackOrigin(SourceType.SIRIUSXM, "SiriusXM · Pandora station (cached)"))
+                return Resolved(PlaybackCache.cachedUri(cached.cacheKey), cacheKey = cached.cacheKey)
+            }
             if (!network.state.value.isOnline) throw OfflineException("SiriusXM needs a connection")
             val url = siriusXm.stationTrackUrl(trackId)
                 ?: throw SourceUnavailableException("This station track has expired; play the station again")
             publishOrigin(track.key, PlaybackOrigin(SourceType.SIRIUSXM, "SiriusXM · Pandora station"))
-            return url to mapOf("User-Agent" to SiriusXmClient.USER_AGENT)
+            val key = cache?.keyForStationTrack(track)
+            key?.let { cache.remember(track.key, it, track, "SiriusXM · Pandora station", null, null) }
+            return Resolved(url, mapOf("User-Agent" to SiriusXmClient.USER_AGENT), key)
         }
         SxmChannel.idOf(track)?.let { (type, channelId) ->
             if (!network.state.value.isOnline) throw OfflineException("SiriusXM needs a connection")
@@ -107,7 +119,7 @@ class StreamResolver(
             val xtra = type != SiriusXmClient.LINEAR
             val url = if (xtra) siriusXm.xtraUri(type, channelId) else siriusXm.streamUrl(type, channelId)
             publishOrigin(track.key, PlaybackOrigin(SourceType.SIRIUSXM, if (xtra) "SiriusXM · Xtra" else "SiriusXM · Live"))
-            return url to mapOf("User-Agent" to SiriusXmClient.USER_AGENT)
+            return Resolved(url, mapOf("User-Agent" to SiriusXmClient.USER_AGENT))
         }
         RadioStation.idOf(track)?.let { (id, _) ->
             if (!network.state.value.isOnline) throw OfflineException("Radio needs a connection")
@@ -121,13 +133,16 @@ class StreamResolver(
                 ),
             )
             if (playsCounted.add(id)) scope.launch { radio.countPlay(id) }
-            return station.streamUrl to mapOf("User-Agent" to RADIO_USER_AGENT)
+            return Resolved(station.streamUrl, mapOf("User-Agent" to RADIO_USER_AGENT))
         }
         when (val pin = pins.get(track.key)) {
             is Pin.Local -> if (File(pin.path).exists()) return localUri(pin.path)
+            is Pin.Cached -> if (cache?.isComplete(pin.cacheKey) == true) {
+                return Resolved(PlaybackCache.cachedUri(pin.cacheKey), cacheKey = pin.cacheKey)
+            }
             is Pin.Remote -> {
                 val stream = cachedOrFetch(track.key, pin)
-                return stream.url to stream.headers
+                return Resolved(stream.url, stream.headers, cache?.keyFor(pin.track, stream))
             }
             null -> Unit
         }
@@ -154,8 +169,25 @@ class StreamResolver(
         }
 
         val state = network.state.value
-        if (!state.isOnline) throw OfflineException("\"${track.title}\" isn't downloaded and you're offline")
         val quality = settings.current().quality.forState(state)
+
+        // Cached whole: play it from the phone when offline, or when it's as good as the network allows.
+        cache?.completeCopy(track.key)?.takeIf { !state.isOnline || goodEnough(it.kbps, state.networkClass, quality) }?.let { cached ->
+            pins.put(track.key, Pin.Cached(cached.cacheKey))
+            publishOrigin(
+                track.key,
+                PlaybackOrigin(
+                    source = cached.copy.source,
+                    description = "${cached.copy.source.label} · ${cached.description} (cached)",
+                    kbps = cached.kbps,
+                    playing = cached.copy,
+                    gainDb = cached.gainDb,
+                ),
+            )
+            return Resolved(PlaybackCache.cachedUri(cached.cacheKey), cacheKey = cached.cacheKey)
+        }
+
+        if (!state.isOnline) throw OfflineException("\"${track.title}\" isn't downloaded and you're offline")
         // Off satellite, compare every service for the best copy; on satellite take the first fit.
         val selected = select(track, quality, thorough = state.networkClass != NetworkClass.SATELLITE)
         details.fill(track, selected.track)
@@ -172,7 +204,20 @@ class StreamResolver(
                 gainDb = selected.stream.gainDb,
             ),
         )
-        return selected.stream.url to selected.stream.headers
+        val key = cache?.keyFor(selected.track, selected.stream)
+        key?.let {
+            cache.remember(track.key, it, selected.track, selected.stream.description, selected.stream.kbps, selected.stream.gainDb)
+        }
+        return Resolved(selected.stream.url, selected.stream.headers, key)
+    }
+
+    /** Whether a cached copy at [kbps] is as good as streaming would be on this network. */
+    private fun goodEnough(kbps: Int?, networkClass: NetworkClass, quality: StreamQuality): Boolean = when {
+        // Off Wi-Fi, a cached copy saves data and rides out dead zones.
+        networkClass != NetworkClass.WIFI -> true
+        kbps == null -> false
+        quality is StreamQuality.Capped -> kbps >= quality.kbps
+        else -> kbps >= LOSSLESS_KBPS
     }
 
     /** Picks the stream to save for offline listening at the download quality. */
@@ -228,11 +273,12 @@ class StreamResolver(
         _origins.update { (it + (key to origin)).entries.toList().takeLast(200).associate { e -> e.toPair() } }
     }
 
-    private fun localUri(path: String) = Uri.fromFile(File(path)).toString() to emptyMap<String, String>()
+    private fun localUri(path: String) = Resolved(Uri.fromFile(File(path)).toString())
 
     private companion object {
         /** Qobuz and YouTube URLs are short-lived; refresh them after this long. */
         const val REMOTE_URL_TTL_MS = 20 * 60 * 1000L
+        const val LOSSLESS_KBPS = 1_411
 
         /** Some stations refuse players that don't say who they are. */
         val RADIO_USER_AGENT = "SuperAwesomeMagicalMusic/${com.music.player.BuildConfig.VERSION_NAME} (Android; ExoPlayer)"

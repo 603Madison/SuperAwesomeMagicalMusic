@@ -2,6 +2,7 @@ package com.music.player.ui
 
 import com.music.player.AppContainer
 import com.music.player.model.Track
+import com.music.player.sources.TrackMatcher
 import com.music.player.sources.siriusxm.SxmArtist
 import com.music.player.sources.siriusxm.SxmCut
 import com.music.player.sources.siriusxm.SxmStationTrack
@@ -50,14 +51,17 @@ class TrackActions(
      * Saves a song heard on SiriusXM: the Jellyfin copy if the library has it, otherwise the
      * artist is requested from Lidarr and the song is saved to play from a streaming service.
      */
-    fun saveHeardSong(cut: SxmCut) {
+    fun saveHeardSong(cut: SxmCut) = saveHeardSong(cut.toTrack())
+
+    /** As [saveHeardSong], for a heard song kept as a track (e.g. in the listening history). */
+    fun saveHeardSong(heard: Track) {
         scope.launch {
-            val captured = container.heardSongs.capture(cut)
+            val captured = container.heardSongs.capture(heard)
             showAddToPlaylist(listOf(captured.track))
             when {
-                captured.inLibrary -> showMessage("\"${cut.title}\" is in your Jellyfin library")
+                captured.inLibrary -> showMessage("\"${heard.title}\" is in your Jellyfin library")
                 captured.requestedFromLidarr && container.settingsState.value.lidarr.isConfigured ->
-                    showMessage("Not in Jellyfin yet — requested ${cut.artist} from Lidarr")
+                    showMessage("Not in Jellyfin yet — requested ${heard.artist} from Lidarr")
             }
         }
     }
@@ -73,6 +77,10 @@ class TrackActions(
         if (wanted == SxmThumb.DOWN && container.player.state.value.current?.key == track.key) container.player.next()
         scope.launch {
             val sent = container.siriusXm.rateStationTrack(stationId, trackId, wanted, positionMs)
+            if (sent && wanted == SxmThumb.UP && container.settings.current().playback.likedOnPandoraPlaylist) {
+                runCatching { SxmStationTrack.asCut(track)?.let { container.heardSongs.saveLiked(it) } }
+                    .onFailure { if (it is CancellationException) throw it }
+            }
             when {
                 !sent -> showMessage("Couldn't send the thumb to SiriusXM")
                 wanted == SxmThumb.DOWN -> showMessage("Thumbs down: the station will play fewer songs like \"${track.title}\"")
@@ -85,6 +93,21 @@ class TrackActions(
     fun startArtistStation(cut: SxmCut) {
         val artistId = cut.artistId ?: return showMessage("SiriusXM didn't say who this artist is")
         startArtistStation(SxmArtist(artistId, cut.artist, cut.artworkUrl))
+    }
+
+    /** Starts the Pandora station of a song's artist (found through SiriusXM's search). */
+    fun startStationFor(track: Track) {
+        val name = TrackMatcher.primaryArtist(track.artist)
+        scope.launch {
+            val artist = try {
+                container.siriusXm.searchArtists(name).firstOrNull { TrackMatcher.isSameArtist(it.name, name) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                return@launch showMessage("Couldn't search SiriusXM: ${e.message ?: e.javaClass.simpleName}")
+            }
+            if (artist == null) showMessage("SiriusXM has no station for $name") else startArtistStation(artist)
+        }
     }
 
     fun startArtistStation(artist: SxmArtist) {

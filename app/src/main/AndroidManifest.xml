@@ -67,6 +67,18 @@
             </intent-filter>
         </service>
 
+        <!--
+            Media buttons (a car's or headset's play button, the system's media controls) can start
+            playback again after the app was stopped; see LibraryCallback.onPlaybackResumption.
+        -->
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <!-- WorkManager is initialized on demand through MusicApp (Configuration.Provider). -->
         <provider
             android:name="androidx.startup.InitializationProvider"

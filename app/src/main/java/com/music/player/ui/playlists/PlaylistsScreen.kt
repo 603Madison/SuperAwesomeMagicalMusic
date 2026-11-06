@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.Sync
@@ -54,7 +55,7 @@ import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlaylistsScreen(onOpen: (String) -> Unit) {
+fun PlaylistsScreen(onOpen: (String) -> Unit, onOpenHistory: () -> Unit = {}) {
     val container = LocalAppContainer.current
     val playlists by container.playlists.playlists.collectAsStateWithLifecycle(emptyList())
     val covers by container.playlists.covers.collectAsStateWithLifecycle(emptyMap())
@@ -117,6 +118,20 @@ fun PlaylistsScreen(onOpen: (String) -> Unit) {
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
+            }
+            item {
+                ElevatedCard(
+                    onClick = onOpenHistory,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    androidx.compose.material3.ListItem(
+                        colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                        leadingContent = { Icon(Icons.Default.History, contentDescription = null) },
+                        headlineContent = { Text("Listening history", style = MaterialTheme.typography.titleMedium) },
+                        supportingContent = { Text("Everything you've played and heard, to save or play again") },
+                    )
+                }
             }
             if (playlists.isEmpty()) {
                 item {

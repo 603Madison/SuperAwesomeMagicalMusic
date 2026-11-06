@@ -188,6 +188,58 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         "Signed out. Your playlists stay on this phone and come back when you sign in again."
     }
 
+    // Playback cache
+    private val _cacheUsed = MutableStateFlow(0L)
+    val cacheUsedBytes = _cacheUsed.asStateFlow()
+
+    fun refreshCacheUsage() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) { _cacheUsed.value = container.playbackCache.usedBytes }
+
+    fun setCache(cache: com.music.player.settings.CacheSettings) = viewModelScope.launch {
+        settings.setCache(cache)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { container.playbackCache.trim() }
+        refreshCacheUsage()
+    }
+
+    fun clearCache() = viewModelScope.launch {
+        container.playbackCache.clear()
+        refreshCacheUsage()
+    }
+
+    // Scrobbling
+    private val _scrobbling = MutableStateFlow(ActionStatus())
+    val scrobblingStatus = _scrobbling.asStateFlow()
+    val pendingScrobbles: StateFlow<Int> =
+        container.database.scrobbles().observeCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+    val lidarrWaiting = container.lidarr.waitingForDownloads.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun connectListenBrainz(url: String, token: String) = act(_scrobbling) {
+        val base = url.trim().ifBlank { com.music.player.settings.ScrobbleSettings.DEFAULT_LISTENBRAINZ_URL }
+        val user = com.music.player.scrobble.ListenBrainzClient(container.httpClient).validate(base, token.trim())
+        settings.setScrobbling(settings.current().scrobbling.copy(listenBrainzUrl = Http.normalizeBaseUrl(base), listenBrainzToken = token.trim()))
+        "Scrobbling to ListenBrainz as ${user.ifBlank { "you" }}"
+    }
+
+    fun signInLastFm(apiKey: String, secret: String, username: String, password: String) = act(_scrobbling) {
+        val session = com.music.player.scrobble.LastFmClient(container.httpClient).signIn(apiKey.trim(), secret.trim(), username.trim(), password)
+        settings.setScrobbling(
+            settings.current().scrobbling.copy(
+                lastFmApiKey = apiKey.trim(),
+                lastFmSecret = secret.trim(),
+                lastFmUser = username.trim(),
+                lastFmSession = session,
+            ),
+        )
+        "Scrobbling to Last.fm as ${username.trim()}"
+    }
+
+    fun disconnectListenBrainz() = launch { settings.setScrobbling(settings.current().scrobbling.copy(listenBrainzToken = "")) }
+
+    fun disconnectLastFm() = launch {
+        settings.setScrobbling(settings.current().scrobbling.copy(lastFmApiKey = "", lastFmSecret = "", lastFmUser = "", lastFmSession = ""))
+    }
+
+    fun setScrobbleRadio(include: Boolean) = launch { settings.setScrobbling(settings.current().scrobbling.copy(includeRadio = include)) }
+
     private fun launch(block: suspend () -> Unit) {
         viewModelScope.launch { block() }
     }

@@ -1,6 +1,9 @@
 package com.music.player.ui.search
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -92,6 +95,7 @@ fun SearchScreen() {
 
         LazyColumn(Modifier.fillMaxSize()) {
             if (state.query.isBlank()) {
+                item { RecentlyPlayed() }
                 item {
                     Column(
                         Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 72.dp),
@@ -189,5 +193,45 @@ private fun LazyListScope.loading() {
 private fun LazyListScope.tracks(tracks: List<Track>, downloaded: Set<String>, onPlay: (Int) -> Unit) {
     itemsIndexed(tracks, key = { _, track -> "track-${track.key}" }) { index, track ->
         TrackRow(track = track, onClick = { onPlay(index) }, downloaded = track.key in downloaded)
+    }
+}
+
+/** The last songs played (or heard), to play again with a tap. */
+@Composable
+private fun RecentlyPlayed() {
+    val container = com.music.player.ui.LocalAppContainer.current
+    val actions = com.music.player.ui.LocalTrackActions.current
+    val recent by androidx.compose.runtime.remember { container.database.history().observeRecent(40) }
+        .collectAsStateWithLifecycle(emptyList())
+    val songs = recent.map { it.track }.distinctBy { it.key }.take(12)
+    if (songs.isEmpty()) return
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+        Text(
+            "Recently played",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        )
+        androidx.compose.foundation.lazy.LazyRow(
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(songs.size) { index ->
+                val song = songs[index]
+                Column(
+                    Modifier.width(112.dp).clickable { actions.play(listOf(song)) },
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    com.music.player.ui.components.Artwork(song.artworkUrl, 112.dp)
+                    Text(song.title, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        song.artist,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
     }
 }

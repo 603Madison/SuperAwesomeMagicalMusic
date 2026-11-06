@@ -54,7 +54,7 @@ class SessionButtons(private val container: AppContainer) {
             station != null -> {
                 val (stationId, trackId) = station
                 // Station tracks' links expire, so keep the song itself, found again when saved.
-                val song = SxmCut(trackId, track.title, track.artist, track.album, 0, track.durationMs ?: 0, track.artworkUrl, interstitial = false)
+                val song = SxmStationTrack.asCut(track) ?: return null
                 val stationName = container.settingsState.value.siriusXmStations.firstOrNull { it.id == stationId }?.name
                 container.bookmarks.add(song.toTrack(), heard = true, heardOn = stationName ?: "Pandora station", playingKey = key)
             }
@@ -75,7 +75,11 @@ class SessionButtons(private val container: AppContainer) {
         val wanted = if (current == thumb) SxmThumb.NONE else thumb
         val positionMs = player.currentPosition
         if (wanted == SxmThumb.DOWN && player.hasNextMediaItem()) player.seekToNextMediaItem()
-        return container.siriusXm.rateStationTrack(stationId, trackId, wanted, positionMs)
+        val sent = container.siriusXm.rateStationTrack(stationId, trackId, wanted, positionMs)
+        if (sent && wanted == SxmThumb.UP && container.settings.current().playback.likedOnPandoraPlaylist) {
+            SxmStationTrack.asCut(track)?.let { container.heardSongs.saveLiked(it) }
+        }
+        return sent
     }
 
     /** Whether a live SiriusXM channel (not Xtra, which plays song by song) is playing. */
