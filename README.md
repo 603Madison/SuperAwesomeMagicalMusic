@@ -127,6 +127,13 @@ as well.
 - **Get ready for a trip** (Downloads › Trip): download your most played songs, what you've played
   lately and any playlists you pick, in one go.
 - **Lidarr:** once Lidarr has downloaded music by an artist it added for you, you get a note.
+- **Import playlists** from a link (the link button on the Playlists tab): YouTube and YouTube
+  Music playlists as they are; Spotify playlists (read from Spotify's public embed page, so up to
+  about 100 songs) matched to your Jellyfin library first, then YouTube Music.
+- **Equalizer** (Settings › Playback): your phone's presets and a bass boost; equalizer apps
+  such as Wavelet can also work on the app's sound.
+- **Home-screen widget:** what's playing, with previous, play/pause and next. Play picks up
+  where you left off even when the app isn't running.
 
 ### 2. Bitrates per network, including satellite
 

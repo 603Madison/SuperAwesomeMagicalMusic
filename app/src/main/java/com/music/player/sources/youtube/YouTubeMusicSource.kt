@@ -17,6 +17,7 @@ import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
+import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.search.SearchInfo
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
@@ -71,6 +72,20 @@ class YouTubeMusicSource(
             fileExtension = format?.suffix ?: "m4a",
             kbps = stream.kbps(),
         )
+    }
+
+    /** The songs of a YouTube or YouTube Music playlist, and its name. */
+    suspend fun playlist(url: String, max: Int = 1_000): Pair<String, List<Track>> = withContext(Dispatchers.IO) {
+        ensureInitialized()
+        val info = PlaylistInfo.getInfo(service, url)
+        val items = info.relatedItems.toMutableList()
+        var page = info.nextPage
+        while (page != null && items.size < max) {
+            val more = PlaylistInfo.getMoreItems(service, url, page)
+            items += more.items
+            page = more.nextPage
+        }
+        info.name.orEmpty() to items.take(max).mapNotNull { it.toTrack() }
     }
 
     override suspend fun findMatch(track: Track): Track? {

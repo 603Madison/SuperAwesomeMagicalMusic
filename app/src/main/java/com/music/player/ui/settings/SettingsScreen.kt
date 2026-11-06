@@ -223,6 +223,44 @@ private fun PlaybackSection(settings: AppSettings, viewModel: SettingsViewModel)
             "Start playing where you left off when Android Auto connects",
             playback.resumeInCar,
         ) { viewModel.setPlayback(playback.copy(resumeInCar = it)) }
+        Text("Equalizer", style = MaterialTheme.typography.labelLarge)
+        if (playback.equalizerPresets.isEmpty()) {
+            Hint("Play something once to load your phone's equalizer presets.")
+        } else {
+            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = playback.equalizerPreset < 0,
+                    onClick = { viewModel.setPlayback(playback.copy(equalizerPreset = -1)) },
+                    label = { Text("Off") },
+                )
+                playback.equalizerPresets.forEachIndexed { index, name ->
+                    FilterChip(
+                        selected = playback.equalizerPreset == index,
+                        onClick = { viewModel.setPlayback(playback.copy(equalizerPreset = index)) },
+                        label = { Text(name) },
+                    )
+                }
+            }
+        }
+        Text(
+            "Bass boost: " + when {
+                playback.bassBoost == 0 -> "off"
+                playback.bassBoost < 400 -> "light"
+                playback.bassBoost < 750 -> "medium"
+                else -> "strong"
+            },
+            style = MaterialTheme.typography.labelLarge,
+        )
+        var boost by remember(playback.bassBoost) { mutableStateOf(playback.bassBoost.toFloat()) }
+        Slider(
+            value = boost,
+            onValueChange = { boost = it },
+            onValueChangeFinished = { viewModel.setPlayback(playback.copy(bassBoost = boost.roundToInt())) },
+            valueRange = 0f..1000f,
+            steps = 9,
+        )
+        Hint("Equalizer apps on your phone (such as Wavelet) can also work on this app's sound.")
     }
 }
 

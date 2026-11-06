@@ -16,6 +16,7 @@ import com.music.player.sources.radio.RadioStation
 import com.music.player.sources.siriusxm.SxmStation
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import com.music.player.quality.StreamQuality
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -156,6 +157,12 @@ class SettingsRepository(context: Context) {
         it[Keys.SXM_FROM_SONG_START] = playback.siriusXmFromSongStart
         it[Keys.LIKED_ON_PANDORA] = playback.likedOnPandoraPlaylist
         it[Keys.RESUME_IN_CAR] = playback.resumeInCar
+        it[Keys.EQ_PRESET] = playback.equalizerPreset
+        it[Keys.BASS_BOOST] = playback.bassBoost
+    }
+
+    suspend fun setEqualizerPresets(names: List<String>) = store.edit {
+        it[Keys.EQ_PRESETS] = encodeList(names, String.serializer())
     }
 
     suspend fun setCache(cache: CacheSettings) = store.edit {
@@ -239,6 +246,9 @@ class SettingsRepository(context: Context) {
                 siriusXmFromSongStart = this[Keys.SXM_FROM_SONG_START] ?: defaults.playback.siriusXmFromSongStart,
                 likedOnPandoraPlaylist = this[Keys.LIKED_ON_PANDORA] ?: defaults.playback.likedOnPandoraPlaylist,
                 resumeInCar = this[Keys.RESUME_IN_CAR] ?: defaults.playback.resumeInCar,
+                equalizerPreset = this[Keys.EQ_PRESET] ?: defaults.playback.equalizerPreset,
+                bassBoost = this[Keys.BASS_BOOST] ?: defaults.playback.bassBoost,
+                equalizerPresets = decodeList(this[Keys.EQ_PRESETS], String.serializer()),
             ),
             cache = CacheSettings(
                 enabled = this[Keys.CACHE_ENABLED] ?: defaults.cache.enabled,
@@ -328,6 +338,9 @@ class SettingsRepository(context: Context) {
         val SXM_FROM_SONG_START = booleanPreferencesKey("sxm_from_song_start")
         val LIKED_ON_PANDORA = booleanPreferencesKey("liked_on_pandora_playlist")
         val RESUME_IN_CAR = booleanPreferencesKey("resume_in_car")
+        val EQ_PRESET = intPreferencesKey("equalizer_preset")
+        val BASS_BOOST = intPreferencesKey("bass_boost")
+        val EQ_PRESETS = stringPreferencesKey("equalizer_presets")
         val CACHE_ENABLED = booleanPreferencesKey("cache_enabled")
         val CACHE_SIZE_MB = intPreferencesKey("cache_size_mb")
         val CACHE_AHEAD = intPreferencesKey("cache_songs_ahead")

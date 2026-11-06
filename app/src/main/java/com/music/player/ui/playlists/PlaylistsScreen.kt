@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.Sync
@@ -65,6 +66,8 @@ fun PlaylistsScreen(onOpen: (String) -> Unit, onOpenHistory: () -> Unit = {}) {
     var creating by remember { mutableStateOf(false) }
     val nextcloudReady = settings.nextcloud.isConfigured
 
+    var importing by remember { mutableStateOf(false) }
+    if (importing) ImportPlaylistDialog(onDismiss = { importing = false }, onImported = { id -> importing = false; onOpen(id) })
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
@@ -78,6 +81,9 @@ fun PlaylistsScreen(onOpen: (String) -> Unit, onOpenHistory: () -> Unit = {}) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { importing = true }) {
+                        Icon(Icons.Default.Link, contentDescription = "Import a playlist from a link")
+                    }
                     if (nextcloudReady) {
                         if (syncStatus == SyncStatus.Running) {
                             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {

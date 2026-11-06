@@ -190,9 +190,6 @@ interface HistoryDao {
     @Query("SELECT * FROM history ORDER BY playedAt DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<HistoryEntity>>
 
-    @Query("SELECT * FROM history ORDER BY playedAt DESC LIMIT 1")
-    suspend fun latest(): HistoryEntity?
-
     @Query("SELECT * FROM history ORDER BY playedAt DESC LIMIT :limit")
     suspend fun recent(limit: Int): List<HistoryEntity>
 

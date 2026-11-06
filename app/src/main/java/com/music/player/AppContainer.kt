@@ -126,6 +126,9 @@ class AppContainer(val context: Context) {
         com.music.player.scrobble.LastFmClient(httpClient),
     ) { networkMonitor.state.value.isOnline }
     val listening = com.music.player.history.ListeningTracker(database.history(), scrobbler, appScope)
+    val playlistImporter by lazy {
+        com.music.player.playlists.PlaylistImporter(youtube, jellyfin, com.music.player.playlists.SpotifyPlaylists(httpClient), playlists)
+    }
     val heardSongs = HeardSongs(jellyfin, lidarr, playlists) { catalog.findCopyWithArtwork(it, includeJellyfin = false) }
     val offlinePlaylists = OfflinePlaylists(
         database.playlists(),

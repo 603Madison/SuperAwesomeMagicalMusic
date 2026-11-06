@@ -116,6 +116,12 @@ data class PlaybackSettings(
     val likedOnPandoraPlaylist: Boolean = false,
     /** Start playing again (where you left off) when Android Auto connects. */
     val resumeInCar: Boolean = false,
+    /** The phone's equalizer preset to use (its index), or -1 for none. */
+    val equalizerPreset: Int = -1,
+    /** Bass boost strength, 0 (off) to 1000. */
+    val bassBoost: Int = 0,
+    /** The phone's equalizer presets, as last read by the player. */
+    val equalizerPresets: List<String> = emptyList(),
 )
 
 /** Songs kept in the playback cache so dead zones don't interrupt them (see PlaybackCache). */

@@ -129,6 +129,27 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         scope.launch { runSleepTimer(player) }
+        player.addListener(object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (events.containsAny(Player.EVENT_MEDIA_METADATA_CHANGED, Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) {
+                    updateWidget(player)
+                }
+            }
+        })
+        effects = AudioEffects(this) { names ->
+            scope.launch {
+                if (names != container.settings.current().playback.equalizerPresets) container.settings.setEqualizerPresets(names)
+            }
+        }
+        player.addAnalyticsListener(object : AnalyticsListener {
+            override fun onAudioSessionIdChanged(eventTime: AnalyticsListener.EventTime, audioSessionId: Int) {
+                effects?.onSessionId(audioSessionId)
+            }
+        })
+        effects?.onSessionId(player.audioSessionId)
+        scope.launch {
+            container.settings.settings.map { it.playback }.distinctUntilChanged().collect { effects?.apply(it) }
+        }
         player.addListener(ListeningListener(player))
         prefetcher = Prefetcher(player)
         player.addListener(object : Player.Listener {
@@ -252,6 +273,8 @@ class PlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         container.appLog.log("service", "playback service stopped")
         container.listening.finish()
+        effects?.release()
+        com.music.player.widget.NowPlayingWidget.showStopped(this)
         scope.cancel()
         container.siriusXm.publishNowPlaying(null)
         session?.run {
@@ -462,6 +485,42 @@ class PlaybackService : MediaLibraryService() {
         override fun onIsPlayingChanged(isPlaying: Boolean) = container.listening.playingChanged(isPlaying)
     }
 
+    private var widgetArtwork: Pair<android.net.Uri, android.graphics.Bitmap?>? = null
+
+    /** Shows what's playing on the home-screen widget, if one is placed. */
+    private fun updateWidget(player: Player) {
+        if (!com.music.player.widget.NowPlayingWidget.hasWidgets(this)) return
+        val metadata = player.mediaMetadata
+        val state = com.music.player.widget.WidgetState(
+            title = metadata.title?.toString() ?: player.currentMediaItem?.toTrack()?.title,
+            artist = metadata.artist?.toString() ?: player.currentMediaItem?.toTrack()?.artist,
+            isPlaying = player.isPlaying,
+        )
+        val uri = metadata.artworkUri
+        val known = widgetArtwork?.takeIf { it.first == uri }
+        com.music.player.widget.NowPlayingWidget.update(this, state.copy(artwork = known?.second))
+        if (uri == null || known != null) return
+        // Artwork follows once loaded (the session's loader skips it on satellite if set to).
+        val loader = session?.bitmapLoader ?: return
+        val future = loader.loadBitmap(uri)
+        future.addListener({
+            val bitmap = runCatching { future.get() }.getOrNull()?.let { scaled(it) }
+            widgetArtwork = uri to bitmap
+            if (player.mediaMetadata.artworkUri == uri) {
+                com.music.player.widget.NowPlayingWidget.update(this, state.copy(artwork = bitmap, isPlaying = player.isPlaying))
+            }
+        }, androidx.core.content.ContextCompat.getMainExecutor(this))
+    }
+
+    /** Small enough for a widget (they're sent to the launcher, which limits their size). */
+    private fun scaled(bitmap: android.graphics.Bitmap): android.graphics.Bitmap {
+        val size = 192
+        if (bitmap.width <= size && bitmap.height <= size) return bitmap
+        val scale = size.toFloat() / maxOf(bitmap.width, bitmap.height)
+        return android.graphics.Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt().coerceAtLeast(1), (bitmap.height * scale).toInt().coerceAtLeast(1), true)
+    }
+
+    private var effects: AudioEffects? = null
     private var prefetchUpstream: androidx.media3.datasource.DataSource.Factory? = null
     private var prefetcher: Prefetcher? = null
 

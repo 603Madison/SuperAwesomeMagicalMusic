@@ -79,6 +79,19 @@
             </intent-filter>
         </receiver>
 
+        <!-- Home-screen widget: what's playing, with play/pause and skip. -->
+        <receiver
+            android:name=".widget.NowPlayingWidget"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/now_playing_widget_info" />
+        </receiver>
+
         <!-- WorkManager is initialized on demand through MusicApp (Configuration.Provider). -->
         <provider
             android:name="androidx.startup.InitializationProvider"
