@@ -11,6 +11,7 @@ import com.music.player.sources.siriusxm.SxmChannel
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -88,6 +89,41 @@ class LibraryCallbackTest {
             assertEquals(listOf(station.toTrack()), callback.expand(stations.single().mediaId)!!.first)
         } finally {
             container.settings.setRadioFavorite(station, false)
+        }
+    }
+
+    @Test
+    fun `only trusted and known media clients may browse the library`() {
+        fun controller(packageName: String, trusted: Boolean, verified: Boolean = true) =
+            MediaSession.ControllerInfo.createTestOnlyControllerInfo(packageName, 0, 0, 0, 0, trusted, Bundle.EMPTY, verified)
+        assertTrue(callback.mayBrowse(controller("com.google.android.projection.gearhead", trusted = false)))
+        assertTrue(callback.mayBrowse(controller("com.android.systemui", trusted = true)))
+        assertFalse(callback.mayBrowse(controller("com.example.snoop", trusted = false)))
+        // A name the app gave itself doesn't count.
+        assertFalse(callback.mayBrowse(controller("com.google.android.projection.gearhead", trusted = false, verified = false)))
+    }
+
+    @Test
+    fun `other apps get playback controls but no library or queue access`() {
+        val service = Robolectric.buildService(PlaybackService::class.java).create()
+        try {
+            val snoop = MediaSession.ControllerInfo.createTestOnlyControllerInfo("com.example.snoop", 0, 0, 0, 0, false, Bundle.EMPTY, true)
+            val session = service.get().onGetSession(snoop)!!
+            val result = callback.onConnect(session, snoop)
+            assertTrue(result.isAccepted)
+            assertFalse(result.availableSessionCommands.contains(androidx.media3.session.SessionCommand.COMMAND_CODE_LIBRARY_GET_CHILDREN))
+            assertFalse(result.availableSessionCommands.contains(SessionButtons.BOOKMARK))
+            assertTrue(result.availablePlayerCommands.contains(androidx.media3.common.Player.COMMAND_PLAY_PAUSE))
+            assertFalse(result.availablePlayerCommands.contains(androidx.media3.common.Player.COMMAND_SET_MEDIA_ITEM))
+
+            val auto = MediaSession.ControllerInfo.createTestOnlyControllerInfo(
+                "com.google.android.projection.gearhead", 0, 0, 0, 0, false, Bundle.EMPTY, true,
+            )
+            val full = callback.onConnect(session, auto)
+            assertTrue(full.availableSessionCommands.contains(androidx.media3.session.SessionCommand.COMMAND_CODE_LIBRARY_GET_CHILDREN))
+            assertTrue(full.availableSessionCommands.contains(SessionButtons.BOOKMARK))
+        } finally {
+            service.destroy()
         }
     }
 }

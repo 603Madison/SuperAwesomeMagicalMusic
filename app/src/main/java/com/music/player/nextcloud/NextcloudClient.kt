@@ -129,6 +129,17 @@ class NextcloudClient(private val http: OkHttpClient) {
             normalizeEtag(it.header("OC-ETag") ?: it.header("ETag"))
         }
 
+    /**
+     * Revokes the app password this app signed in with, so it stops working on the server too
+     * (it shows under Settings › Security › Devices & sessions in Nextcloud).
+     */
+    suspend fun revokeAppPassword(config: NextcloudConfig) {
+        val url = "${Http.normalizeBaseUrl(config.serverUrl)}/ocs/v2.php/core/apppassword".toHttpUrl()
+        request(config, url, "DELETE", null) {
+            if (!it.isSuccessful) throw HttpException(it.code, describe(it.code))
+        }
+    }
+
     suspend fun delete(config: NextcloudConfig, name: String) {
         request(config, file(config, name), "DELETE", null) {
             if (!it.isSuccessful && it.code != 404) throw HttpException(it.code, describe(it.code))

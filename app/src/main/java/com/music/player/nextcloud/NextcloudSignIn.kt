@@ -83,9 +83,17 @@ class NextcloudSignIn(
     }
 
     suspend fun signOut() {
-        val folder = settings.current().nextcloud.folder
-        settings.setNextcloud(NextcloudConfig(folder = folder))
+        val current = settings.current().nextcloud
+        settings.setNextcloud(NextcloudConfig(folder = current.folder))
         _state.value = SignInState.Idle
+        // Revoke the app password on the server too. If that can't be done now (offline, say),
+        // it's still forgotten here and can be revoked from Nextcloud's security settings.
+        if (current.isConfigured) {
+            scope.launch {
+                runCatching { client.revokeAppPassword(current) }
+                    .onFailure { if (it !is CancellationException) Log.w(TAG, "Couldn't revoke the app password", it) }
+            }
+        }
     }
 
     private companion object {

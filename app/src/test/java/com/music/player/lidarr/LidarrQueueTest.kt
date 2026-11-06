@@ -41,6 +41,8 @@ class LidarrQueueTest {
     private val queue = InMemoryQueue()
     private val posted = mutableListOf<String>()
     private var libraryArtists = "[]"
+    private var down = false
+    private var statusChecks = 0
 
     @Before
     fun setUp() {
@@ -49,7 +51,10 @@ class LidarrQueueTest {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val path = request.path!!.substringBefore('?')
                 return when {
-                    path == "/api/v1/system/status" -> MockResponse().setBody("""{"version":"2.9.6"}""")
+                    path == "/api/v1/system/status" -> {
+                        statusChecks++
+                        if (down) MockResponse().setResponseCode(503) else MockResponse().setBody("""{"version":"2.9.6"}""")
+                    }
                     path == "/api/v1/artist" && request.method == "GET" -> MockResponse().setBody(libraryArtists)
                     path == "/api/v1/artist/lookup" ->
                         MockResponse().setBody("""[{"artistName":"Daft Punk","foreignArtistId":"056e4f3e"}]""")
@@ -70,11 +75,14 @@ class LidarrQueueTest {
     @After
     fun tearDown() = runCatching { server.shutdown() }.let { }
 
+    private var now = 1_000_000L
+
     private fun TestScope.service(url: String) = LidarrService(
         client = LidarrClient(OkHttpClient.Builder().connectTimeout(1, TimeUnit.SECONDS).build()),
         config = { LidarrConfig(serverUrl = url, apiKey = "key") },
         queue = queue,
         scope = this,
+        clock = { now },
     )
 
     private val song = Track(SourceType.SIRIUSXM, "song:1", "Get Lucky", "Daft Punk feat. Pharrell Williams")
@@ -107,5 +115,23 @@ class LidarrQueueTest {
         lidarr.request(song)
         assertTrue(queue.all().isEmpty())
         assertTrue(posted.isEmpty())
+    }
+
+    @Test
+    fun `while lidarr is unreachable, new requests wait instead of each trying again`() = runTest {
+        down = true
+        val lidarr = service(server.url("/").toString())
+        lidarr.request(song)
+        assertEquals(1, statusChecks)
+        lidarr.request(Track(SourceType.YOUTUBE_MUSIC, "y1", "Stick Season", "Noah Kahan"))
+        assertEquals(1, statusChecks)
+        assertEquals(2, queue.all().size)
+
+        // A while later, it's tried again (and everything queued is sent).
+        now += 6 * 60 * 1000L
+        down = false
+        lidarr.request(Track(SourceType.YOUTUBE_MUSIC, "y2", "Scarlett", "Holly Humberstone"))
+        assertEquals(2, statusChecks)
+        assertTrue(queue.all().isEmpty())
     }
 }

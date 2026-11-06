@@ -88,6 +88,17 @@ interface PlaylistDao {
     @Query("UPDATE playlists SET remoteFileName = NULL, remoteEtag = NULL, syncedUpdatedAt = NULL WHERE ownerId IS :owner")
     suspend fun resetSyncState(owner: String?)
 
+    /**
+     * Records which Nextcloud file holds a playlist, touching nothing else: an edit made while a
+     * sync runs (a rename, say) must not be overwritten by the sync's older copy of the row.
+     */
+    @Query("UPDATE playlists SET remoteFileName = :fileName, remoteEtag = :etag WHERE id = :id")
+    suspend fun setRemoteFile(id: String, fileName: String, etag: String?)
+
+    /** As [setRemoteFile], after uploading the playlist as it was at [syncedUpdatedAt]. */
+    @Query("UPDATE playlists SET remoteFileName = :fileName, remoteEtag = :etag, syncedUpdatedAt = :syncedUpdatedAt WHERE id = :id")
+    suspend fun markUploaded(id: String, fileName: String, etag: String?, syncedUpdatedAt: Long)
+
     @Query("DELETE FROM playlists WHERE deleted = 1 AND ownerId IS :owner")
     suspend fun purgeTombstones(owner: String?)
 

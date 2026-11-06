@@ -116,9 +116,9 @@ class PlaylistSyncService(
                     downloaded++
                 }
                 // Local edits are newer; they are uploaded below over this file.
-                RemoteAction.KEEP_LOCAL -> dao.upsert(local!!.copy(remoteFileName = file.name, remoteEtag = remoteEtag))
+                RemoteAction.KEEP_LOCAL -> dao.setRemoteFile(doc.id, file.name, remoteEtag)
                 // Deleted here; the file is removed below.
-                RemoteAction.IGNORE_DELETED -> dao.upsert(local!!.copy(remoteFileName = file.name, remoteEtag = remoteEtag))
+                RemoteAction.IGNORE_DELETED -> dao.setRemoteFile(doc.id, file.name, remoteEtag)
             }
         }
 
@@ -150,7 +150,7 @@ class PlaylistSyncService(
                 takenNames -= previous
             }
             takenNames += fileName
-            dao.upsert(playlist.copy(remoteFileName = fileName, remoteEtag = etag, syncedUpdatedAt = playlist.updatedAt))
+            dao.markUploaded(playlist.id, fileName, etag, playlist.updatedAt)
             uploaded++
         }
 

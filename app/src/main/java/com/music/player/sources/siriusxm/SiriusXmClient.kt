@@ -78,7 +78,7 @@ class SiriusXmClient(
         // Keep the device registration but drop any session belonging to previous credentials.
         session = currentSession().let { SxmSession(deviceId = it.deviceId, deviceGrant = it.deviceGrant) }
         login(config)
-        parseLineup(requestLocked("GET", "relationship/v1/container/all-channels", query = lineupQuery())).size
+        parseLineup(request("GET", "relationship/v1/container/all-channels", query = lineupQuery())).size
     }
 
     suspend fun signOut() = mutex.withLock {
@@ -540,24 +540,36 @@ class SiriusXmClient(
         "key" to Base64.getEncoder().encodeToString(UUID.randomUUID().toString().toByteArray()),
     )
 
-    /** Authenticated request, signing in again once if the session was rejected. */
+    /**
+     * Authenticated request, signing in again once if the session was rejected. Only signing in
+     * holds [mutex]: requests run side by side, so a slow one (telemetry on satellite, say) never
+     * holds up a stream key the player is waiting for.
+     */
     private suspend fun call(
         method: String,
         path: String,
         payload: JsonElement? = null,
         query: Map<String, String> = emptyMap(),
-    ): JsonObject = mutex.withLock {
-        val config = credentials()
-        if (!config.isConfigured) throw SiriusXmAuthException("SiriusXM isn't set up")
-        login(config)
-        try {
-            requestLocked(method, path, payload, query)
+    ): JsonObject {
+        val token = signedInToken()
+        return try {
+            request(method, path, payload, query, token)
         } catch (e: HttpException) {
             if (e.code != 401 && e.code != 403) throw e
-            session = session?.let { SxmSession(deviceId = it.deviceId, deviceGrant = it.deviceGrant) }
-            login(config)
-            requestLocked(method, path, payload, query)
+            request(method, path, payload, query, signedInToken(rejected = token))
         }
+    }
+
+    /** A token to send, signing in first if needed. [rejected] is one SiriusXM just refused. */
+    private suspend fun signedInToken(rejected: String? = null): String? = mutex.withLock {
+        val config = credentials()
+        if (!config.isConfigured) throw SiriusXmAuthException("SiriusXM isn't set up")
+        // Sign in afresh, unless another request already did since this token was refused.
+        if (rejected != null && bearer(session) == rejected) {
+            session = session?.let { SxmSession(deviceId = it.deviceId, deviceGrant = it.deviceGrant) }
+        }
+        login(config)
+        bearer(session)
     }
 
     private suspend fun currentSession(): SxmSession {
@@ -580,7 +592,7 @@ class SiriusXmClient(
         if (valid(state.accessToken, state.accessExpiresMs)) return
 
         if (state.deviceGrant == null) {
-            val device = requestLocked(
+            val device = request(
                 "POST",
                 "device/v1/devices",
                 buildJsonObject {
@@ -597,7 +609,7 @@ class SiriusXmClient(
                         })
                     })
                 },
-                bearer = false,
+                token = null,
             )
             val grant = device.string("grant") ?: throw SiriusXmAuthException("SiriusXM did not issue a device grant")
             update { SxmSession(deviceId = device.string("deviceId"), deviceGrant = grant) }
@@ -606,7 +618,7 @@ class SiriusXmClient(
 
         if (state.identityGrant == null || !valid(state.anonToken, state.anonExpiresMs)) {
             update { SxmSession(deviceId = it.deviceId, deviceGrant = it.deviceGrant) }
-            val anonymous = requestLocked("POST", "session/v1/sessions/anonymous", JsonPrimitive(""))
+            val anonymous = request("POST", "session/v1/sessions/anonymous", JsonPrimitive(""))
             update {
                 it.copy(
                     anonToken = anonymous.string("accessToken"),
@@ -614,7 +626,7 @@ class SiriusXmClient(
                 )
             }
             val identity = try {
-                requestLocked(
+                request(
                     "POST",
                     "identity/v1/identities/authenticate/password",
                     buildJsonObject {
@@ -630,7 +642,7 @@ class SiriusXmClient(
             update { it.copy(identityGrant = grant) }
         }
 
-        val authenticated = requestLocked("POST", "session/v1/sessions/authenticated", JsonPrimitive(""))
+        val authenticated = request("POST", "session/v1/sessions/authenticated", JsonPrimitive(""))
         val token = authenticated.string("accessToken") ?: throw SiriusXmAuthException("SiriusXM did not open a session")
         update { it.copy(accessToken = token, accessExpiresMs = expiry(authenticated)) }
     }
@@ -646,12 +658,13 @@ class SiriusXmClient(
         else -> state.deviceGrant
     }
 
-    private suspend fun requestLocked(
+    /** One request to the API, sending [token] (by default, the session's current one) if any. */
+    private suspend fun request(
         method: String,
         path: String,
         payload: JsonElement? = null,
         query: Map<String, String> = emptyMap(),
-        bearer: Boolean = true,
+        token: String? = bearer(session),
     ): JsonObject {
         val url = (baseUrl + path).toHttpUrl().newBuilder().apply {
             query.forEach { (key, value) -> addQueryParameter(key, value) }
@@ -666,7 +679,7 @@ class SiriusXmClient(
             .header("x-sxm-platform", "browser")
             .header("x-sxm-tenant", "sxm")
             .apply {
-                if (bearer) bearer(session)?.let { header("Authorization", "Bearer $it") }
+                token?.let { header("Authorization", "Bearer $it") }
             }
             .method(method, payload?.toString()?.toRequestBody(JSON))
             .build()

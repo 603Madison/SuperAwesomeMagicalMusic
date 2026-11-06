@@ -80,6 +80,10 @@ class LidarrService(
         val key = TrackMatcher.normalize(name)
         if (key.isEmpty() || synchronized(handled) { key in handled }) return
         queue.enqueue(LidarrRequestEntity(artistKey = key, artistName = name, trackTitle = track.title, requestedAt = clock()))
+        // Lidarr was just found unreachable (away from home, say): leave it queued rather than
+        // trying again for every song. A network change or the queue worker sends it later.
+        val reachability = _reachability.value
+        if (reachability is LidarrReachability.Unreachable && clock() - reachability.at < RETRY_UNREACHABLE_MS) return
         process()
     }
 
@@ -204,5 +208,8 @@ class LidarrService(
     private companion object {
         const val TAG = "LidarrService"
         const val CACHE_MS = 10 * 60 * 1000L
+
+        /** After finding Lidarr unreachable, new requests just wait in the queue this long. */
+        const val RETRY_UNREACHABLE_MS = 5 * 60 * 1000L
     }
 }

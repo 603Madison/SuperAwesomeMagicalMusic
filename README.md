@@ -86,7 +86,8 @@ Android Auto under **Radio**. Next and previous move between stations in the lis
 
 ### Android Auto
 
-The app appears as a media source in Android Auto. You can browse **Playlists**, **Downloads**
+The app appears as a media source in Android Auto (and to the system, Android Automotive, the
+Assistant and Wear OS; other apps can only play, pause and skip). You can browse **Playlists**, **Downloads**
 and **SiriusXM** channels by category, search, and ask the Assistant to "play … on Music": a
 SiriusXM channel name plays that channel, anything else searches Jellyfin first. The
 **Bookmark** (+) button keeps the song you're hearing (on SiriusXM, a Pandora station, or

@@ -85,7 +85,7 @@ class DownloadRepository(
         dao.delete(trackKey)
     }
 
-    fun fileFor(trackKey: String, extension: String): File = File(directory, "${hash(trackKey)}.$extension")
+    fun fileFor(trackKey: String, extension: String): File = File(directory, "${hash(trackKey)}.${safeExtension(extension)}")
 
     private suspend fun constraints(): Constraints {
         val policy = settings.current().downloads
@@ -100,6 +100,13 @@ class DownloadRepository(
     }
 
     companion object {
+        /**
+         * The file extension servers report ("flac", "m4a"…), kept to a few letters and digits: it
+         * comes from the server, and anything else (a "../", say) could put the file elsewhere.
+         */
+        fun safeExtension(extension: String): String =
+            extension.lowercase().filter { it in 'a'..'z' || it in '0'..'9' }.take(5).ifEmpty { "audio" }
+
         const val TAG = "downloads"
 
         fun workName(trackKey: String) = "download:$trackKey"

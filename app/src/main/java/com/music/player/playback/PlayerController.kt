@@ -73,7 +73,8 @@ data class AudioFormatInfo(val codec: String, val kbps: Int?, val sampleRateHz: 
 class PlayerController(private val context: Context, private val scope: CoroutineScope) {
     private var future: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
-    private var pending: ((MediaController) -> Unit)? = null
+    /** Actions asked for before the controller connected, run in order once it has. */
+    private val pending = ArrayList<(MediaController) -> Unit>()
     private var ticker: Job? = null
 
     private val _state = MutableStateFlow(PlayerUiState())
@@ -94,13 +95,15 @@ class PlayerController(private val context: Context, private val scope: Coroutin
             controller = connected
             connected.addListener(listener)
             refresh(queueChanged = true)
-            pending?.invoke(connected)
-            pending = null
+            val queued = pending.toList()
+            pending.clear()
+            queued.forEach { it(connected) }
         }, ContextCompat.getMainExecutor(context))
     }
 
     fun disconnect() {
         ticker?.cancel()
+        pending.clear()
         controller?.removeListener(listener)
         future?.let(MediaController::releaseFuture)
         future = null
@@ -165,7 +168,7 @@ class PlayerController(private val context: Context, private val scope: Coroutin
         if (current != null) {
             action(current)
         } else {
-            pending = action
+            pending += action
             connect()
         }
     }

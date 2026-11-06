@@ -15,6 +15,8 @@ import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSession.MediaItemsWithStartPosition
 import androidx.media3.session.SessionCommand
+import androidx.media3.common.Player
+import androidx.media3.session.SessionCommands
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
@@ -92,6 +94,19 @@ class LibraryCallback(
 
     override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
         log("connect from ${controller.packageName} (Media3 ${controller.controllerVersion}, interface ${controller.interfaceVersion})")
+        if (!mayBrowse(controller)) {
+            // Any app can connect to a media service. Others get play/pause/skip, as for any
+            // media app, but can't read the library, search with your accounts or queue things.
+            log("${controller.packageName} isn't a known media client: playback controls only")
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(SessionCommands.EMPTY)
+                .setAvailablePlayerCommands(
+                    MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
+                        .removeAll(Player.COMMAND_SET_MEDIA_ITEM, Player.COMMAND_CHANGE_MEDIA_ITEMS)
+                        .build(),
+                )
+                .build()
+        }
         val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
             .apply { SessionButtons.COMMANDS.forEach(::add) }
             .build()
@@ -413,7 +428,27 @@ class LibraryCallback(
             )
             .build()
 
+    /**
+     * This app, the system (media controls, Bluetooth), apps Android trusts with media control
+     * (granted notification access or the media-control permission), and the known car,
+     * Assistant and watch clients.
+     */
+    internal fun mayBrowse(controller: MediaSession.ControllerInfo): Boolean =
+        controller.isTrusted ||
+            // Only a name Android vouches for (checked against the caller's user id): another
+            // app could otherwise claim to be Android Auto.
+            (controller.isPackageNameVerified && controller.packageName in MEDIA_CLIENTS)
+
     companion object {
+        /** Android Auto, Android Automotive's media app, the Assistant and Wear OS. */
+        val MEDIA_CLIENTS = setOf(
+            "com.google.android.projection.gearhead",
+            "com.android.car.media",
+            "com.google.android.carassistant",
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.wearable.app",
+        )
+
         private const val TAG = "LibraryCallback"
         private const val BROWSE_TIMEOUT_MS = 15_000L
     }

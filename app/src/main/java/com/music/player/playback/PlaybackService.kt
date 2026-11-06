@@ -111,7 +111,16 @@ class PlaybackService : MediaLibraryService() {
 
         // Android Auto's buttons follow what's playing: thumbs on station songs, and the
         // bookmark button turns into a tick once the song is bookmarked.
-        val refreshButtons = { session?.setMediaButtonPreferences(buttons.buttons(player)) }
+        // SiriusXM's now-playing updates every few seconds; only send buttons that changed.
+        var shownButtons: List<Triple<Int, CharSequence, String?>>? = null
+        val refreshButtons = {
+            val current = buttons.buttons(player)
+            val summary = current.map { Triple(it.icon, it.displayName, it.sessionCommand?.customAction) }
+            if (summary != shownButtons) {
+                shownButtons = summary
+                session?.setMediaButtonPreferences(current)
+            }
+        }
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
                 refreshButtons()

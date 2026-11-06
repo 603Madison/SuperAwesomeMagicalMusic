@@ -41,7 +41,26 @@ object Http {
                 chain.proceed(request.newBuilder().header("User-Agent", USER_AGENT).build())
             }
         })
+        .addNetworkInterceptor(DropCredentialsOnRedirect)
         .build()
+
+    /**
+     * OkHttp drops the Authorization header when a redirect leads to another host, but not other
+     * credential headers. Lidarr's API key and Qobuz's token are sent in their own headers, so
+     * a redirect elsewhere (to a sign-in page in front of a home server, say) would carry them
+     * along; this removes them whenever the request has left the host it was made for.
+     */
+    object DropCredentialsOnRedirect : Interceptor {
+        val HEADERS = listOf("X-Api-Key", "X-User-Auth-Token", "X-Emby-Token", "X-MediaBrowser-Token", "Authorization")
+
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val request = chain.request()
+            val original = chain.call().request().url
+            if (request.url.host == original.host) return chain.proceed(request)
+            val stripped = request.newBuilder().apply { HEADERS.forEach(::removeHeader) }.build()
+            return chain.proceed(stripped)
+        }
+    }
 
     /** Accepts "host:port", "http://host/", "https://host/sub/" and returns "scheme://host[:port][/sub]". */
     fun normalizeBaseUrl(raw: String): String {
