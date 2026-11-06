@@ -1,11 +1,15 @@
 package com.music.player.playback
 
 import android.os.Bundle
+import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.session.CommandButton
 import androidx.media3.session.SessionCommand
 import com.music.player.AppContainer
 import com.music.player.model.Track
+import com.music.player.sources.siriusxm.SiriusXmClient
+import com.music.player.sources.siriusxm.SxmChannel
 import com.music.player.sources.siriusxm.SxmCut
 import com.music.player.sources.siriusxm.SxmStationTrack
 import com.music.player.sources.siriusxm.SxmThumb
@@ -74,10 +78,49 @@ class SessionButtons(private val container: AppContainer) {
         return container.siriusXm.rateStationTrack(stationId, trackId, wanted, positionMs)
     }
 
+    /** Whether a live SiriusXM channel (not Xtra, which plays song by song) is playing. */
+    private fun liveChannel(player: Player): Track? =
+        player.currentMediaItem?.toTrack()?.takeIf { track ->
+            SxmChannel.idOf(track)?.first == SiriusXmClient.LINEAR
+        }
+
+    /** When the stream's timeline starts, on the wall clock, if the player knows. */
+    private fun windowStartMs(player: Player): Long? {
+        val timeline = player.currentTimeline
+        if (timeline.isEmpty) return null
+        return timeline.getWindow(player.currentMediaItemIndex, Timeline.Window()).windowStartTimeMs.takeIf { it != C.TIME_UNSET }
+    }
+
+    /** On a live channel: back to the start of the song (or show) on now, as far as the stream reaches. */
+    fun restartSong(player: Player): Boolean {
+        val channel = liveChannel(player) ?: return false
+        val cut = container.siriusXm.nowPlaying.value?.takeIf { it.channel.key == channel.key }?.cut ?: return false
+        val start = windowStartMs(player) ?: return false
+        player.seekTo((cut.startMs - start).coerceAtLeast(0))
+        return true
+    }
+
+    fun back15(player: Player): Boolean {
+        if (liveChannel(player) == null) return false
+        player.seekTo((player.currentPosition - 15_000).coerceAtLeast(0))
+        return true
+    }
+
+    fun goLive(player: Player): Boolean {
+        if (liveChannel(player) == null) return false
+        player.seekToDefaultPosition()
+        return true
+    }
+
     /** The buttons for what's playing now. */
     fun buttons(player: Player): List<CommandButton> {
         val track = player.currentMediaItem?.toTrack()
         val buttons = ArrayList<CommandButton>()
+        if (liveChannel(player) != null) {
+            buttons += button(CommandButton.ICON_SKIP_BACK, "Restart song", RESTART_SONG)
+            buttons += button(CommandButton.ICON_SKIP_BACK_15, "Back 15 seconds", BACK_15)
+            if (isBehindLive(player)) buttons += button(CommandButton.ICON_RADIO, "Go live", GO_LIVE)
+        }
         track?.let(SxmStationTrack::idOf)?.let { (_, trackId) ->
             val thumb = container.siriusXm.thumbs.value[trackId]
             buttons += button(
@@ -104,9 +147,18 @@ class SessionButtons(private val container: AppContainer) {
         CommandButton.Builder(icon).setDisplayName(name).setSessionCommand(command).build()
 
     companion object {
+        /** Further behind the live edge than this counts as listening back. */
+        private const val BEHIND_LIVE_MS = 60_000L
+
+        fun isBehindLive(player: Player): Boolean =
+            player.isCurrentMediaItemLive && player.currentLiveOffset != C.TIME_UNSET && player.currentLiveOffset > BEHIND_LIVE_MS
+
+        val RESTART_SONG = SessionCommand("com.music.player.RESTART_SONG", Bundle.EMPTY)
+        val BACK_15 = SessionCommand("com.music.player.BACK_15", Bundle.EMPTY)
+        val GO_LIVE = SessionCommand("com.music.player.GO_LIVE", Bundle.EMPTY)
         val BOOKMARK = SessionCommand("com.music.player.BOOKMARK", Bundle.EMPTY)
         val THUMB_UP = SessionCommand("com.music.player.THUMB_UP", Bundle.EMPTY)
         val THUMB_DOWN = SessionCommand("com.music.player.THUMB_DOWN", Bundle.EMPTY)
-        val COMMANDS = listOf(BOOKMARK, THUMB_UP, THUMB_DOWN)
+        val COMMANDS = listOf(BOOKMARK, THUMB_UP, THUMB_DOWN, RESTART_SONG, BACK_15, GO_LIVE)
     }
 }

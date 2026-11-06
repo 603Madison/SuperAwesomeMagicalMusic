@@ -45,6 +45,8 @@ data class PlaybackOrigin(
     /** The bitrate cap that applied when the stream was picked. */
     val quality: StreamQuality? = null,
     val downloaded: Boolean = false,
+    /** The gain (dB) that brings the song to -18 LUFS, where its source knows it. */
+    val gainDb: Float? = null,
 )
 
 class OfflineException(message: String) : IOException(message)
@@ -167,6 +169,7 @@ class StreamResolver(
                 kbps = selected.stream.kbps,
                 playing = selected.track,
                 quality = quality,
+                gainDb = selected.stream.gainDb,
             ),
         )
         return selected.stream.url to selected.stream.headers
@@ -232,6 +235,6 @@ class StreamResolver(
         const val REMOTE_URL_TTL_MS = 20 * 60 * 1000L
 
         /** Some stations refuse players that don't say who they are. */
-        const val RADIO_USER_AGENT = "MusicApp/1.4 (Android; ExoPlayer)"
+        val RADIO_USER_AGENT = "SuperAwesomeMagicalMusic/${com.music.player.BuildConfig.VERSION_NAME} (Android; ExoPlayer)"
     }
 }

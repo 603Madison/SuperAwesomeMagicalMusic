@@ -25,7 +25,7 @@ val AppJson = Json {
 class HttpException(val code: Int, message: String) : IOException(message)
 
 object Http {
-    const val USER_AGENT = "Music/1.0 (Android)"
+    val USER_AGENT = "SuperAwesomeMagicalMusic/${com.music.player.BuildConfig.VERSION_NAME} (Android)"
 
     fun createClient(): OkHttpClient = OkHttpClient.Builder()
         // Satellite links have multi-second latency; be patient before giving up.

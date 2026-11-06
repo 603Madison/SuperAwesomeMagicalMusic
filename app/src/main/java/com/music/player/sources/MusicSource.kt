@@ -18,6 +18,8 @@ data class SourceStream(
     val supportsRangeRequests: Boolean = true,
     /** Nominal bitrate, used to compare copies across services; lossless counts as 1411+. */
     val kbps: Int? = null,
+    /** The gain (dB) that brings this song to -18 LUFS, where the source knows it. */
+    val gainDb: Float? = null,
 )
 
 interface MusicSource {

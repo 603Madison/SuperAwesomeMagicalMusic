@@ -90,7 +90,7 @@ class AppContainer(val context: Context) {
 
     val downloads = DownloadRepository(context, database.downloads(), settings)
     val missingDetails = MissingDetails(database.playlists(), database.downloads())
-    val radio = RadioBrowserClient(httpClient, userAgent = "MusicApp/${versionDescription.substringBefore(' ')}")
+    val radio = RadioBrowserClient(httpClient, userAgent = "SuperAwesomeMagicalMusic/${versionDescription.substringBefore(' ')}")
     val resolver = StreamResolver(
         catalog,
         database.downloads(),
@@ -125,6 +125,14 @@ class AppContainer(val context: Context) {
 
     /** What's actually being decoded and downloaded for each queue item (filled in by the playback service). */
     val playbackDetails = PlaybackDetails()
+    /** The player's volume leveller (see PlaybackService). */
+    val loudness = com.music.player.playback.LoudnessProcessor()
+    val sleepTimer = com.music.player.playback.SleepTimer()
+    val lyrics = com.music.player.lyrics.LyricsRepository(
+        httpClient,
+        jellyfin,
+        userAgent = "SuperAwesomeMagicalMusic/${com.music.player.BuildConfig.VERSION_NAME} (Android)",
+    )
     val bookmarks = com.music.player.bookmarks.Bookmarks(File(context.filesDir, "bookmarks.json"))
 
     private val _playbackErrors = MutableSharedFlow<String>(extraBufferCapacity = 4)

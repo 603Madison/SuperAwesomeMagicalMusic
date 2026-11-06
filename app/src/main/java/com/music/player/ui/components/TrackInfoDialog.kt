@@ -97,6 +97,15 @@ private fun ColumnScope.NowPlayingInfo(origin: PlaybackOrigin?, player: PlayerUi
     describe(decoded, player.format)?.let { Info("Audio", it) }
     bitrate(decoded, player.format, origin)?.let { Info("Bitrate", it) }
     origin?.quality?.let { Info("Bitrate cap", "${it.label} (picked on $networkLabel)") }
+    val loudness = LocalAppContainer.current.loudness
+    Info(
+        "Volume levelling",
+        when {
+            !loudness.enabled -> "Off"
+            loudness.knownGainDb != null -> "%+.1f dB (from Jellyfin's loudness value)".format(loudness.currentGainDb)
+            else -> "%+.1f dB (measured while playing)".format(loudness.currentGainDb)
+        },
+    )
     val remainingMs = (player.durationMs - player.positionMs).coerceAtLeast(0)
     val buffered = formatTime(player.totalBufferedMs)
     Info(

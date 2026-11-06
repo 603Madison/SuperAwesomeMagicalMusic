@@ -2,6 +2,10 @@ package com.music.player.playback
 
 import android.app.PendingIntent
 import android.content.Intent
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.annotation.OptIn
@@ -40,6 +44,7 @@ import com.music.player.sources.siriusxm.SxmStationTrack
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -76,7 +81,16 @@ class PlaybackService : MediaLibraryService() {
             .setConstantBitrateSeekingAlwaysEnabled(true)
         val loadControl = BufferControl { container.settingsState.value.bufferAheadSeconds * 1000L }
 
-        val player = ExoPlayer.Builder(this)
+        val loudness = container.loudness
+        val renderers = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
+                DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessors(arrayOf(loudness))
+                    .build()
+        }
+        val player = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(AppMediaSourceFactory(dataSourceFactory, extractors))
             .setLoadControl(loadControl)
             .setAudioAttributes(
@@ -109,11 +123,25 @@ class PlaybackService : MediaLibraryService() {
             )
             .build()
 
+        scope.launch { runSleepTimer(player) }
+
+        // Volume levelling: Jellyfin's own loudness value where the song has one, else by ear.
+        scope.launch {
+            container.settings.settings.map { it.playback.levelVolume }.distinctUntilChanged().collect { loudness.enabled = it }
+        }
+        val updateKnownGain = {
+            loudness.knownGainDb = player.currentMediaItem?.let { container.resolver.origins.value[it.mediaId]?.gainDb }
+        }
+        player.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) = updateKnownGain()
+        })
+        scope.launch { container.resolver.origins.collect { updateKnownGain() } }
+
         // Android Auto's buttons follow what's playing: thumbs on station songs, and the
         // bookmark button turns into a tick once the song is bookmarked.
         // SiriusXM's now-playing updates every few seconds; only send buttons that changed.
         var shownButtons: List<Triple<Int, CharSequence, String?>>? = null
-        val refreshButtons = {
+        refreshButtons = {
             val current = buttons.buttons(player)
             val summary = current.map { Triple(it.icon, it.displayName, it.sessionCommand?.customAction) }
             if (summary != shownButtons) {
@@ -124,6 +152,17 @@ class PlaybackService : MediaLibraryService() {
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
                 refreshButtons()
+                startAtSongFor = mediaItem?.mediaId?.takeIf {
+                    mediaItem.toTrack()?.let(SxmChannel::idOf)?.first == SiriusXmClient.LINEAR
+                }
+            }
+
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                refreshButtons()
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) startChannelAtSongStart(player)
             }
         })
         scope.launch {
@@ -238,6 +277,7 @@ class PlaybackService : MediaLibraryService() {
                     container.siriusXm.publishNowPlaying(nowPlaying)
                     showSong(player, cut)
                 }
+                refreshButtons()
             }
             delay(NOW_PLAYING_INTERVAL_MS)
         }
@@ -320,6 +360,76 @@ class PlaybackService : MediaLibraryService() {
                 player.getMediaItemAt(it).toTrack()?.let(SxmStationTrack::idOf)?.first == stationId
             } ?: return@launch
             player.addMediaItems(last + 1, more.map { it.toTrack(stationName).toMediaItem() })
+        }
+    }
+
+    /**
+     * Carries out the sleep timer: at the time set, fades out over a few seconds and pauses; for
+     * "end of song", lets ExoPlayer pause when the song ends.
+     */
+    private suspend fun runSleepTimer(player: ExoPlayer) {
+        val timer = container.sleepTimer
+        player.addListener(object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM && timer.state.value == SleepTimerState.EndOfSong) {
+                    timer.cancel()
+                }
+            }
+        })
+        timer.state.collectLatest { state ->
+            player.pauseAtEndOfMediaItems = state == SleepTimerState.EndOfSong
+            if (state !is SleepTimerState.At) return@collectLatest
+            delay((state.endsAtMs - System.currentTimeMillis() - SLEEP_FADE_MS).coerceAtLeast(0))
+            val volume = player.volume
+            try {
+                val steps = 20
+                for (step in 1..steps) {
+                    player.volume = volume * (steps - step) / steps
+                    delay(SLEEP_FADE_MS / steps)
+                }
+                player.pause()
+                container.appLog.log("player", "sleep timer: paused")
+            } finally {
+                player.volume = volume
+                if (timer.state.value == state) timer.cancel()
+            }
+        }
+    }
+
+    /** Updates Android Auto's buttons for what's playing (set up in onCreate). */
+    private var refreshButtons: () -> Unit = {}
+
+    /** A live channel just tuned, to be started at the beginning of the song that's on. */
+    private var startAtSongFor: String? = null
+
+    /**
+     * Starts a just-tuned live channel at the beginning of the song that's on, as SiriusXM's own
+     * app does, rather than partway through it. Only for songs that began within the stream's
+     * reach and a little while ago (not talk shows, which run for hours).
+     */
+    private fun startChannelAtSongStart(player: ExoPlayer) {
+        val mediaId = startAtSongFor ?: return
+        val item = player.currentMediaItem?.takeIf { it.mediaId == mediaId } ?: return
+        startAtSongFor = null
+        val (type, channelId) = item.toTrack()?.let(SxmChannel::idOf) ?: return
+        scope.launch {
+            if (!container.settings.current().playback.siriusXmFromSongStart) return@launch
+            val timeline = player.currentTimeline
+            if (timeline.isEmpty) return@launch
+            val windowStart = timeline.getWindow(player.currentMediaItemIndex, Timeline.Window()).windowStartTimeMs
+            if (windowStart == C.TIME_UNSET) return@launch
+            val heardAt = windowStart + player.currentPosition
+            val cut = runCatching { container.siriusXm.cutAt(type, channelId, heardAt) }.getOrNull() ?: return@launch
+            val into = heardAt - cut.startMs
+            if (!cut.isSong || cut.startMs < windowStart || into !in SONG_START_RANGE_MS) return@launch
+            // Still the same channel, and nobody has moved it meanwhile.
+            if (player.currentMediaItem?.mediaId != mediaId) return@launch
+            // The live window may have moved on while the schedule was fetched.
+            val nowStart = player.currentTimeline.takeIf { !it.isEmpty }
+                ?.getWindow(player.currentMediaItemIndex, Timeline.Window())?.windowStartTimeMs
+                ?.takeIf { it != C.TIME_UNSET } ?: return@launch
+            container.appLog.log("player", "starting ${cut.title} from its beginning (${into / 1000}s back)")
+            player.seekTo((cut.startMs - nowStart).coerceAtLeast(0))
         }
     }
 
@@ -464,5 +574,9 @@ class PlaybackService : MediaLibraryService() {
         const val TAG = "PlaybackService"
         const val NOW_PLAYING_INTERVAL_MS = 10_000L
         const val RETUNE_INTERVAL_MS = 30_000L
+        const val SLEEP_FADE_MS = 8_000L
+
+        /** How far into a song a tuned channel may be for it to start from the beginning. */
+        val SONG_START_RANGE_MS = 5_000L..8 * 60_000L
     }
 }

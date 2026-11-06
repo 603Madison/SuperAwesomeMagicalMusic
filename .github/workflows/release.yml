@@ -71,8 +71,8 @@ jobs:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD || vars.RELEASE_KEYSTORE_PASSWORD }}
         run: |
           ./gradlew --no-daemon assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk "Music-$TAG.apk"
-          sha256sum "Music-$TAG.apk"
+          cp app/build/outputs/apk/release/app-release.apk "SuperAwesomeMagicalMusic-$TAG.apk"
+          sha256sum "SuperAwesomeMagicalMusic-$TAG.apk"
 
       - name: Publish GitHub release
         env:
@@ -80,9 +80,9 @@ jobs:
         run: |
           # Notes come from the latest branch so older releases can be (re)published too.
           git fetch --depth=1 origin "${{ github.sha }}"
-          git show "${{ github.sha }}:release-notes/$TAG.md" > notes.md 2>/dev/null || echo "Music $TAG" > notes.md
+          git show "${{ github.sha }}:release-notes/$TAG.md" > notes.md 2>/dev/null || echo "SuperAwesomeMagicalMusic $TAG" > notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "Music-$TAG.apk" --clobber
+            gh release upload "$TAG" "SuperAwesomeMagicalMusic-$TAG.apk" --clobber
           else
-            gh release create "$TAG" "Music-$TAG.apk" --target "$COMMIT" --title "Music $TAG" --notes-file notes.md
+            gh release create "$TAG" "SuperAwesomeMagicalMusic-$TAG.apk" --target "$COMMIT" --title "SuperAwesomeMagicalMusic $TAG" --notes-file notes.md
           fi

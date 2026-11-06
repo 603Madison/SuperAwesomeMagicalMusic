@@ -106,6 +106,14 @@ data class DownloadSettings(
     val allowSatellite: Boolean = false,
 )
 
+/** How music plays, beyond where it comes from. */
+data class PlaybackSettings(
+    /** Even out loudness between songs and services (see LoudnessProcessor). */
+    val levelVolume: Boolean = true,
+    /** On SiriusXM channels, start at the beginning of the song that's on, as SiriusXM's app does. */
+    val siriusXmFromSongStart: Boolean = true,
+)
+
 data class AppSettings(
     val deviceId: String = "",
     val jellyfin: JellyfinConfig = JellyfinConfig(),
@@ -130,6 +138,7 @@ data class AppSettings(
     val radioNearby: List<RadioStation> = emptyList(),
     /** How much music to load ahead of what's playing, running on into the next songs. */
     val bufferAheadSeconds: Int = DEFAULT_BUFFER_AHEAD_SECONDS,
+    val playback: PlaybackSettings = PlaybackSettings(),
 ) {
     companion object {
         const val DEFAULT_BUFFER_AHEAD_SECONDS = 300

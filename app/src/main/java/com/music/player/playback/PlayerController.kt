@@ -10,7 +10,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.Player
+import android.os.Bundle
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.music.player.model.Track
@@ -39,6 +41,10 @@ data class PlayerUiState(
     val totalBufferedMs: Long = 0,
     /** What the decoder is actually getting, when known. */
     val format: AudioFormatInfo? = null,
+    /** On a live stream, how far behind the live edge playback is (else null). */
+    val liveOffsetMs: Long? = null,
+    /** On a live stream, the wall-clock time position 0 corresponds to (else null). */
+    val windowStartMs: Long? = null,
 )
 
 /** The audio format being played: codec, bitrate (when the file declares it), sample rate, channels. */
@@ -150,6 +156,9 @@ class PlayerController(private val context: Context, private val scope: Coroutin
     }
 
     fun next() = withController { it.seekToNext() }
+
+    /** One of the session's own commands (see SessionButtons), e.g. restarting a SiriusXM song. */
+    fun send(command: SessionCommand) = withController { it.sendCustomCommand(command, Bundle.EMPTY) }
     fun previous() = withController { it.seekToPrevious() }
     fun seekTo(positionMs: Long) = withController { it.seekTo(positionMs) }
     fun skipTo(index: Int) = withController { it.seekTo(index, 0L) }
@@ -195,6 +204,8 @@ class PlayerController(private val context: Context, private val scope: Coroutin
             bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0),
             totalBufferedMs = player.totalBufferedDuration.coerceAtLeast(0),
             format = currentFormat(player),
+            liveOffsetMs = liveOffset(player),
+            windowStartMs = windowStart(player),
         )
         // While playing or loading, position and buffer move on without player events.
         if (player.isPlaying || player.isLoading) startTicker() else ticker?.cancel()
@@ -210,10 +221,21 @@ class PlayerController(private val context: Context, private val scope: Coroutin
                     positionMs = player.currentPosition.coerceAtLeast(0),
                     bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0),
                     totalBufferedMs = player.totalBufferedDuration.coerceAtLeast(0),
+                    liveOffsetMs = liveOffset(player),
+                    windowStartMs = windowStart(player),
                 )
             }
         }
     }
+
+    private fun windowStart(player: Player): Long? {
+        if (!player.isCurrentMediaItemLive || player.currentTimeline.isEmpty) return null
+        return player.currentTimeline.getWindow(player.currentMediaItemIndex, androidx.media3.common.Timeline.Window())
+            .windowStartTimeMs.takeIf { it != C.TIME_UNSET }
+    }
+
+    private fun liveOffset(player: Player): Long? =
+        player.currentLiveOffset.takeIf { player.isCurrentMediaItemLive && it != C.TIME_UNSET }
 
     /** The current song, with artwork and album the player found for it (from the copy playing). */
     private fun currentTrack(item: MediaItem): Track? {

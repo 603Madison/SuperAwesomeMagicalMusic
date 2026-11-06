@@ -29,6 +29,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Pause
@@ -146,6 +148,11 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
     val origins by container.resolver.origins.collectAsStateWithLifecycle()
     val downloaded by container.downloads.completedKeys.collectAsStateWithLifecycle(emptySet())
     val thumbs by container.siriusXm.thumbs.collectAsStateWithLifecycle()
+    val sleepTimer by container.sleepTimer.state.collectAsStateWithLifecycle()
+    var showLyrics by remember { mutableStateOf(false) }
+    var showSleepTimer by remember { mutableStateOf(false) }
+    if (showLyrics) LyricsSheet(onDismiss = { showLyrics = false })
+    if (showSleepTimer) SleepTimerDialog(isLive = state.current?.isLive == true, onDismiss = { showSleepTimer = false })
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val track = state.current
 
@@ -259,6 +266,7 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
                             )
                         }
                     }
+                    LiveControls(track)
                     if (track.isSiriusXmChannel) NowPlayingCard()
                     Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                     Row(Modifier.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -302,6 +310,18 @@ fun NowPlayingSheet(onDismiss: () -> Unit) {
                             }) {
                                 Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Save song")
                             }
+                        }
+                        if (track.source != com.music.player.model.SourceType.RADIO) {
+                            IconButton(onClick = { showLyrics = true }) {
+                                Icon(Icons.Default.Lyrics, contentDescription = "Lyrics")
+                            }
+                        }
+                        IconButton(onClick = { showSleepTimer = true }) {
+                            Icon(
+                                Icons.Default.Bedtime,
+                                contentDescription = if (sleepTimer != null) "Sleep timer (on)" else "Sleep timer",
+                                tint = if (sleepTimer != null) accent else LocalContentColor.current,
+                            )
                         }
                         IconButton(onClick = { actions.info(track) }) {
                             Icon(Icons.Outlined.Info, contentDescription = "Info")

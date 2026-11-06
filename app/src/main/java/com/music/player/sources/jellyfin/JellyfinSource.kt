@@ -5,6 +5,7 @@ import com.music.player.BuildConfig
 import com.music.player.model.SourceType
 import com.music.player.model.Track
 import com.music.player.net.AppJson
+import com.music.player.net.HttpException
 import com.music.player.net.Http
 import com.music.player.net.fetchString
 import com.music.player.quality.StreamQuality
@@ -107,6 +108,7 @@ class JellyfinSource(
                 description = "${plan.codec?.uppercase() ?: "Original"} (original file)",
                 fileExtension = JellyfinStreamPlanner.extensionForCodec(plan.codec),
                 kbps = sourceKbps,
+                gainDb = item.normalizationGain,
             )
             is JellyfinPlan.Transcode -> SourceStream(
                 url = "${config.serverUrl}/Audio/${item.id}/stream.${plan.container}".toHttpUrl().newBuilder()
@@ -129,7 +131,23 @@ class JellyfinSource(
                 fileExtension = plan.container,
                 supportsRangeRequests = false,
                 kbps = plan.kbps ?: LOSSLESS_KBPS,
+                gainDb = item.normalizationGain,
             )
+        }
+    }
+
+    /**
+     * The song's lyrics stored in Jellyfin (10.9+), as (start in ms or null, line) pairs; null
+     * when it has none.
+     */
+    suspend fun lyrics(itemId: String): JfLyrics? {
+        val (config, deviceId) = requireConfig()
+        val url = "${config.serverUrl}/Audio".toHttpUrl().newBuilder().addPathSegment(itemId).addPathSegment("Lyrics").build()
+        val request = Request.Builder().url(url).header("Authorization", authorization(deviceId, config.accessToken)).build()
+        return try {
+            AppJson.decodeFromString<JfLyrics>(http.fetchString(request)).takeIf { it.lyrics.isNotEmpty() }
+        } catch (e: HttpException) {
+            if (e.code == 404) null else throw e
         }
     }
 
@@ -177,7 +195,7 @@ class JellyfinSource(
     private fun authorization(deviceId: String, token: String?): String {
         val device = Build.MODEL.replace("\"", "")
         val tokenPart = token?.let { ", Token=\"$it\"" }.orEmpty()
-        return "MediaBrowser Client=\"Music\", Device=\"$device\", DeviceId=\"$deviceId\", " +
+        return "MediaBrowser Client=\"SuperAwesomeMagicalMusic\", Device=\"$device\", DeviceId=\"$deviceId\", " +
             "Version=\"${BuildConfig.VERSION_NAME}\"$tokenPart"
     }
 

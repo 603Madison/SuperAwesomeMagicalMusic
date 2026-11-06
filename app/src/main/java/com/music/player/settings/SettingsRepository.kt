@@ -151,6 +151,11 @@ class SettingsRepository(context: Context) {
 
     suspend fun setBufferAheadSeconds(seconds: Int) = store.edit { it[Keys.BUFFER_AHEAD] = seconds }
 
+    suspend fun setPlayback(playback: PlaybackSettings) = store.edit {
+        it[Keys.LEVEL_VOLUME] = playback.levelVolume
+        it[Keys.SXM_FROM_SONG_START] = playback.siriusXmFromSongStart
+    }
+
     private fun Preferences.toAppSettings(): AppSettings {
         val defaults = AppSettings()
         return AppSettings(
@@ -210,6 +215,10 @@ class SettingsRepository(context: Context) {
             ),
             loadArtworkOnSatellite = this[Keys.ARTWORK_ON_SATELLITE] ?: defaults.loadArtworkOnSatellite,
             bufferAheadSeconds = this[Keys.BUFFER_AHEAD] ?: defaults.bufferAheadSeconds,
+            playback = PlaybackSettings(
+                levelVolume = this[Keys.LEVEL_VOLUME] ?: defaults.playback.levelVolume,
+                siriusXmFromSongStart = this[Keys.SXM_FROM_SONG_START] ?: defaults.playback.siriusXmFromSongStart,
+            ),
         )
     }
 
@@ -279,5 +288,7 @@ class SettingsRepository(context: Context) {
         val DL_SATELLITE = booleanPreferencesKey("download_satellite")
         val ARTWORK_ON_SATELLITE = booleanPreferencesKey("artwork_on_satellite")
         val BUFFER_AHEAD = intPreferencesKey("buffer_ahead_seconds")
+        val LEVEL_VOLUME = booleanPreferencesKey("level_volume")
+        val SXM_FROM_SONG_START = booleanPreferencesKey("sxm_from_song_start")
     }
 }

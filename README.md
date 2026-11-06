@@ -1,4 +1,4 @@
-# Music
+# SuperAwesomeMagicalMusic
 
 An Android music player for self-hosters. It plays from your **Jellyfin** library first and fills
 the gaps from **Qobuz** or **YouTube Music**. It also plays **SiriusXM** live radio, and songs you
@@ -88,13 +88,28 @@ Android Auto under **Radio**. Next and previous move between stations in the lis
 
 The app appears as a media source in Android Auto (and to the system, Android Automotive, the
 Assistant and Wear OS; other apps can only play, pause and skip). You can browse **Playlists**, **Downloads**
-and **SiriusXM** channels by category, search, and ask the Assistant to "play … on Music": a
+and **SiriusXM** channels by category, search, and ask the Assistant to "play … on SuperAwesomeMagicalMusic": a
 SiriusXM channel name plays that channel, anything else searches Jellyfin first. The
 **Bookmark** (+) button keeps the song you're hearing (on SiriusXM, a Pandora station, or
 anything else) for later and turns into a tick; press it again to take the bookmark back. The next
 time you open the app on your phone, it asks which playlist each bookmarked song goes in, so you
 never have to pick one while driving. On Pandora station songs, **thumbs up / down** buttons appear
 as well.
+
+### Listening
+
+- **Even volume.** Songs from Jellyfin, YouTube Music, Qobuz and SiriusXM play at about the same
+  loudness. Jellyfin's own loudness value (10.9+) is used where a song has one, which keeps its
+  dynamics; anything else is levelled gently while it plays, and boosts never clip. Settings ›
+  Playback › Even out volume turns it off; a song's Info shows the gain in use.
+- **SiriusXM channels start at the top of the song** that's on, as SiriusXM's app does, rather than
+  partway through. On a live channel, **Restart song**, **15 s** back and **Live** (once you're
+  behind) are in the player and Android Auto.
+- **Lyrics** (the lyrics button in the player), synced and following along where available: from
+  Jellyfin when the song is in your library and has them, otherwise from LRCLIB (lrclib.net), a
+  free lyrics database. Only the song's title, artist, album and length are sent, and only when
+  you open lyrics. On SiriusXM they're the lyrics of the song on the channel.
+- **Sleep timer** (the moon button): stop after 15–90 minutes, fading out, or at the end of the song.
 
 ### 2. Bitrates per network, including satellite
 
@@ -209,7 +224,7 @@ Plain-HTTP server URLs are allowed, because home servers often run without TLS o
 
 ## Installing
 
-Download `Music-vX.Y.Z.apk` from the repository's **Releases** page and open it on your phone
+Download `SuperAwesomeMagicalMusic-vX.Y.Z.apk` from the repository's **Releases** page and open it on your phone
 (allow installing from your browser or file manager when Android asks). Every release is signed
 with the same key, so new versions install over old ones and keep your settings and downloads.
 

@@ -79,7 +79,7 @@ object LibraryIds {
 
 /**
  * The media library Android Auto browses: playlists, downloads and SiriusXM channels, plus
- * search, voice requests ("play … on Music") and the extra buttons of [SessionButtons]: bookmark
+ * search, voice requests ("play … on SuperAwesomeMagicalMusic") and the extra buttons of [SessionButtons]: bookmark
  * what's playing, and thumbs on Pandora station songs.
  */
 @OptIn(UnstableApi::class)
@@ -128,6 +128,9 @@ class LibraryCallback(
                 SessionButtons.BOOKMARK.customAction -> buttons.toggleBookmark(player) != null
                 SessionButtons.THUMB_UP.customAction -> buttons.rate(player, SxmThumb.UP)
                 SessionButtons.THUMB_DOWN.customAction -> buttons.rate(player, SxmThumb.DOWN)
+                SessionButtons.RESTART_SONG.customAction -> buttons.restartSong(player)
+                SessionButtons.BACK_15.customAction -> buttons.back15(player)
+                SessionButtons.GO_LIVE.customAction -> buttons.goLive(player)
                 else -> return@future SessionResult(SessionError.ERROR_NOT_SUPPORTED)
             }
         } catch (e: CancellationException) {
@@ -152,7 +155,7 @@ class LibraryCallback(
         params: LibraryParams?,
     ): ListenableFuture<LibraryResult<MediaItem>> {
         log("root for ${browser.packageName}: recent=${params?.isRecent} hints=${params?.extras?.keySet()}")
-        return Futures.immediateFuture(LibraryResult.ofItem(folder(LibraryIds.ROOT, "Music", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED), params))
+        return Futures.immediateFuture(LibraryResult.ofItem(folder(LibraryIds.ROOT, "SuperAwesomeMagicalMusic", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED), params))
     }
 
     override fun onGetItem(

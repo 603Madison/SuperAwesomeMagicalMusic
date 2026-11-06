@@ -138,6 +138,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setBufferAheadSeconds(seconds: Int) = launch { settings.setBufferAheadSeconds(seconds) }
 
+    fun setPlayback(playback: com.music.player.settings.PlaybackSettings) = launch { settings.setPlayback(playback) }
+
     fun connectLidarr(url: String, apiKey: String) = act(_lidarr) {
         val config = settings.current().lidarr.copy(serverUrl = Http.normalizeBaseUrl(url), apiKey = apiKey.trim())
         val version = try {

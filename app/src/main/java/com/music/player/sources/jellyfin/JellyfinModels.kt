@@ -30,6 +30,8 @@ data class JfItem(
     @SerialName("ImageTags") val imageTags: Map<String, String> = emptyMap(),
     @SerialName("AlbumPrimaryImageTag") val albumPrimaryImageTag: String? = null,
     @SerialName("MediaSources") val mediaSources: List<JfMediaSource> = emptyList(),
+    /** Jellyfin 10.9+: the gain (dB) that brings the track to -18 LUFS. */
+    @SerialName("NormalizationGain") val normalizationGain: Float? = null,
 )
 
 @Serializable
@@ -45,4 +47,14 @@ data class JfMediaStream(
     @SerialName("Type") val type: String? = null,
     @SerialName("Codec") val codec: String? = null,
     @SerialName("BitRate") val bitRate: Long? = null,
+)
+
+@Serializable
+data class JfLyrics(@SerialName("Lyrics") val lyrics: List<JfLyricLine> = emptyList())
+
+@Serializable
+data class JfLyricLine(
+    @SerialName("Text") val text: String = "",
+    /** In ticks (100 ns); absent for unsynced lyrics. */
+    @SerialName("Start") val start: Long? = null,
 )

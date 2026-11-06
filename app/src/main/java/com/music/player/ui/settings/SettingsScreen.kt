@@ -92,6 +92,7 @@ fun SettingsScreen() {
         ) {
             QualitySection(settings, viewModel)
             BufferSection(settings, viewModel)
+            PlaybackSection(settings, viewModel)
             JellyfinSection(settings, viewModel)
             StreamingServicesSection(settings, viewModel)
             SiriusXmSection(settings, viewModel)
@@ -193,6 +194,23 @@ private fun QualitySection(settings: AppSettings, viewModel: SettingsViewModel) 
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PlaybackSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    val playback = settings.playback
+    Section("Playback") {
+        ToggleRow(
+            "Even out volume",
+            "Songs from Jellyfin, YouTube, Qobuz and SiriusXM play at about the same loudness",
+            playback.levelVolume,
+        ) { viewModel.setPlayback(playback.copy(levelVolume = it)) }
+        ToggleRow(
+            "Start SiriusXM songs from the beginning",
+            "Tuning to a channel starts the song that's on from its start, not midway",
+            playback.siriusXmFromSongStart,
+        ) { viewModel.setPlayback(playback.copy(siriusXmFromSongStart = it)) }
     }
 }
 
