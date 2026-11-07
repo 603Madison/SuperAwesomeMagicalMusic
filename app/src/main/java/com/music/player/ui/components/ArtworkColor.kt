@@ -35,7 +35,7 @@ fun rememberArtworkColor(url: String?): Color? {
         }
         color = withContext(Dispatchers.Default) {
             runCatching {
-                val request = ImageRequest.Builder(context).data(url).size(96).allowHardware(false).build()
+                val request = ImageRequest.Builder(context).data(com.music.player.sources.ArtworkUrls.sized(url, 96)).size(96).allowHardware(false).build()
                 val bitmap = (SingletonImageLoader.get(context).execute(request) as? SuccessResult)?.image?.toBitmap()
                     ?: return@runCatching null
                 val palette = Palette.from(bitmap).maximumColorCount(16).generate()

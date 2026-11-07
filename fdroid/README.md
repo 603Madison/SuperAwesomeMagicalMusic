@@ -20,8 +20,9 @@ from the Actions tab. It:
    release's notes into its "What's new" (`changelog.py`),
 3. runs `fdroid update`, which signs the index with the app's signing key (the
    `RELEASE_KEYSTORE_*` secrets), and
-4. force-pushes the result to the `gh-pages` branch as a single commit, so APKs don't pile up in
-   history.
+4. publishes it to GitHub Pages: deployed directly when Settings › Pages › Source is "GitHub
+   Actions", or force-pushed to the `gh-pages` branch as a single commit (so APKs don't pile up
+   in history) when it's "Deploy from a branch".
 
 `config.yml` holds the repo's settings; its passwords come from the environment.
 

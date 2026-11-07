@@ -1,8 +1,9 @@
 name: F-Droid repo
 
 # Builds the project's F-Droid repo from the newest GitHub releases and publishes it to GitHub
-# Pages (the gh-pages branch, replaced each time so old APKs don't pile up in history). Runs
-# after every release (called from release.yml) or from the Actions tab.
+# Pages, however Pages is set up (Settings > Pages > Source): "GitHub Actions" deploys the site
+# directly; "Deploy from a branch" gets the gh-pages branch, replaced each time so old APKs don't
+# pile up in history. Runs after every release (called from release.yml) or from the Actions tab.
 on:
   workflow_dispatch:
     inputs:
@@ -14,6 +15,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: fdroid-repo
@@ -22,6 +25,9 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: https://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/
     steps:
       - uses: actions/checkout@v4
 
@@ -61,19 +67,45 @@ jobs:
           fdroid/build-repo.sh "${{ inputs.releases || '5' }}"
           rm -f fdroid/keystore.jks
 
-      - name: Publish to GitHub Pages
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Put the site together
         run: |
           site="$RUNNER_TEMP/site"
           mkdir -p "$site"
           cp -r fdroid/repo "$site/repo"
           cp fdroid/site/index.html "$site/index.html"
           touch "$site/.nojekyll"
-          cd "$site"
+          echo "SITE=$site" >> "$GITHUB_ENV"
+
+      # How Pages is set up: "workflow" (source: GitHub Actions) or "legacy" (from a branch).
+      - name: Check how GitHub Pages is set up
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mode=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .build_type 2>/dev/null || echo none)
+          echo "GitHub Pages: ${mode}"
+          if [ "$mode" = none ]; then
+            echo "::warning::GitHub Pages isn't turned on: Settings > Pages > Source > GitHub Actions"
+          fi
+          echo "PAGES_MODE=$mode" >> "$GITHUB_ENV"
+
+      - name: Publish to the gh-pages branch
+        if: env.PAGES_MODE != 'workflow'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$SITE"
           git init --quiet --initial-branch gh-pages
           git add --all
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit --quiet --message "F-Droid repo, $(date -u +%Y-%m-%d)"
           git push --force --quiet "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
-          echo "Published $(ls repo/*.apk | wc -l) APKs to https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/repo"
+          echo "Published $(ls repo/*.apk | wc -l) APKs to the gh-pages branch"
+
+      - uses: actions/upload-pages-artifact@v3
+        if: env.PAGES_MODE == 'workflow'
+        with:
+          path: ${{ env.SITE }}
+
+      - name: Deploy to GitHub Pages
+        if: env.PAGES_MODE == 'workflow'
+        uses: actions/deploy-pages@v4
