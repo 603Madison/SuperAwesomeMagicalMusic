@@ -1,0 +1,363 @@
+{
+  "repo": {
+    "timestamp": 1794027092000,
+    "version": 20002,
+    "name": "SuperAwesomeMagicalMusic",
+    "icon": "icon.png",
+    "address": "https://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/repo",
+    "description": "Releases of SuperAwesomeMagicalMusic, a music player for self-hosters (Jellyfin first, with YouTube Music, Qobuz, SiriusXM, radio and Android Auto), built and signed by the project's GitHub Actions."
+  },
+  "requests": {
+    "install": [],
+    "uninstall": []
+  },
+  "apps": [
+    {
+      "antiFeatures": [
+        "NonFreeNet"
+      ],
+      "authorName": "603Madison",
+      "categories": [
+        "Multimedia"
+      ],
+      "changelog": "https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone/releases",
+      "suggestedVersionName": "1.10.1",
+      "suggestedVersionCode": "22",
+      "issueTracker": "https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone/issues",
+      "license": "GPL-3.0-only",
+      "sourceCode": "https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone",
+      "webSite": "https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone",
+      "added": 1794027082000,
+      "packageName": "com.music.player",
+      "lastUpdated": 1794027086000,
+      "localized": {
+        "en-US": {
+          "description": "<p>A music player for self-hosters. It plays from your <b>Jellyfin</b> library first and fills the gaps from <b>YouTube Music</b> or <b>Qobuz</b>; artists you're missing are added to <b>Lidarr</b>. It also plays <b>SiriusXM</b> (live channels, Xtra channels and Pandora artist stations) and local <b>radio</b>, and works in <b>Android Auto</b>.</p>\n\n<p><b>Made for the road</b></p>\n<ul>\n<li>Separate bitrates for Wi-Fi, cellular and satellite (T-Satellite and other direct-to-cell services), and a cap for Android's Data Saver.</li>\n<li>A dead-zone cache that fetches the next songs while the signal is good, and downloads for offline listening that upgrade themselves to better copies.</li>\n<li>In Android Auto: bookmark a song with one tap and pick its playlist later on the phone, thumbs up and down on Pandora stations, restart or rewind SiriusXM songs.</li>\n</ul>\n\n<p><b>Listening</b></p>\n<ul>\n<li>Even volume across services, lyrics (Jellyfin or LRCLIB), a sleep timer, an equalizer and a home-screen widget.</li>\n<li>Playlists synced to your Nextcloud (sign in through the browser, so SSO works), and playlist import from YouTube and Spotify links.</li>\n<li>Listening history, including songs heard on SiriusXM, and scrobbling to ListenBrainz and Last.fm.</li>\n</ul>\n\n<p>Every account is your own: the app talks directly to your servers and services. SiriusXM, YouTube Music and Qobuz are reached through their unofficial or private APIs, which can change without notice.</p>\n",
+          "icon": "icon_I6X66TmrIyJwPy47QQx-d_5ZQgw6JZx0865_SnR1cqI=.png",
+          "name": "SuperAwesomeMagicalMusic",
+          "phoneScreenshots": [
+            "1-search.png",
+            "2-playlists.png",
+            "3-player.png"
+          ],
+          "summary": "Jellyfin first, with YouTube Music, Qobuz, SiriusXM, radio and Android Auto",
+          "whatsNew": "\u2022 Install and update through F-Droid\n\u2022 Open source under the GPL-3.0\n\nFull notes: https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone/releases/tag/v1.10.1\n"
+        }
+      }
+    }
+  ],
+  "packages": {
+    "com.music.player": [
+      {
+        "added": 1794027082000,
+        "apkName": "com.music.player_22.apk",
+        "hash": "a81e30a869d2472538e7d5ac3897fd71ec66fde8f36f055d7ec01311744884be",
+        "hashType": "sha256",
+        "minSdkVersion": 26,
+        "nativecode": [
+          "arm64-v8a",
+          "armeabi-v7a",
+          "x86",
+          "x86_64"
+        ],
+        "packageName": "com.music.player",
+        "sig": "81bf4a5179a586525deb8d37f82e37d5",
+        "signer": "ed2c0523bc9120f63952eae882fa4c0fbd3153967130c0a4adf1af98d07b5283",
+        "size": 18717491,
+        "targetSdkVersion": 36,
+        "uses-permission": [
+          [
+            "android.permission.INTERNET",
+            null
+          ],
+          [
+            "android.permission.ACCESS_NETWORK_STATE",
+            null
+          ],
+          [
+            "android.permission.WAKE_LOCK",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+            null
+          ],
+          [
+            "android.permission.POST_NOTIFICATIONS",
+            null
+          ],
+          [
+            "android.permission.ACCESS_COARSE_LOCATION",
+            null
+          ],
+          [
+            "android.permission.RECEIVE_BOOT_COMPLETED",
+            null
+          ],
+          [
+            "com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+            null
+          ]
+        ],
+        "versionCode": 22,
+        "versionName": "1.10.1"
+      },
+      {
+        "added": 1794027083000,
+        "apkName": "com.music.player_21.apk",
+        "hash": "860a17f26dbd4e490103082c9f1bde0f71a40c41c679b3d5e2eee3ab63d68052",
+        "hashType": "sha256",
+        "minSdkVersion": 26,
+        "nativecode": [
+          "arm64-v8a",
+          "armeabi-v7a",
+          "x86",
+          "x86_64"
+        ],
+        "packageName": "com.music.player",
+        "sig": "81bf4a5179a586525deb8d37f82e37d5",
+        "signer": "ed2c0523bc9120f63952eae882fa4c0fbd3153967130c0a4adf1af98d07b5283",
+        "size": 18717491,
+        "targetSdkVersion": 36,
+        "uses-permission": [
+          [
+            "android.permission.INTERNET",
+            null
+          ],
+          [
+            "android.permission.ACCESS_NETWORK_STATE",
+            null
+          ],
+          [
+            "android.permission.WAKE_LOCK",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+            null
+          ],
+          [
+            "android.permission.POST_NOTIFICATIONS",
+            null
+          ],
+          [
+            "android.permission.ACCESS_COARSE_LOCATION",
+            null
+          ],
+          [
+            "android.permission.RECEIVE_BOOT_COMPLETED",
+            null
+          ],
+          [
+            "com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+            null
+          ]
+        ],
+        "versionCode": 21,
+        "versionName": "1.10.0"
+      },
+      {
+        "added": 1794027085000,
+        "apkName": "com.music.player_20.apk",
+        "hash": "4c512de9192704f378da0b9d13e5661f5007cf829e00678de3d0c62b3d39d2d9",
+        "hashType": "sha256",
+        "minSdkVersion": 26,
+        "nativecode": [
+          "arm64-v8a",
+          "armeabi-v7a",
+          "x86",
+          "x86_64"
+        ],
+        "packageName": "com.music.player",
+        "sig": "81bf4a5179a586525deb8d37f82e37d5",
+        "signer": "ed2c0523bc9120f63952eae882fa4c0fbd3153967130c0a4adf1af98d07b5283",
+        "size": 18677707,
+        "targetSdkVersion": 36,
+        "uses-permission": [
+          [
+            "android.permission.INTERNET",
+            null
+          ],
+          [
+            "android.permission.ACCESS_NETWORK_STATE",
+            null
+          ],
+          [
+            "android.permission.WAKE_LOCK",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+            null
+          ],
+          [
+            "android.permission.POST_NOTIFICATIONS",
+            null
+          ],
+          [
+            "android.permission.ACCESS_COARSE_LOCATION",
+            null
+          ],
+          [
+            "android.permission.RECEIVE_BOOT_COMPLETED",
+            null
+          ],
+          [
+            "com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+            null
+          ]
+        ],
+        "versionCode": 20,
+        "versionName": "1.9.0"
+      },
+      {
+        "added": 1794027085000,
+        "apkName": "com.music.player_19.apk",
+        "hash": "b873d3e7a894143cc866b68a000f09aa3bef4de7d7498165fee1eabc0523b18a",
+        "hashType": "sha256",
+        "minSdkVersion": 26,
+        "nativecode": [
+          "arm64-v8a",
+          "armeabi-v7a",
+          "x86",
+          "x86_64"
+        ],
+        "packageName": "com.music.player",
+        "sig": "81bf4a5179a586525deb8d37f82e37d5",
+        "signer": "ed2c0523bc9120f63952eae882fa4c0fbd3153967130c0a4adf1af98d07b5283",
+        "size": 18579331,
+        "targetSdkVersion": 36,
+        "uses-permission": [
+          [
+            "android.permission.INTERNET",
+            null
+          ],
+          [
+            "android.permission.ACCESS_NETWORK_STATE",
+            null
+          ],
+          [
+            "android.permission.WAKE_LOCK",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+            null
+          ],
+          [
+            "android.permission.POST_NOTIFICATIONS",
+            null
+          ],
+          [
+            "android.permission.ACCESS_COARSE_LOCATION",
+            null
+          ],
+          [
+            "android.permission.RECEIVE_BOOT_COMPLETED",
+            null
+          ],
+          [
+            "com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+            null
+          ]
+        ],
+        "versionCode": 19,
+        "versionName": "1.8.0"
+      },
+      {
+        "added": 1794027086000,
+        "apkName": "com.music.player_18.apk",
+        "hash": "dc19c6c9a94d7ebd119c04c1d5d9f0e8fbd5081ac6085e5652ee1a77fd70d326",
+        "hashType": "sha256",
+        "minSdkVersion": 26,
+        "nativecode": [
+          "arm64-v8a",
+          "armeabi-v7a",
+          "x86",
+          "x86_64"
+        ],
+        "packageName": "com.music.player",
+        "sig": "81bf4a5179a586525deb8d37f82e37d5",
+        "signer": "ed2c0523bc9120f63952eae882fa4c0fbd3153967130c0a4adf1af98d07b5283",
+        "size": 18546547,
+        "targetSdkVersion": 36,
+        "uses-permission": [
+          [
+            "android.permission.INTERNET",
+            null
+          ],
+          [
+            "android.permission.ACCESS_NETWORK_STATE",
+            null
+          ],
+          [
+            "android.permission.WAKE_LOCK",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+            null
+          ],
+          [
+            "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+            null
+          ],
+          [
+            "android.permission.POST_NOTIFICATIONS",
+            null
+          ],
+          [
+            "android.permission.ACCESS_COARSE_LOCATION",
+            null
+          ],
+          [
+            "android.permission.RECEIVE_BOOT_COMPLETED",
+            null
+          ],
+          [
+            "com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+            null
+          ]
+        ],
+        "versionCode": 18,
+        "versionName": "1.7.2"
+      }
+    ]
+  }
+}

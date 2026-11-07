@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<fdroid>
+	<repo icon="icon.png" name="SuperAwesomeMagicalMusic" pubkey="308204e6308202cea003020102020900edc93519654a88a7300d06092a864886f70d01010c05003020310e300c060355040a13054d75736963310e300c060355040313054d757369633020170d3236313032393230333530385a180f32313236313030353230333530385a3020310e300c060355040a13054d75736963310e300c060355040313054d7573696330820222300d06092a864886f70d01010105000382020f003082020a0282020100af05825a4972a5c6cebc590e5a43dda46ef47e91f29d1351d21107cc2f48b450f6091aae0b355ab2806467fd725f586972d31b8f534b69e33e0f6876085f8bb835a2efe784212dbb944e71a897176ad278442ba403d5f66d17ac5cc19024177c6d8e35f249d4f26ebd5119a2730cbe3f307acbe4e3f281b23c11fe4f10eeb873ccaeb8b86c67bfd04a5b6559542786e78e391093b940dc3d7793b3c1f676c9954092628d8006d8f818ebdba8e4680a25f03e2615865d9d2c4fc9ce84e791f21351ea9bed3e4c272508dbe40724d9545c019461f7add84cc0a194b25836edec51b523dd70ba9672d98a5e6b2311f6d5fc7b8af268ae91fb1f3500715346fbf228746d47b83146ea45290b94dafcc501a79b32bae293f6e33e29f346a6b4ce629f51ecf8ad4bcb2eafe6a87ad45cabf6c4a8b963dd11670cfe78d6c6fbe73cc429cf5c4fcfc921832b932377ae5b280df03fdbfa7623c1bf6e0905b2b2cba4dbfa141f9891b6b207b3d575d5f37ea219b3478b054666de8e3e4cbc5cf64786b6578eb4188038e9a37f5311b49582399da0892bf851f43ad85229465f13b572067647d1c43bdb681c415d6f4f6b3524bf8e1228e573bb2e3e4b62597123d030cea9ef2d1bc2b0d01a92b94c1779261502d26d9e4503d2a20270e089e6b72e9f25c3b03c788e79f230d8f6c30a5c341f77d51c8b34da2e0d930aba6c7c2e47cb24650203010001a321301f301d0603551d0e04160414d07eafcad0bdd20933f70152d9972eca3d4a6f4e300d06092a864886f70d01010c05000382020100a9336f12570b4c0a39031e512cf008ce336481c300a4f3572c3a351737a7ef15794a44f068c743315e965a9daefcd6f4da5016b05de1b9272abe1bcd79b4db9b4026c5e900b4bd6ef0ebd868bb7caff7cf139fc7810e02a03a1e5543ffd242ca5224fbccaf8a2734f0fc48ce61b85ba7d280ece414ab886938de5df96a859e18db88125015ac65e23f153776753a7a8c2840d3471b54078a63b12333c677636bace7f29b8c770669ef120146e1e3dcf613ecd5bf5f04b0119cf4d48c28e8b825e8e78e21b98d24c364f4c543fc1fe8993a119da0f50983d2412b7e8cb65c25156ec61e4b933d9afb5ac2cda14fc0ce1a108e1f785bf657a8eb89267482e2f195019798ada5b6f05a81ca1b08ce493996e2e9b9a0df11316baf1b1756e48859f79445b676abde4081499e3e9320dc812243d1b272febe54d40b7a382f5c60098530a9f6d57f045cac4b0dbf364d9f308d96846fe5318b2ba65b1d699793866a4b0d8ac976ef4fa95e79cce69de28b237dee52715985a6ce06eb5bf0681f603efca9d4787391ec84f14aada2a12518d9d0ee4685c364756cfdfdf3cffd74a036abfde038be5e08ac20428a5222a14bd183da3ccd07e772a74aaf7664cad83bf2a6730b4d50bd2a127b4d2a348805b817256976089ae31b9a1b9ca02e4271d337ce70f39a23acda372e4d4d6ea2da556b4cec959c5bdc14647f445b626281772e58" timestamp="1794027092" url="https://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/repo" version="20002">
+		<description>Releases of SuperAwesomeMagicalMusic, a music player for self-hosters (Jellyfin first, with YouTube Music, Qobuz, SiriusXM, radio and Android Auto), built and signed by the project's GitHub Actions.</description>
+	</repo>
+	<application id="com.music.player">
+		<id>com.music.player</id>
+		<added>2026-11-07</added>
+		<lastupdated>2026-11-07</lastupdated>
+		<name>SuperAwesomeMagicalMusic</name>
+		<summary>Jellyfin first, with YouTube Music, Qobuz, SiriusXM, radio and Android Auto</summary>
+		<desc>&lt;p&gt;A music player for self-hosters. It plays from your &lt;b&gt;Jellyfin&lt;/b&gt; library first and fills the gaps from &lt;b&gt;YouTube Music&lt;/b&gt; or &lt;b&gt;Qobuz&lt;/b&gt;; artists you're missing are added to &lt;b&gt;Lidarr&lt;/b&gt;. It also plays &lt;b&gt;SiriusXM&lt;/b&gt; (live channels, Xtra channels and Pandora artist stations) and local &lt;b&gt;radio&lt;/b&gt;, and works in &lt;b&gt;Android Auto&lt;/b&gt;.&lt;/p&gt;
+
+&lt;p&gt;&lt;b&gt;Made for the road&lt;/b&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Separate bitrates for Wi-Fi, cellular and satellite (T-Satellite and other direct-to-cell services), and a cap for Android's Data Saver.&lt;/li&gt;
+&lt;li&gt;A dead-zone cache that fetches the next songs while the signal is good, and downloads for offline listening that upgrade themselves to better copies.&lt;/li&gt;
+&lt;li&gt;In Android Auto: bookmark a song with one tap and pick its playlist later on the phone, thumbs up and down on Pandora stations, restart or rewind SiriusXM songs.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;b&gt;Listening&lt;/b&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Even volume across services, lyrics (Jellyfin or LRCLIB), a sleep timer, an equalizer and a home-screen widget.&lt;/li&gt;
+&lt;li&gt;Playlists synced to your Nextcloud (sign in through the browser, so SSO works), and playlist import from YouTube and Spotify links.&lt;/li&gt;
+&lt;li&gt;Listening history, including songs heard on SiriusXM, and scrobbling to ListenBrainz and Last.fm.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Every account is your own: the app talks directly to your servers and services. SiriusXM, YouTube Music and Qobuz are reached through their unofficial or private APIs, which can change without notice.&lt;/p&gt;
+</desc>
+		<license>GPL-3.0-only</license>
+		<categories>Multimedia</categories>
+		<category>Multimedia</category>
+		<web>https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone</web>
+		<source>https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone</source>
+		<tracker>https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone/issues</tracker>
+		<changelog>https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone/releases</changelog>
+		<author>603Madison</author>
+		<marketversion>1.10.1</marketversion>
+		<marketvercode>22</marketvercode>
+		<antifeatures>NonFreeNet</antifeatures>
+		<package>
+			<version>1.10.1</version>
+			<versioncode>22</versioncode>
+			<apkname>com.music.player_22.apk</apkname>
+			<hash type="sha256">a81e30a869d2472538e7d5ac3897fd71ec66fde8f36f055d7ec01311744884be</hash>
+			<size>18717491</size>
+			<sdkver>26</sdkver>
+			<targetSdkVersion>36</targetSdkVersion>
+			<added>2026-11-07</added>
+			<sig>81bf4a5179a586525deb8d37f82e37d5</sig>
+			<permissions>ACCESS_COARSE_LOCATION,ACCESS_NETWORK_STATE,FOREGROUND_SERVICE,FOREGROUND_SERVICE_DATA_SYNC,FOREGROUND_SERVICE_MEDIA_PLAYBACK,INTERNET,POST_NOTIFICATIONS,RECEIVE_BOOT_COMPLETED,WAKE_LOCK,com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION</permissions>
+			<nativecode>arm64-v8a,armeabi-v7a,x86,x86_64</nativecode>
+		</package>
+		<package>
+			<version>1.10.0</version>
+			<versioncode>21</versioncode>
+			<apkname>com.music.player_21.apk</apkname>
+			<hash type="sha256">860a17f26dbd4e490103082c9f1bde0f71a40c41c679b3d5e2eee3ab63d68052</hash>
+			<size>18717491</size>
+			<sdkver>26</sdkver>
+			<targetSdkVersion>36</targetSdkVersion>
+			<added>2026-11-07</added>
+			<sig>81bf4a5179a586525deb8d37f82e37d5</sig>
+			<permissions>ACCESS_COARSE_LOCATION,ACCESS_NETWORK_STATE,FOREGROUND_SERVICE,FOREGROUND_SERVICE_DATA_SYNC,FOREGROUND_SERVICE_MEDIA_PLAYBACK,INTERNET,POST_NOTIFICATIONS,RECEIVE_BOOT_COMPLETED,WAKE_LOCK,com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION</permissions>
+			<nativecode>arm64-v8a,armeabi-v7a,x86,x86_64</nativecode>
+		</package>
+		<package>
+			<version>1.9.0</version>
+			<versioncode>20</versioncode>
+			<apkname>com.music.player_20.apk</apkname>
+			<hash type="sha256">4c512de9192704f378da0b9d13e5661f5007cf829e00678de3d0c62b3d39d2d9</hash>
+			<size>18677707</size>
+			<sdkver>26</sdkver>
+			<targetSdkVersion>36</targetSdkVersion>
+			<added>2026-11-07</added>
+			<sig>81bf4a5179a586525deb8d37f82e37d5</sig>
+			<permissions>ACCESS_COARSE_LOCATION,ACCESS_NETWORK_STATE,FOREGROUND_SERVICE,FOREGROUND_SERVICE_DATA_SYNC,FOREGROUND_SERVICE_MEDIA_PLAYBACK,INTERNET,POST_NOTIFICATIONS,RECEIVE_BOOT_COMPLETED,WAKE_LOCK,com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION</permissions>
+			<nativecode>arm64-v8a,armeabi-v7a,x86,x86_64</nativecode>
+		</package>
+		<package>
+			<version>1.8.0</version>
+			<versioncode>19</versioncode>
+			<apkname>com.music.player_19.apk</apkname>
+			<hash type="sha256">b873d3e7a894143cc866b68a000f09aa3bef4de7d7498165fee1eabc0523b18a</hash>
+			<size>18579331</size>
+			<sdkver>26</sdkver>
+			<targetSdkVersion>36</targetSdkVersion>
+			<added>2026-11-07</added>
+			<sig>81bf4a5179a586525deb8d37f82e37d5</sig>
+			<permissions>ACCESS_COARSE_LOCATION,ACCESS_NETWORK_STATE,FOREGROUND_SERVICE,FOREGROUND_SERVICE_DATA_SYNC,FOREGROUND_SERVICE_MEDIA_PLAYBACK,INTERNET,POST_NOTIFICATIONS,RECEIVE_BOOT_COMPLETED,WAKE_LOCK,com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION</permissions>
+			<nativecode>arm64-v8a,armeabi-v7a,x86,x86_64</nativecode>
+		</package>
+		<package>
+			<version>1.7.2</version>
+			<versioncode>18</versioncode>
+			<apkname>com.music.player_18.apk</apkname>
+			<hash type="sha256">dc19c6c9a94d7ebd119c04c1d5d9f0e8fbd5081ac6085e5652ee1a77fd70d326</hash>
+			<size>18546547</size>
+			<sdkver>26</sdkver>
+			<targetSdkVersion>36</targetSdkVersion>
+			<added>2026-11-07</added>
+			<sig>81bf4a5179a586525deb8d37f82e37d5</sig>
+			<permissions>ACCESS_COARSE_LOCATION,ACCESS_NETWORK_STATE,FOREGROUND_SERVICE,FOREGROUND_SERVICE_DATA_SYNC,FOREGROUND_SERVICE_MEDIA_PLAYBACK,INTERNET,POST_NOTIFICATIONS,RECEIVE_BOOT_COMPLETED,WAKE_LOCK,com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION</permissions>
+			<nativecode>arm64-v8a,armeabi-v7a,x86,x86_64</nativecode>
+		</package>
+	</application>
+</fdroid>

@@ -1,0 +1,403 @@
+{
+  "repo": {
+    "name": {
+      "en-US": "SuperAwesomeMagicalMusic"
+    },
+    "description": {
+      "en-US": "Releases of SuperAwesomeMagicalMusic, a music player for self-hosters (Jellyfin first, with YouTube Music, Qobuz, SiriusXM, radio and Android Auto), built and signed by the project's GitHub Actions."
+    },
+    "icon": {
+      "en-US": {
+        "name": "/icons/icon.png",
+        "sha256": "9dea6afb0abb12f05c04452d22b2ce1751c9f1ca1ea7879d89f28fc9dc6d84ae",
+        "size": 6652
+      }
+    },
+    "address": "https://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/repo",
+    "timestamp": 1794027092000,
+    "categories": {
+      "Multimedia": {
+        "name": {
+          "en-US": "Multimedia"
+        }
+      }
+    }
+  },
+  "packages": {
+    "com.music.player": {
+      "metadata": {
+        "added": 1794027082000,
+        "categories": [
+          "Multimedia"
+        ],
+        "changelog": "https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone/releases",
+        "issueTracker": "https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone/issues",
+        "lastUpdated": 1794027086000,
+        "license": "GPL-3.0-only",
+        "sourceCode": "https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone",
+        "webSite": "https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone",
+        "screenshots": {
+          "phone": {
+            "en-US": [
+              {
+                "name": "/com.music.player/en-US/phoneScreenshots/1-search.png",
+                "sha256": "d1e436c09aa8792837e513d8740d978e798a47bd49babbe83c49f573145b468f",
+                "size": 143912
+              },
+              {
+                "name": "/com.music.player/en-US/phoneScreenshots/2-playlists.png",
+                "sha256": "53a523b2d6cfe21b85886a81a4998c91c5ea58bfcd902135018ee4f64bc099be",
+                "size": 162172
+              },
+              {
+                "name": "/com.music.player/en-US/phoneScreenshots/3-player.png",
+                "sha256": "a2178b0cb73f112782d80811486b6f7b47f0eab7c39fd430f33595e11667b1cb",
+                "size": 369276
+              }
+            ]
+          }
+        },
+        "authorName": "603Madison",
+        "name": {
+          "en-US": "SuperAwesomeMagicalMusic"
+        },
+        "summary": {
+          "en-US": "Jellyfin first, with YouTube Music, Qobuz, SiriusXM, radio and Android Auto"
+        },
+        "description": {
+          "en-US": "<p>A music player for self-hosters. It plays from your <b>Jellyfin</b> library first and fills the gaps from <b>YouTube Music</b> or <b>Qobuz</b>; artists you're missing are added to <b>Lidarr</b>. It also plays <b>SiriusXM</b> (live channels, Xtra channels and Pandora artist stations) and local <b>radio</b>, and works in <b>Android Auto</b>.</p>\n\n<p><b>Made for the road</b></p>\n<ul>\n<li>Separate bitrates for Wi-Fi, cellular and satellite (T-Satellite and other direct-to-cell services), and a cap for Android's Data Saver.</li>\n<li>A dead-zone cache that fetches the next songs while the signal is good, and downloads for offline listening that upgrade themselves to better copies.</li>\n<li>In Android Auto: bookmark a song with one tap and pick its playlist later on the phone, thumbs up and down on Pandora stations, restart or rewind SiriusXM songs.</li>\n</ul>\n\n<p><b>Listening</b></p>\n<ul>\n<li>Even volume across services, lyrics (Jellyfin or LRCLIB), a sleep timer, an equalizer and a home-screen widget.</li>\n<li>Playlists synced to your Nextcloud (sign in through the browser, so SSO works), and playlist import from YouTube and Spotify links.</li>\n<li>Listening history, including songs heard on SiriusXM, and scrobbling to ListenBrainz and Last.fm.</li>\n</ul>\n\n<p>Every account is your own: the app talks directly to your servers and services. SiriusXM, YouTube Music and Qobuz are reached through their unofficial or private APIs, which can change without notice.</p>\n"
+        },
+        "icon": {
+          "en-US": {
+            "name": "/com.music.player/en-US/icon_I6X66TmrIyJwPy47QQx-d_5ZQgw6JZx0865_SnR1cqI=.png",
+            "sha256": "23a5fae939ab2322703f2e3b410c7e77fe59420c3a259c74f3ae7f4a747572a2",
+            "size": 5827
+          }
+        },
+        "preferredSigner": "ed2c0523bc9120f63952eae882fa4c0fbd3153967130c0a4adf1af98d07b5283"
+      },
+      "versions": {
+        "a81e30a869d2472538e7d5ac3897fd71ec66fde8f36f055d7ec01311744884be": {
+          "added": 1794027082000,
+          "file": {
+            "name": "/com.music.player_22.apk",
+            "sha256": "a81e30a869d2472538e7d5ac3897fd71ec66fde8f36f055d7ec01311744884be",
+            "size": 18717491
+          },
+          "manifest": {
+            "nativecode": [
+              "arm64-v8a",
+              "armeabi-v7a",
+              "x86",
+              "x86_64"
+            ],
+            "versionName": "1.10.1",
+            "versionCode": 22,
+            "usesSdk": {
+              "minSdkVersion": 26,
+              "targetSdkVersion": 36
+            },
+            "signer": {
+              "sha256": [
+                "ed2c0523bc9120f63952eae882fa4c0fbd3153967130c0a4adf1af98d07b5283"
+              ]
+            },
+            "usesPermission": [
+              {
+                "name": "android.permission.INTERNET"
+              },
+              {
+                "name": "android.permission.ACCESS_NETWORK_STATE"
+              },
+              {
+                "name": "android.permission.WAKE_LOCK"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+              },
+              {
+                "name": "android.permission.POST_NOTIFICATIONS"
+              },
+              {
+                "name": "android.permission.ACCESS_COARSE_LOCATION"
+              },
+              {
+                "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+              },
+              {
+                "name": "com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+              }
+            ]
+          },
+          "antiFeatures": {
+            "NonFreeNet": {
+              "en-US": "Plays from SiriusXM, YouTube Music and Qobuz through their non-free services."
+            }
+          }
+        },
+        "860a17f26dbd4e490103082c9f1bde0f71a40c41c679b3d5e2eee3ab63d68052": {
+          "added": 1794027083000,
+          "file": {
+            "name": "/com.music.player_21.apk",
+            "sha256": "860a17f26dbd4e490103082c9f1bde0f71a40c41c679b3d5e2eee3ab63d68052",
+            "size": 18717491
+          },
+          "manifest": {
+            "nativecode": [
+              "arm64-v8a",
+              "armeabi-v7a",
+              "x86",
+              "x86_64"
+            ],
+            "versionName": "1.10.0",
+            "versionCode": 21,
+            "usesSdk": {
+              "minSdkVersion": 26,
+              "targetSdkVersion": 36
+            },
+            "signer": {
+              "sha256": [
+                "ed2c0523bc9120f63952eae882fa4c0fbd3153967130c0a4adf1af98d07b5283"
+              ]
+            },
+            "usesPermission": [
+              {
+                "name": "android.permission.INTERNET"
+              },
+              {
+                "name": "android.permission.ACCESS_NETWORK_STATE"
+              },
+              {
+                "name": "android.permission.WAKE_LOCK"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+              },
+              {
+                "name": "android.permission.POST_NOTIFICATIONS"
+              },
+              {
+                "name": "android.permission.ACCESS_COARSE_LOCATION"
+              },
+              {
+                "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+              },
+              {
+                "name": "com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+              }
+            ]
+          },
+          "antiFeatures": {
+            "NonFreeNet": {
+              "en-US": "Plays from SiriusXM, YouTube Music and Qobuz through their non-free services."
+            }
+          }
+        },
+        "4c512de9192704f378da0b9d13e5661f5007cf829e00678de3d0c62b3d39d2d9": {
+          "added": 1794027085000,
+          "file": {
+            "name": "/com.music.player_20.apk",
+            "sha256": "4c512de9192704f378da0b9d13e5661f5007cf829e00678de3d0c62b3d39d2d9",
+            "size": 18677707
+          },
+          "manifest": {
+            "nativecode": [
+              "arm64-v8a",
+              "armeabi-v7a",
+              "x86",
+              "x86_64"
+            ],
+            "versionName": "1.9.0",
+            "versionCode": 20,
+            "usesSdk": {
+              "minSdkVersion": 26,
+              "targetSdkVersion": 36
+            },
+            "signer": {
+              "sha256": [
+                "ed2c0523bc9120f63952eae882fa4c0fbd3153967130c0a4adf1af98d07b5283"
+              ]
+            },
+            "usesPermission": [
+              {
+                "name": "android.permission.INTERNET"
+              },
+              {
+                "name": "android.permission.ACCESS_NETWORK_STATE"
+              },
+              {
+                "name": "android.permission.WAKE_LOCK"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+              },
+              {
+                "name": "android.permission.POST_NOTIFICATIONS"
+              },
+              {
+                "name": "android.permission.ACCESS_COARSE_LOCATION"
+              },
+              {
+                "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+              },
+              {
+                "name": "com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+              }
+            ]
+          },
+          "antiFeatures": {
+            "NonFreeNet": {
+              "en-US": "Plays from SiriusXM, YouTube Music and Qobuz through their non-free services."
+            }
+          }
+        },
+        "b873d3e7a894143cc866b68a000f09aa3bef4de7d7498165fee1eabc0523b18a": {
+          "added": 1794027085000,
+          "file": {
+            "name": "/com.music.player_19.apk",
+            "sha256": "b873d3e7a894143cc866b68a000f09aa3bef4de7d7498165fee1eabc0523b18a",
+            "size": 18579331
+          },
+          "manifest": {
+            "nativecode": [
+              "arm64-v8a",
+              "armeabi-v7a",
+              "x86",
+              "x86_64"
+            ],
+            "versionName": "1.8.0",
+            "versionCode": 19,
+            "usesSdk": {
+              "minSdkVersion": 26,
+              "targetSdkVersion": 36
+            },
+            "signer": {
+              "sha256": [
+                "ed2c0523bc9120f63952eae882fa4c0fbd3153967130c0a4adf1af98d07b5283"
+              ]
+            },
+            "usesPermission": [
+              {
+                "name": "android.permission.INTERNET"
+              },
+              {
+                "name": "android.permission.ACCESS_NETWORK_STATE"
+              },
+              {
+                "name": "android.permission.WAKE_LOCK"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+              },
+              {
+                "name": "android.permission.POST_NOTIFICATIONS"
+              },
+              {
+                "name": "android.permission.ACCESS_COARSE_LOCATION"
+              },
+              {
+                "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+              },
+              {
+                "name": "com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+              }
+            ]
+          },
+          "antiFeatures": {
+            "NonFreeNet": {
+              "en-US": "Plays from SiriusXM, YouTube Music and Qobuz through their non-free services."
+            }
+          }
+        },
+        "dc19c6c9a94d7ebd119c04c1d5d9f0e8fbd5081ac6085e5652ee1a77fd70d326": {
+          "added": 1794027086000,
+          "file": {
+            "name": "/com.music.player_18.apk",
+            "sha256": "dc19c6c9a94d7ebd119c04c1d5d9f0e8fbd5081ac6085e5652ee1a77fd70d326",
+            "size": 18546547
+          },
+          "manifest": {
+            "nativecode": [
+              "arm64-v8a",
+              "armeabi-v7a",
+              "x86",
+              "x86_64"
+            ],
+            "versionName": "1.7.2",
+            "versionCode": 18,
+            "usesSdk": {
+              "minSdkVersion": 26,
+              "targetSdkVersion": 36
+            },
+            "signer": {
+              "sha256": [
+                "ed2c0523bc9120f63952eae882fa4c0fbd3153967130c0a4adf1af98d07b5283"
+              ]
+            },
+            "usesPermission": [
+              {
+                "name": "android.permission.INTERNET"
+              },
+              {
+                "name": "android.permission.ACCESS_NETWORK_STATE"
+              },
+              {
+                "name": "android.permission.WAKE_LOCK"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+              },
+              {
+                "name": "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+              },
+              {
+                "name": "android.permission.POST_NOTIFICATIONS"
+              },
+              {
+                "name": "android.permission.ACCESS_COARSE_LOCATION"
+              },
+              {
+                "name": "android.permission.RECEIVE_BOOT_COMPLETED"
+              },
+              {
+                "name": "com.music.player.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+              }
+            ]
+          },
+          "antiFeatures": {
+            "NonFreeNet": {
+              "en-US": "Plays from SiriusXM, YouTube Music and Qobuz through their non-free services."
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "/etc/issue.net": "Ubuntu 24.04.5 LTS",
+  "antiFeatures": {
+    "NonFreeNet": {
+      "apps": [
+        "com.music.player"
+      ]
+    }
+  },
+  "apksigner": "/usr/local/lib/android/sdk/build-tools/37.0.0/apksigner",
+  "archivePolicy0": [],
+  "commandLine": [
+    "/opt/hostedtoolcache/Python/3.12.16/x64/bin/fdroid update",
+    "--rename-apks",
+    "--use-date-from-apk",
+    "--pretty"
+  ],
+  "disabled": [],
+  "endTimestamp": 1794027095067,
+  "failedBuilds": {},
+  "jarsigner": "/usr/bin/jarsigner",
+  "keytool": "/usr/bin/keytool",
+  "needsUpdate": [],
+  "noPackages": [
+    "com.music.player"
+  ],
+  "noUpdateCheck": [
+    "com.music.player"
+  ],
+  "stages": {
+    "delete_disabled_builds": 1794027087801,
+    "index.make repo": 1794027092420,
+    "prepare_apps repo": 1794027090143,
+    "process_apks": 1794027087801,
+    "read_added_date_from_all_apks": 1794027090143,
+    "remove_apks": 1794027090142,
+    "scan_repo_files": 1794027090141
+  },
+  "startTimestamp": 1794027087000,
+  "subcommand": "update"
+}
