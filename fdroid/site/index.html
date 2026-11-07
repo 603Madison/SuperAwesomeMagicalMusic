@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SuperAwesomeMagicalMusic F-Droid repo</title>
+  <meta name="description" content="Add SuperAwesomeMagicalMusic to F-Droid to install it and get updates.">
+  <style>
+    :root { --bg: #fbf8ff; --fg: #1c1b22; --muted: #5f5b6b; --card: #ffffff; --accent: #5b3fd1; --border: #e4def3; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #141218; --fg: #e8e2f0; --muted: #b0a9bf; --card: #1d1b23; --accent: #c7b8ff; --border: #34303f; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 640px; margin: 0 auto; padding: 32px 16px 48px; }
+    header { display: flex; gap: 16px; align-items: center; }
+    header img { width: 72px; height: 72px; border-radius: 18px; }
+    h1 { font-size: 1.6rem; line-height: 1.2; margin: 0; overflow-wrap: anywhere; }
+    p.lead { color: var(--muted); margin: 4px 0 0; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin-top: 20px; }
+    .button { display: inline-block; background: var(--accent); color: var(--bg); text-decoration: none; font-weight: 600; padding: 12px 20px; border-radius: 999px; }
+    code { display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 0.85rem; overflow-wrap: anywhere; }
+    ol { padding-left: 1.2rem; }
+    .qr { display: block; width: 180px; height: 180px; margin: 12px 0 0; background: #fff; border-radius: 12px; padding: 8px; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="repo/icons/icon.png" alt="">
+    <div>
+      <h1>SuperAwesomeMagicalMusic</h1>
+      <p class="lead">A music player for self-hosters: Jellyfin first, with YouTube Music, Qobuz, SiriusXM, radio and Android Auto.</p>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2>Add it to F-Droid</h2>
+    <p>On your phone, with F-Droid (or Droid-ify, Neo Store…) installed:</p>
+    <p><a class="button" href="fdroidrepos://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/repo?fingerprint=ED2C0523BC9120F63952EAE882FA4C0FBD3153967130C0A4ADF1AF98D07B5283">Add the repository</a></p>
+    <p>Or add it by hand: in F-Droid, open <b>Settings › Repositories</b>, tap <b>+</b>, and enter</p>
+    <code>https://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/repo</code>
+    <p>with the fingerprint</p>
+    <code>ED2C0523BC9120F63952EAE882FA4C0FBD3153967130C0A4ADF1AF98D07B5283</code>
+    <p>Or scan this from F-Droid on another phone:</p>
+    <img class="qr" src="repo/index.png" alt="QR code of the repository address">
+  </section>
+
+  <section class="card">
+    <h2>Already installed?</h2>
+    <p>F-Droid updates the app you installed from a GitHub release too: every version is signed with the same key, so nothing needs reinstalling.</p>
+    <p><a href="https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone">Source code</a> · <a href="https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone/releases">Releases</a> · GPL-3.0</p>
+  </section>
+</main>
+</body>
+</html>

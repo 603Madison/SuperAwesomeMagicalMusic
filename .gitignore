@@ -14,3 +14,13 @@
 
 # Release signing key: never commit it (see CLAUDE.md).
 /keystore/
+
+# F-Droid repo build output and the signing key copied in for it.
+/fdroid/repo/
+/fdroid/archive/
+/fdroid/tmp/
+/fdroid/srclibs/
+/fdroid/keystore.jks
+/fdroid/icon.png
+/fdroid/metadata/
+/fdroid/.fdroid*

@@ -1,0 +1,79 @@
+name: F-Droid repo
+
+# Builds the project's F-Droid repo from the newest GitHub releases and publishes it to GitHub
+# Pages (the gh-pages branch, replaced each time so old APKs don't pile up in history). Runs
+# after every release (called from release.yml) or from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      releases:
+        description: How many of the newest releases to list
+        required: false
+        default: "5"
+  workflow_call:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fdroid-repo
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install fdroidserver
+        run: pip install --quiet fdroidserver==2.4.5
+
+      # The repo index is signed with the app's signing key.
+      - name: Restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 || vars.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD || vars.RELEASE_KEYSTORE_PASSWORD }}
+          FROM_VARIABLES: ${{ (vars.RELEASE_KEYSTORE_BASE64 != '' || vars.RELEASE_KEYSTORE_PASSWORD != '') && 'yes' || '' }}
+        run: |
+          if [ -n "$FROM_VARIABLES" ]; then
+            echo "::warning::RELEASE_KEYSTORE_* are set as repository variables, which aren't secret. Move them to repository secrets and delete the variables."
+          fi
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::The F-Droid repo needs the RELEASE_KEYSTORE_BASE64 and RELEASE_KEYSTORE_PASSWORD repository secrets"
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | tr -d ' \n\r' | base64 -d > fdroid/keystore.jks
+          chmod 600 fdroid/keystore.jks
+          alias=$(keytool -list -keystore fdroid/keystore.jks -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | sed -n 's/^\([^,]*\),.*PrivateKeyEntry.*/\1/p' | head -1)
+          [ -n "$alias" ] || { echo "::error::No key found in the keystore"; exit 1; }
+          echo "FDROID_KEY_ALIAS=$alias" >> "$GITHUB_ENV"
+
+      - name: Build the repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FDROID_KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD || vars.RELEASE_KEYSTORE_PASSWORD }}
+        run: |
+          export PATH="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1):$PATH"
+          fdroid/build-repo.sh "${{ inputs.releases || '5' }}"
+          rm -f fdroid/keystore.jks
+
+      - name: Publish to GitHub Pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          site="$RUNNER_TEMP/site"
+          mkdir -p "$site"
+          cp -r fdroid/repo "$site/repo"
+          cp fdroid/site/index.html "$site/index.html"
+          touch "$site/.nojekyll"
+          cd "$site"
+          git init --quiet --initial-branch gh-pages
+          git add --all
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet --message "F-Droid repo, $(date -u +%Y-%m-%d)"
+          git push --force --quiet "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+          echo "Published $(ls repo/*.apk | wc -l) APKs to https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/repo"

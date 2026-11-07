@@ -248,7 +248,14 @@ Plain-HTTP server URLs are allowed, because home servers often run without TLS o
 
 ## Installing
 
-Download `SuperAwesomeMagicalMusic-vX.Y.Z.apk` from the repository's **Releases** page and open it on your phone
+**With F-Droid** (gets updates automatically): add the app's own F-Droid repository. Open
+https://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/ on your phone and tap **Add the
+repository**, or in F-Droid go to Settings › Repositories › **+** and enter
+`https://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/repo` with the fingerprint
+`ED2C0523BC9120F63952EAE882FA4C0FBD3153967130C0A4ADF1AF98D07B5283`. See
+[fdroid/README.md](fdroid/README.md) for how the repository is built.
+
+**From GitHub:** download `SuperAwesomeMagicalMusic-vX.Y.Z.apk` from the repository's **Releases** page and open it on your phone
 (allow installing from your browser or file manager when Android asks). Every release is signed
 with the same key, so new versions install over old ones and keep your settings and downloads.
 
@@ -287,6 +294,10 @@ app/src/main/java/com/music/player/
 The queue holds `music://track?d=…` URIs. The real stream URL is chosen only when ExoPlayer opens
 a song (`ResolvingDataSource`), so each song uses the network and settings in effect at that
 moment.
+
+## Licence
+
+GPL-3.0-only; see [LICENSE](LICENSE).
 
 ## Notes and limitations
 

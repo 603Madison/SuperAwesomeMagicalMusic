@@ -44,12 +44,17 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # The key may be stored as a repository secret (preferred) or a repository variable.
+      # The key belongs in repository secrets. (Older setups put it in repository variables,
+      # which aren't meant for secrets; that still works, with a warning, until it's moved.)
       - name: Restore signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 || vars.RELEASE_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD || vars.RELEASE_KEYSTORE_PASSWORD }}
+          FROM_VARIABLES: ${{ (vars.RELEASE_KEYSTORE_BASE64 != '' || vars.RELEASE_KEYSTORE_PASSWORD != '') && 'yes' || '' }}
         run: |
+          if [ -n "$FROM_VARIABLES" ]; then
+            echo "::warning::RELEASE_KEYSTORE_* are set as repository variables, which aren't secret. Move them to Settings > Secrets and variables > Actions > Secrets and delete the variables."
+          fi
           [ -n "$KEYSTORE_BASE64" ] && echo "RELEASE_KEYSTORE_BASE64: found" || echo "RELEASE_KEYSTORE_BASE64: missing"
           [ -n "$KEYSTORE_PASSWORD" ] && echo "RELEASE_KEYSTORE_PASSWORD: found" || echo "RELEASE_KEYSTORE_PASSWORD: missing"
           if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
@@ -86,3 +91,11 @@ jobs:
           else
             gh release create "$TAG" "SuperAwesomeMagicalMusic-$TAG.apk" --target "$COMMIT" --title "SuperAwesomeMagicalMusic $TAG" --notes-file notes.md
           fi
+
+  # Lists the new release in the project's F-Droid repo.
+  fdroid:
+    needs: release
+    uses: ./.github/workflows/fdroid.yml
+    secrets: inherit
+    permissions:
+      contents: write
