@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: https://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -68,13 +68,7 @@ jobs:
           rm -f fdroid/keystore.jks
 
       - name: Put the site together
-        run: |
-          site="$RUNNER_TEMP/site"
-          mkdir -p "$site"
-          cp -r fdroid/repo "$site/repo"
-          cp fdroid/site/index.html "$site/index.html"
-          touch "$site/.nojekyll"
-          echo "SITE=$site" >> "$GITHUB_ENV"
+        run: echo "SITE=$GITHUB_WORKSPACE/fdroid/site-out" >> "$GITHUB_ENV"
 
       # How Pages is set up: "workflow" (source: GitHub Actions) or "legacy" (from a branch).
       - name: Check how GitHub Pages is set up
@@ -107,5 +101,6 @@ jobs:
           path: ${{ env.SITE }}
 
       - name: Deploy to GitHub Pages
+        id: deploy
         if: env.PAGES_MODE == 'workflow'
         uses: actions/deploy-pages@v4

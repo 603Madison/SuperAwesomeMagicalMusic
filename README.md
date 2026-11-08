@@ -1,13 +1,23 @@
 # SuperAwesomeMagicalMusic
 
-An Android music player for self-hosters. It plays from your **Jellyfin** library first and fills
-the gaps from **Qobuz** or **YouTube Music**. It also plays **SiriusXM** live radio, and songs you
-hear there can be saved to a playlist. Songs Jellyfin doesn't have get their artist added to
-**Lidarr**, queued until your Lidarr server is reachable. Bitrates are set separately for Wi-Fi,
-cellular and **satellite** (T-Satellite and other direct-to-cell services). Every song can be
+Music for self-hosters. It plays from your **Jellyfin** library first and fills the gaps from
+**Qobuz** or **YouTube Music**. It also plays **SiriusXM** live radio and Pandora artist stations,
+and songs you hear there can be saved to a playlist. Songs Jellyfin doesn't have get their artist
+added to **Lidarr**, queued until your Lidarr server is reachable. Bitrates are set separately for
+Wi-Fi, cellular and **satellite** (T-Satellite and other direct-to-cell services). Every song can be
 **downloaded** for offline listening, and playlists can stay downloaded and upgrade themselves to
-better copies. Playlists belong to your **Nextcloud** account (sign in through the browser, so
-SSO such as authentik works) and are kept there. Works in **Android Auto**.
+better copies. Playlists belong to your **Nextcloud** account (sign in through the browser, so SSO
+such as authentik works) and are kept there. Works in **Android Auto**.
+
+This repository holds:
+
+- **SuperAwesomeMagicalMusic Lite** (`app/`): the standalone Android app described below. It talks
+  to every service itself; no server needed.
+- **core** (`core/`): the music services (Jellyfin, YouTube Music, Qobuz, SiriusXM, radio, Lidarr,
+  lyrics, scrobbling) as plain Kotlin, shared with the server.
+- Coming next: a **server** you run in Docker or Podman, with accounts (local, or OIDC sign-in such
+  as Authentik), sources shared by an admin or added per user, a **web player**, and an Android
+  app that signs in to it.
 
 Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Android 8.0+ (API 26).
 

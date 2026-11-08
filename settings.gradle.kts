@@ -25,5 +25,8 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Music"
-include(":app")
+rootProject.name = "SuperAwesomeMagicalMusic"
+
+// app: the standalone Android app (SuperAwesomeMagicalMusic Lite).
+// core: the music services (Jellyfin, YouTube Music, Qobuz, SiriusXM…), shared with the server.
+include(":app", ":core")

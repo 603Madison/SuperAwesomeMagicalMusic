@@ -5,13 +5,13 @@ License: GPL-3.0-only
 Categories:
   - Multimedia
 AuthorName: 603Madison
-WebSite: https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone
-SourceCode: https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone
-IssueTracker: https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone/issues
-Changelog: https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone/releases
+WebSite: @SOURCE_URL@
+SourceCode: @SOURCE_URL@
+IssueTracker: @SOURCE_URL@/issues
+Changelog: @SOURCE_URL@/releases
 
 AntiFeatures:
   NonFreeNet:
     en-US: Plays from SiriusXM, YouTube Music and Qobuz through their non-free services.
 
-AutoName: SuperAwesomeMagicalMusic
+AutoName: SuperAwesomeMagicalMusic Lite

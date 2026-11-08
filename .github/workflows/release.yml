@@ -76,8 +76,8 @@ jobs:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD || vars.RELEASE_KEYSTORE_PASSWORD }}
         run: |
           ./gradlew --no-daemon assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk "SuperAwesomeMagicalMusic-$TAG.apk"
-          sha256sum "SuperAwesomeMagicalMusic-$TAG.apk"
+          cp app/build/outputs/apk/release/app-release.apk "SuperAwesomeMagicalMusic-Lite-$TAG.apk"
+          sha256sum "SuperAwesomeMagicalMusic-Lite-$TAG.apk"
 
       - name: Publish GitHub release
         env:
@@ -87,9 +87,9 @@ jobs:
           git fetch --depth=1 origin "${{ github.sha }}"
           git show "${{ github.sha }}:release-notes/$TAG.md" > notes.md 2>/dev/null || echo "SuperAwesomeMagicalMusic $TAG" > notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "SuperAwesomeMagicalMusic-$TAG.apk" --clobber
+            gh release upload "$TAG" "SuperAwesomeMagicalMusic-Lite-$TAG.apk" --clobber
           else
-            gh release create "$TAG" "SuperAwesomeMagicalMusic-$TAG.apk" --target "$COMMIT" --title "SuperAwesomeMagicalMusic $TAG" --notes-file notes.md
+            gh release create "$TAG" "SuperAwesomeMagicalMusic-Lite-$TAG.apk" --target "$COMMIT" --title "SuperAwesomeMagicalMusic $TAG" --notes-file notes.md
           fi
 
   # Lists the new release in the project's F-Droid repo.

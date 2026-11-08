@@ -3,11 +3,12 @@
 
     python3 changelog.py NOTES.md VERSION > changelog.txt
 """
+import os
 import re
 import sys
 
 LIMIT = 500
-RELEASES = "https://github.com/603Madison/SuperAwesomeMagicalMusic-Standalone/releases/tag/v"
+RELEASES = os.environ.get("SOURCE_URL", "https://github.com/603Madison/SuperAwesomeMagicalMusic") + "/releases/tag/v"
 
 notes, version = sys.argv[1], sys.argv[2]
 text = open(notes, encoding="utf-8").read()

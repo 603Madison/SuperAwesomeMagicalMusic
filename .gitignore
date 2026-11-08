@@ -22,5 +22,7 @@
 /fdroid/srclibs/
 /fdroid/keystore.jks
 /fdroid/icon.png
+/fdroid/config.yml
+/fdroid/site-out/
 /fdroid/metadata/
 /fdroid/.fdroid*

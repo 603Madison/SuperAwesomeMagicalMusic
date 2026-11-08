@@ -159,7 +159,7 @@ class LibraryCallback(
         params: LibraryParams?,
     ): ListenableFuture<LibraryResult<MediaItem>> {
         log("root for ${browser.packageName}: recent=${params?.isRecent} hints=${params?.extras?.keySet()}")
-        return Futures.immediateFuture(LibraryResult.ofItem(folder(LibraryIds.ROOT, "SuperAwesomeMagicalMusic", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED), params))
+        return Futures.immediateFuture(LibraryResult.ofItem(folder(LibraryIds.ROOT, "SuperAwesomeMagicalMusic Lite", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED), params))
     }
 
     override fun onGetItem(

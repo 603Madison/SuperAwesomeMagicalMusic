@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">SuperAwesomeMagicalMusic</string>
+    <string name="app_name">SuperAwesomeMagicalMusic Lite</string>
     <string name="widget_description">What\'s playing, with play/pause and skip</string>
     <string name="widget_previous">Previous</string>
     <string name="widget_play">Play</string>

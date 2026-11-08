@@ -15,6 +15,19 @@ class MusicApp : Application(), SingletonImageLoader.Factory, Configuration.Prov
 
     override fun onCreate() {
         super.onCreate()
+        // The shared services (the core module) log through Android's log and say who they are.
+        AppInfo.name = "SuperAwesomeMagicalMusic-Lite"
+        AppInfo.version = BuildConfig.VERSION_NAME
+        AppInfo.platform = "Android"
+        AppInfo.deviceName = android.os.Build.MODEL
+        CoreLog.sink = { level, tag, message, error ->
+            when (level) {
+                CoreLog.Level.DEBUG -> Log.d(tag, message, error)
+                CoreLog.Level.INFO -> Log.i(tag, message, error)
+                CoreLog.Level.WARN -> Log.w(tag, message, error)
+                CoreLog.Level.ERROR -> Log.e(tag, message, error)
+            }
+        }
         container = AppContainer(this)
         container.start()
     }

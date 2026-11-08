@@ -1,0 +1,19 @@
+# fdroidserver configuration for this repository's F-Droid repo, published to GitHub Pages by
+# .github/workflows/fdroid.yml. build-repo.sh writes config.yml from this, filling in @REPO_URL@;
+# passwords come from the environment, never from this file.
+repo_url: @REPO_URL@
+repo_name: SuperAwesomeMagicalMusic
+repo_description: >-
+  Releases of SuperAwesomeMagicalMusic, music for self-hosters (Jellyfin first, with YouTube
+  Music, Qobuz, SiriusXM, radio and Android Auto), built and signed by the project's GitHub
+  Actions.
+repo_icon: icon.png
+
+# The index is signed with the same key as the APKs (stored in the RELEASE_KEYSTORE_* secrets).
+keystore: keystore.jks
+repo_keyalias: {env: FDROID_KEY_ALIAS}
+keystorepass: {env: FDROID_KEYSTORE_PASS}
+keypass: {env: FDROID_KEYSTORE_PASS}
+
+# Only the newest releases are listed; older ones stay on the GitHub releases page.
+archive_older: 0

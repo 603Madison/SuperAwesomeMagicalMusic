@@ -16,8 +16,8 @@ android {
         applicationId = "com.music.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 23
-        versionName = "1.10.2"
+        versionCode = 24
+        versionName = "1.11.0"
     }
 
     // Release APKs are signed with one permanent key, so each release installs as an update over
@@ -121,7 +121,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.androidx.palette)
-    implementation(libs.newpipe.extractor)
+    implementation(project(":core"))
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

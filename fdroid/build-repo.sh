@@ -14,6 +14,17 @@ fdroid_dir="$root/fdroid"
 app_id="com.music.player"
 cd "$fdroid_dir"
 
+# Addresses follow the GitHub repository's name (GITHUB_REPOSITORY in Actions), so renaming the
+# repository moves them along with it.
+slug="${GITHUB_REPOSITORY:-603Madison/SuperAwesomeMagicalMusic}"
+owner="${slug%%/*}"
+name="${slug#*/}"
+export SOURCE_URL="https://github.com/$slug"
+site_url="https://${owner,,}.github.io/$name"
+repo_url="$site_url/repo"
+fill() { sed -e "s#@REPO_URL@#$repo_url#g" -e "s#@REPO_URL_NO_SCHEME@#${repo_url#https://}#g" -e "s#@SOURCE_URL@#$SOURCE_URL#g" -e "s#@SITE_URL@#$site_url#g" "$1"; }
+fill config.yml.in > config.yml
+
 aapt2="$(command -v aapt2 || ls -d "${ANDROID_HOME:-/opt/android-sdk}"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)"
 [ -x "$aapt2" ] || { echo "aapt2 not found" >&2; exit 1; }
 
@@ -48,7 +59,7 @@ for apk in repo/*.apk; do
   [ -f "$notes" ] && python3 "$fdroid_dir/changelog.py" "$notes" "$name" > "$localized/changelogs/$code.txt"
 done
 {
-  cat app-metadata.yml
+  fill app-metadata.yml
   echo
   echo "CurrentVersion: $newest_name"
   echo "CurrentVersionCode: $newest_code"
@@ -60,4 +71,12 @@ chmod 600 config.yml
 
 # Lists the APKs and signs the index with the repo key.
 fdroid update --rename-apks --use-date-from-apk --pretty
+
+# The site: the repo, plus a page on how to add it.
+rm -rf site-out
+mkdir -p site-out
+cp -r repo site-out/repo
+fill site/index.html > site-out/index.html
+touch site-out/.nojekyll
+echo "Site for $site_url in fdroid/site-out"
 echo "Repo built: $(ls repo/*.apk | wc -l) APKs"

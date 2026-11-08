@@ -70,9 +70,14 @@ class AppContainer(val context: Context) {
     val httpClient = Http.createClient()
     val database = AppDatabase.build(context)
 
-    val jellyfin = JellyfinSource(httpClient, settings)
-    val qobuz = QobuzSource(httpClient, settings)
-    val youtube = YouTubeMusicSource(httpClient, settings)
+    val jellyfin = JellyfinSource(
+        httpClient,
+        config = { settings.current().jellyfin },
+        deviceId = { settings.ensureDeviceId() },
+        transcodeCodec = { settings.current().jellyfinTranscodeCodec },
+    )
+    val qobuz = QobuzSource(httpClient) { settings.current().qobuz }
+    val youtube = YouTubeMusicSource(httpClient) { settings.current().youTubeMusicEnabled }
     val catalog = Catalog(jellyfin, qobuz, youtube, settings)
 
     // Lidarr is usually LAN-only: give up quickly when it can't be reached, and queue instead.
