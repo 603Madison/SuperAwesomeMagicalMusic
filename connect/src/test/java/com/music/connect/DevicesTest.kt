@@ -124,7 +124,8 @@ class DevicesTest {
         }
         val listed = now["devices"]!!.jsonArray.map { it.jsonObject }.single { it["id"]!!.jsonPrimitive.content == phone.me }
         assertEquals("phone", listed["kind"]!!.jsonPrimitive.content)
-        assertEquals(null, phone.remote(phone.devices.value))
+        // And the phone no longer shows another device in control.
+        withTimeout(5_000) { phone.devices.first { list -> list.any { it.id == phone.me && it.active } && phone.remote(list) == null } }
         web.socket.close(1000, null)
         phone.stop()
     }
