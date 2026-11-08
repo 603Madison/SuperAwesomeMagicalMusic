@@ -13,6 +13,13 @@ export function useSeek() {
     const track = s.queue[s.index]?.track;
     return track ? `${s.index}|${track.via ?? ""}|${track.source}:${track.sourceId}` : "";
   });
+  return useSeekBar(position, total, song, (to) => player.seek(to));
+}
+
+/** The same, for any song: [song] identifies it, [seekTo] moves it (in seconds). */
+export function useSeekBar(position: number, total: number, song: string, seek: (seconds: number) => void) {
+  const seekTo = useRef(seek);
+  seekTo.current = seek;
   const [held, setHeld] = useState<number | null>(null);
   const heldAt = useRef<number | null>(null);
   const pressed = useRef(false);
@@ -32,7 +39,7 @@ export function useSeek() {
       const to = heldAt.current;
       heldAt.current = null;
       setHeld(null);
-      if (to != null) player.seek(to);
+      if (to != null) seekTo.current(to);
     };
     window.addEventListener("pointerup", release);
     window.addEventListener("pointercancel", release);
@@ -66,7 +73,7 @@ export function useSeek() {
         } else if (Date.now() - releasedAt.current > RELEASE_ECHO_MS) {
           // A key (the arrows): straight there. Just after letting go, the browser reports the
           // bar's old value once more; that isn't a seek.
-          player.seek(to);
+          seekTo.current(to);
         }
       },
     },

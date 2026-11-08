@@ -44,6 +44,7 @@ dependencies {
     implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.server.forwarded.header)
     implementation(libs.ktor.server.default.headers)
+    implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.sqlite.jdbc)
     implementation(libs.nimbus.jose.jwt)

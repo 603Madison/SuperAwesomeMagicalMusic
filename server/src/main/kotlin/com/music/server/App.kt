@@ -1,5 +1,10 @@
 package com.music.server
 
+import com.music.server.connect.connectRoutes
+import io.ktor.server.websocket.WebSockets
+import io.ktor.server.websocket.pingPeriod
+import io.ktor.server.websocket.timeout
+import kotlin.time.Duration.Companion.seconds
 import com.music.player.sources.SourceUnavailableException
 import com.music.server.admin.adminRoutes
 import com.music.server.auth.authRoutes
@@ -48,6 +53,11 @@ private val log = LoggerFactory.getLogger("samm")
 /** The server's web app: the API under /api, and the web player everywhere else. */
 fun Application.module(services: Services) {
     install(ContentNegotiation) { json(ApiJson) }
+    install(WebSockets) {
+        pingPeriod = 25.seconds
+        timeout = 60.seconds
+        maxFrameSize = 2L * 1024 * 1024
+    }
     if (services.config.trustProxy) install(XForwardedHeaders)
     install(DefaultHeaders) {
         header("X-Content-Type-Options", "nosniff")
@@ -72,6 +82,8 @@ fun Application.module(services: Services) {
             call.respond(HttpStatusCode.BadRequest, ErrorBody(cause?.message?.substringBefore('\n')?.let { "That request isn't right: $it" } ?: "That request isn't right"))
         }
         exception<Throwable> { call, error ->
+            // A connection that ended (a closed tab, a phone going out of range) isn't a fault.
+            if (error is kotlinx.coroutines.CancellationException) return@exception
             log.error("Failed: ${call.request.path()}", error)
             call.respond(HttpStatusCode.InternalServerError, ErrorBody("Something went wrong on the server"))
         }
@@ -85,6 +97,7 @@ fun Application.module(services: Services) {
         musicRoutes(services)
         liveRoutes(services)
         playlistRoutes(services)
+        connectRoutes(services)
         route("/api/{...}") {
             handle { call.respond(HttpStatusCode.NotFound, ErrorBody("No such API")) }
         }

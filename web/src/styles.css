@@ -410,6 +410,10 @@ input:not([type="checkbox"]):not([type="range"]):focus, select:focus, textarea:f
 .live-bar { flex: 1; height: 5px; border-radius: 999px; background: var(--surface-4); overflow: hidden; }
 .live-bar > div { height: 100%; border-radius: inherit; background: var(--primary); transition: width 1s linear; }
 .favorite-btn.is-favorite { color: var(--accent); }
+/* Another device playing: the bar controls it, with a band of colour saying so. */
+.player-bar.is-remote { box-shadow: inset 0 3px 0 #1ed760; }
+.remote-on { display: flex; align-items: center; gap: 5px; color: #1ed760 !important; font-weight: 600; }
+.player-bar .play-here { padding: 6px 14px; font-size: 0.82rem; margin-right: 6px; white-space: nowrap; }
 .favorites { margin-bottom: 8px; }
 .favorite-card { position: relative; }
 .favorite-card .card-button { display: flex; flex-direction: column; gap: 8px; color: inherit; padding: 0; min-width: 0; }
@@ -713,6 +717,16 @@ input[type="range"]:disabled { cursor: default; opacity: 0.5; }
 .np-played-artist { color: var(--muted); font-size: 0.86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .np-played-when { color: var(--faint); font-size: 0.78rem; white-space: nowrap; }
 .np-played .icon-btn { color: var(--muted); }
+
+/* The Song tab on wide windows: no lyrics or queue, just the cover, larger, in the middle. */
+@media (min-width: 1001px) {
+  .np-view-cover .np-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: clamp(12px, 2vh, 24px); }
+  .np-view-cover .np-side { order: -1; align-items: center; }
+  .np-view-cover .np-side > :not(.np-tabs) { display: none; }
+  .np-view-cover .np-tabs { align-self: center; }
+  .np-view-cover .np-hero { justify-content: center; }
+  .np-view-cover .np-art, .np-view-cover .np-meta, .np-view-cover .np-controls { width: min(100%, 58vh, 620px); }
+}
 
 /* The song in small, above its lyrics or queue on narrow screens. */
 .np-mini {

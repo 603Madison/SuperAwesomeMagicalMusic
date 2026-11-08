@@ -28,9 +28,13 @@ export function NowPlaying() {
   const [params, setParams] = useSearchParams();
   // Wide windows show the cover beside the lyrics or queue; narrow ones show one at a time.
   const narrow = useMedia("(max-width: 1000px)");
-  const asked = params.get("view");
-  const view = asked === "queue" || asked === "lyrics" || (asked === "cover" && narrow) ? asked : narrow ? "cover" : "lyrics";
-  const show = (next: string) => setParams(next === (narrow ? "cover" : "lyrics") ? {} : { view: next }, { replace: true });
+  // The tab last chosen is kept: someone who'd rather not see lyrics gets the song.
+  const asked = params.get("view") ?? rememberedView();
+  const view = asked === "queue" || asked === "lyrics" || asked === "cover" ? asked : narrow ? "cover" : "lyrics";
+  const show = (next: string) => {
+    rememberView(next);
+    setParams(next === "lyrics" && !narrow ? {} : { view: next }, { replace: true });
+  };
   const root = useRef<HTMLDivElement>(null);
   const fullscreen = useFullscreen(root);
 
@@ -94,7 +98,7 @@ export function NowPlaying() {
 
         <section className="np-side">
           <div className="np-tabs" role="tablist">
-            {narrow && <button role="tab" aria-selected={view === "cover"} className={view === "cover" ? "is-active" : ""} onClick={() => show("cover")}>Song</button>}
+            <button role="tab" aria-selected={view === "cover"} className={view === "cover" ? "is-active" : ""} onClick={() => show("cover")}>Song</button>
             <button role="tab" aria-selected={view === "lyrics"} className={view === "lyrics" ? "is-active" : ""} onClick={() => show("lyrics")}>Lyrics</button>
             <button role="tab" aria-selected={view === "queue"} className={view === "queue" ? "is-active" : ""} onClick={() => show("queue")}>{live ? "Played" : "Up next"}</button>
           </div>
@@ -381,6 +385,24 @@ const HAND_SCROLL_PAUSE_MS = 4_000;
 
 function reducedMotion() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
+
+const VIEW_KEY = "samm.nowPlaying.view";
+
+function rememberedView(): string | null {
+  try {
+    return localStorage.getItem(VIEW_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberView(view: string) {
+  try {
+    localStorage.setItem(VIEW_KEY, view);
+  } catch {
+    // Not kept (a private window); the tab still changes.
+  }
 }
 
 /** Whether [query] matches the window, kept up to date. */

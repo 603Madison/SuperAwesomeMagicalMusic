@@ -1,16 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  ListMusic, Loader2, Moon, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, ThumbsDown, ThumbsUp, Volume1, Volume2, VolumeX, MicVocal,
+  Laptop, ListMusic, Loader2, MonitorSpeaker, Moon, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Smartphone, Speaker, ThumbsDown, ThumbsUp,
+  Volume1, Volume2, VolumeX, MicVocal,
 } from "lucide-react";
 import { errorToast } from "./ui";
 import { splitTwo } from "../player/live";
 import { duration } from "../lib/format";
 import { player, usePlayer } from "../player/player";
-import { useSeek } from "../player/useSeek";
+import { useSeek, useSeekBar } from "../player/useSeek";
+import { connect, positionOf, useConnect, useRemote, type Device } from "../player/connect";
 import { Artwork } from "./Artwork";
 import { canFavorite, FavoriteButton } from "./Favorite";
-import { IconButton, Menu } from "./ui";
+import { IconButton, Menu, type MenuItem } from "./ui";
 
 export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; onToggleQueue: () => void }) {
   const item = usePlayer((s) => s.queue[s.index]);
@@ -29,6 +31,9 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
   const detail = error ?? (current?.live ? (liveNow ? base?.title : current.description) : current?.description) ?? (buffering ? "Finding the best copy…" : "");
   const stationTrackId = base?.sourceId.startsWith("stationtrack:") ? splitTwo(base.sourceId.slice("stationtrack:".length))[1] : null;
   const thumb = stationTrackId ? thumbs[stationTrackId] : undefined;
+  // Another of the person's devices playing (and not this one): the bar controls it instead.
+  const remote = useRemote();
+  if (remote) return <RemoteBar device={remote} queueOpen={queueOpen} onToggleQueue={onToggleQueue} />;
 
   return (
     <footer className="player-bar">
@@ -74,6 +79,7 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
         {current?.live && canFavorite(base) && <FavoriteButton track={base} size={18} />}
         <IconButton label="Lyrics" onClick={() => navigate("/now-playing?view=lyrics")} disabled={!track || current?.live}><MicVocal size={18} /></IconButton>
         <IconButton label="Queue" active={queueOpen} onClick={onToggleQueue}><ListMusic size={18} /></IconButton>
+        <Devices />
         <Menu
           label={sleepAt ? "Sleep timer (on)" : "Sleep timer"}
           trigger={<Moon size={18} className={sleepAt ? "is-on" : ""} />}
@@ -121,6 +127,109 @@ function Progress() {
       <input {...seek.input} aria-label="Position in the song" style={{ "--fill": `${seek.fill}%` } as React.CSSProperties} />
       <span className="time">{duration(seek.max * 1000)}</span>
     </div>
+  );
+}
+
+const KIND_ICONS = { web: Laptop, phone: Smartphone, speaker: Speaker } as const;
+
+/** The person's devices: choosing one moves playback there (this browser, to play it here). */
+function Devices() {
+  const devices = useConnect((s) => s.devices);
+  const me = useConnect((s) => s.me);
+  const online = useConnect((s) => s.online);
+  const others = devices.filter((d) => d.id !== me);
+  const playingElsewhere = others.some((d) => d.active && d.state?.playing);
+  const items: MenuItem[] = [
+    { label: "This browser", icon: <Laptop size={18} />, onSelect: () => connect.transfer(me) },
+    ...others.map((d) => {
+      const Icon = KIND_ICONS[d.kind] ?? Laptop;
+      const note = d.active && d.state?.playing ? " · playing" : "";
+      return { label: `${d.name}${note}`, icon: <Icon size={18} />, onSelect: () => connect.transfer(d.id) };
+    }),
+    ...(others.length ? [] : [{ label: online ? "Open the app or another browser to see it here" : "Connecting…", disabled: true }]),
+  ];
+  return (
+    <Menu
+      label={playingElsewhere ? "Playing on another device" : "Play on a device"}
+      trigger={<MonitorSpeaker size={18} className={playingElsewhere ? "is-on" : ""} />}
+      items={items}
+    />
+  );
+}
+
+/** Controls for the song another device is playing, as Spotify shows "Playing on…". */
+function RemoteBar({ device, queueOpen, onToggleQueue }: { device: Device; queueOpen: boolean; onToggleQueue: () => void }) {
+  const receivedAt = useConnect((s) => s.receivedAt);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => tick((n) => n + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const state = device.state!;
+  const track = state.track!;
+  const Icon = KIND_ICONS[device.kind] ?? Laptop;
+  const send = (action: string, extra: { positionMs?: number; volume?: number } = {}) => connect.command(device.id, { action, ...extra });
+  const seek = useSeekBar(positionOf(device, receivedAt) / 1000, state.durationMs / 1000, `${device.id}|${track.source}:${track.sourceId}`, (to) => send("seek", { positionMs: Math.round(to * 1000) }));
+  return (
+    <footer className="player-bar is-remote">
+      <div className="player-now">
+        <div className="player-art"><Artwork url={track.artworkUrl} size={56} /></div>
+        <div className="player-text">
+          <div className="player-title">{track.title}</div>
+          <div className="player-artist">{track.artist}</div>
+          <div className="player-detail remote-on"><Icon size={13} /> Playing on {device.name}</div>
+        </div>
+      </div>
+      <div className="player-center">
+        <div className="player-controls">
+          <IconButton label="Previous" onClick={() => send("previous")} disabled={state.live}><SkipBack size={22} /></IconButton>
+          <button className="play-pause" aria-label={state.playing ? "Pause" : "Play"} onClick={() => send(state.playing ? "pause" : "play")}>
+            {state.playing ? <Pause size={26} /> : <Play size={26} />}
+          </button>
+          <IconButton label="Next" onClick={() => send("next")} disabled={state.live}><SkipForward size={22} /></IconButton>
+        </div>
+        {state.live ? (
+          <div className="progress progress-live"><span className="live-pill">Live</span></div>
+        ) : (
+          <div className="progress">
+            <span className="time">{duration(seek.shown * 1000)}</span>
+            <input {...seek.input} aria-label="Position in the song" style={{ "--fill": `${seek.fill}%` } as React.CSSProperties} />
+            <span className="time">{duration(seek.max * 1000)}</span>
+          </div>
+        )}
+      </div>
+      <div className="player-right">
+        <button className="btn btn-tonal play-here" onClick={() => connect.transfer(useConnect.getState().me)}>Play here</button>
+        <IconButton label="Queue" active={queueOpen} onClick={onToggleQueue}><ListMusic size={18} /></IconButton>
+        <Devices />
+        <div className="volume">
+          <IconButton label="Volume" onClick={() => send("volume", { volume: state.volume > 0 ? 0 : 0.8 })}>
+            {state.volume === 0 ? <VolumeX size={18} /> : state.volume < 0.5 ? <Volume1 size={18} /> : <Volume2 size={18} />}
+          </IconButton>
+          <RemoteVolume volume={state.volume} onChange={(v) => send("volume", { volume: v })} />
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+/** The other device's volume: moves at once here, and is sent a few times a second while dragged. */
+function RemoteVolume({ volume, onChange }: { volume: number; onChange: (volume: number) => void }) {
+  const [held, setHeld] = useState<number | null>(null);
+  const lastSent = useRef(0);
+  useEffect(() => { if (held != null && Math.abs(held - volume) < 0.02) setHeld(null); }, [volume, held]);
+  const level = held ?? volume;
+  return (
+    <input
+      type="range" min={0} max={1} step={0.01} value={level} aria-label="Volume"
+      style={{ "--fill": `${level * 100}%` } as React.CSSProperties}
+      onChange={(e) => {
+        const v = Number(e.target.value);
+        setHeld(v);
+        if (Date.now() - lastSent.current > 150) { lastSent.current = Date.now(); onChange(v); }
+      }}
+      onPointerUp={() => { if (held != null) onChange(held); }}
+    />
   );
 }
 

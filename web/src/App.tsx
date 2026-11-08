@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from "re
 import { History as HistoryIcon, ListMusic, Radio as RadioIcon, Search as SearchIcon, Settings as SettingsIcon, Shield, Disc3 } from "lucide-react";
 import { session, useSession } from "./lib/session";
 import { usePlayer } from "./player/player";
+import { connect } from "./player/connect";
 import { PlayerBar, useKeyboardShortcuts } from "./components/PlayerBar";
 import { Queue } from "./components/Queue";
 import { Spinner, Toasts } from "./components/ui";
@@ -48,6 +49,11 @@ function Shell() {
   const hasTrack = usePlayer((s) => s.index >= 0);
   const location = useLocation();
   useKeyboardShortcuts();
+  // This browser is one of the person's devices while it's open (see player/connect).
+  useEffect(() => {
+    connect.start();
+    return () => connect.stop();
+  }, []);
   useEffect(() => { if (location.pathname === "/now-playing") setQueueOpen(false); }, [location.pathname]);
 
   return (

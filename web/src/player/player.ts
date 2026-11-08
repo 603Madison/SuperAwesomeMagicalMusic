@@ -14,7 +14,7 @@ export interface QueueItem {
 
 export type Repeat = "off" | "all" | "one";
 
-interface PlayerState {
+export interface PlayerState {
   queue: QueueItem[];
   /** The playing (or paused) song's place in the queue; -1 when nothing is queued. */
   index: number;
@@ -472,6 +472,13 @@ export const player = {
   },
 
   /** Replaces the queue with [tracks] and plays from [start]. */
+  /** Carries on with a queue another device was playing, from the same moment. */
+  takeOver(tracks: Track[], index: number, seconds: number, playing: boolean) {
+    if (!tracks.length) return;
+    set({ queue: tracks.map(itemOf) });
+    void load(Math.min(Math.max(index, 0), tracks.length - 1), playing, Math.max(0, seconds));
+  },
+
   playTracks(tracks: Track[], start = 0) {
     if (!tracks.length) return;
     set({ queue: tracks.map(itemOf) });
