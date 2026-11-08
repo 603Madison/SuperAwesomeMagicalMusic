@@ -6,10 +6,13 @@ import com.music.player.net.HttpException
 import com.music.player.settings.JellyfinConfig
 import com.music.player.settings.LidarrConfig
 import com.music.player.settings.QobuzConfig
+import com.music.player.settings.SiriusXmConfig
 import com.music.player.settings.TranscodeCodec
 import com.music.player.sources.MusicSource
 import com.music.player.sources.jellyfin.JellyfinSource
 import com.music.player.sources.qobuz.QobuzSource
+import com.music.player.sources.radio.RadioBrowserClient
+import com.music.player.sources.siriusxm.SiriusXmClient
 import com.music.player.sources.youtube.YouTubeMusicSource
 import com.music.server.ApiError
 import kotlinx.serialization.Serializable
@@ -76,6 +79,19 @@ class SourceSetup(private val http: OkHttpClient) {
             emptyList(),
         ),
         KindSpec(
+            SourceKind.SIRIUSXM, "SiriusXM",
+            "Live channels, Xtra channels and Pandora artist stations, with your SiriusXM streaming account.",
+            listOf(
+                FieldSpec("username", "Email or username", required = true),
+                FieldSpec("password", "Password", "password", required = true, secret = true, help = "Kept (encrypted) so the server can sign in again when SiriusXM's session ends."),
+            ),
+        ),
+        KindSpec(
+            SourceKind.RADIO, "Radio",
+            "Tens of thousands of local and internet radio stations from Radio Browser, by name or near you.",
+            emptyList(),
+        ),
+        KindSpec(
             SourceKind.LIDARR, "Lidarr",
             "Adds artists to Lidarr when their songs are played from outside your Jellyfin library.",
             listOf(
@@ -139,7 +155,17 @@ class SourceSetup(private val http: OkHttpClient) {
                     put("userAuthToken", config.userAuthToken)
                 }
             }
-            SourceKind.YOUTUBE_MUSIC -> JsonObject(emptyMap()) to JsonObject(emptyMap())
+            SourceKind.YOUTUBE_MUSIC, SourceKind.RADIO -> JsonObject(emptyMap()) to JsonObject(emptyMap())
+            SourceKind.SIRIUSXM -> {
+                val username = required("username", "The username")
+                val password = text("password") ?: previous?.secret("password")?.ifEmpty { null } ?: throw ApiError.badRequest("The password is needed")
+                val config = SiriusXmConfig(username, password)
+                val channels = service("SiriusXM") {
+                    SiriusXmClient(http, credentials = { config }, loadSession = { null }, saveSession = {}).verify(config)
+                }
+                if (channels == 0) throw ApiError.badRequest("SiriusXM signed in but listed no channels")
+                buildJsonObject { put("username", username) } to buildJsonObject { put("password", password) }
+            }
             SourceKind.LIDARR -> {
                 val serverUrl = url(required("serverUrl", "The server address"))
                 val apiKey = text("apiKey") ?: previous?.secret("apiKey")?.ifEmpty { null } ?: throw ApiError.badRequest("The API key is needed")
@@ -160,6 +186,14 @@ class SourceSetup(private val http: OkHttpClient) {
     /** Checks that a saved source still works, with a short description of what was found. */
     suspend fun test(source: StoredSource, registry: SourceRegistry): String = when (source.kind) {
         SourceKind.LIDARR -> "Lidarr " + service("Lidarr") { lidarr.testConnection(registry.lidarrConfig(source)) }
+        SourceKind.SIRIUSXM -> {
+            val channels = service("SiriusXM") { registry.siriusXm(source)!!.channels(refresh = true) }
+            "Working: ${channels.count { !it.locked }} channels in your subscription"
+        }
+        SourceKind.RADIO -> {
+            val found = service("Radio Browser") { registry.radio.search("jazz", limit = 5) }
+            "Working: Radio Browser answered with ${found.size} stations"
+        }
         else -> {
             val music = registry.music(source) ?: throw ApiError.badRequest("Nothing to test")
             val found = service(source.kind.label) { music.search("love", 3) }
@@ -205,9 +239,28 @@ class SourceSetup(private val http: OkHttpClient) {
  * The service clients for saved sources, made once per version of each source and kept, so
  * their sign-ins and caches are shared by everyone using the source.
  */
-class SourceRegistry(private val http: OkHttpClient) {
+class SourceRegistry(private val http: OkHttpClient, private val store: SourceStore) {
     private val instances = ConcurrentHashMap<String, Pair<Long, MusicSource>>()
+    private val siriusXmClients = ConcurrentHashMap<String, Pair<Long, SiriusXmClient>>()
     private val youtube by lazy { YouTubeMusicSource(http) }
+
+    /** Radio Browser's directory, the same for everyone. */
+    val radio by lazy { RadioBrowserClient(http, Http.USER_AGENT) }
+
+    /** The signed-in SiriusXM client for a SiriusXM source; its session is kept between starts. */
+    fun siriusXm(source: StoredSource): SiriusXmClient? {
+        if (source.kind != SourceKind.SIRIUSXM) return null
+        siriusXmClients[source.id]?.let { (at, client) -> if (at == source.updatedAt) return client }
+        val config = SiriusXmConfig(source.setting("username").orEmpty(), source.secret("password"))
+        val client = SiriusXmClient(
+            http,
+            credentials = { config },
+            loadSession = { store.loadState(source.id) },
+            saveSession = { store.saveState(source.id, it) },
+        )
+        siriusXmClients[source.id] = source.updatedAt to client
+        return client
+    }
 
     fun music(source: StoredSource): MusicSource? = when (source.kind) {
         SourceKind.JELLYFIN -> cached(source) {
@@ -230,7 +283,7 @@ class SourceRegistry(private val http: OkHttpClient) {
             QobuzSource(http) { config }
         }
         SourceKind.YOUTUBE_MUSIC -> youtube
-        SourceKind.LIDARR -> null
+        SourceKind.LIDARR, SourceKind.SIRIUSXM, SourceKind.RADIO -> null
     }
 
     fun jellyfin(source: StoredSource): JellyfinSource? = music(source) as? JellyfinSource
@@ -247,6 +300,7 @@ class SourceRegistry(private val http: OkHttpClient) {
 
     fun forget(id: String) {
         instances.remove(id)
+        siriusXmClients.remove(id)
     }
 
     private fun cached(source: StoredSource, make: () -> MusicSource): MusicSource {

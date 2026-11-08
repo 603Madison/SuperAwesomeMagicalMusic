@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  ListMusic, Loader2, Moon, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume1, Volume2, VolumeX, MicVocal,
+  ListMusic, Loader2, Moon, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, ThumbsDown, ThumbsUp, Volume1, Volume2, VolumeX, MicVocal,
 } from "lucide-react";
+import { errorToast } from "./ui";
+import { splitTwo } from "../player/live";
 import { duration } from "../lib/format";
 import { player, usePlayer } from "../player/player";
 import { Artwork } from "./Artwork";
@@ -16,8 +18,15 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
   const error = usePlayer((s) => s.error);
   const repeat = usePlayer((s) => s.repeat);
   const sleepAt = usePlayer((s) => s.sleepAt);
+  const liveNow = usePlayer((s) => s.liveNow);
+  const thumbs = usePlayer((s) => s.thumbs);
   const navigate = useNavigate();
-  const track = current?.track ?? item?.track;
+  const base = current?.track ?? item?.track;
+  // On live radio, the song on now (when the channel says), with the channel underneath.
+  const track = base && liveNow ? { ...base, title: liveNow.title || base.title, artist: liveNow.artist || base.title, artworkUrl: liveNow.artworkUrl ?? base.artworkUrl } : base;
+  const detail = error ?? (current?.live ? (liveNow ? base?.title : current.description) : current?.description) ?? (buffering ? "Finding the best copy…" : "");
+  const stationTrackId = base?.sourceId.startsWith("stationtrack:") ? splitTwo(base.sourceId.slice("stationtrack:".length))[1] : null;
+  const thumb = stationTrackId ? thumbs[stationTrackId] : undefined;
 
   return (
     <footer className="player-bar">
@@ -30,7 +39,7 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
             <div className="player-text">
               <Link to="/now-playing" className="player-title">{track.title}</Link>
               <div className="player-artist">{track.artist}</div>
-              <div className={`player-detail ${error ? "is-error" : ""}`}>{error ?? current?.description ?? (buffering ? "Finding the best copy…" : "")}</div>
+              <div className={`player-detail ${error ? "is-error" : ""}`}>{current?.live && !error && <span className="live-pill">Live</span>}{detail}</div>
             </div>
           </>
         ) : (
@@ -54,7 +63,13 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
       </div>
 
       <div className="player-right">
-        <IconButton label="Lyrics" onClick={() => navigate("/now-playing?lyrics=1")} disabled={!track}><MicVocal size={18} /></IconButton>
+        {stationTrackId && (
+          <>
+            <IconButton label="Thumbs down (skips it)" active={thumb === "DOWN"} onClick={() => player.thumb("DOWN").catch(errorToast)}><ThumbsDown size={18} /></IconButton>
+            <IconButton label="Thumbs up" active={thumb === "UP"} onClick={() => player.thumb("UP").catch(errorToast)}><ThumbsUp size={18} /></IconButton>
+          </>
+        )}
+        <IconButton label="Lyrics" onClick={() => navigate("/now-playing?lyrics=1")} disabled={!track || current?.live}><MicVocal size={18} /></IconButton>
         <IconButton label="Queue" active={queueOpen} onClick={onToggleQueue}><ListMusic size={18} /></IconButton>
         <Menu
           label={sleepAt ? "Sleep timer (on)" : "Sleep timer"}
@@ -74,7 +89,9 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
 function Progress() {
   const position = usePlayer((s) => s.position);
   const total = usePlayer((s) => s.duration);
+  const live = usePlayer((s) => s.current?.live);
   const [dragging, setDragging] = useState<number | null>(null);
+  if (live) return <div className="progress progress-live"><span className="live-pill">Live</span></div>;
   const shown = dragging ?? position;
   const max = total > 0 ? total : 0;
   return (

@@ -1,7 +1,7 @@
 // The server's API, as the web player sees it (see server/src/main/kotlin).
 
 export type SourceType = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "SIRIUSXM" | "RADIO";
-export type SourceKind = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "LIDARR";
+export type SourceKind = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "LIDARR" | "SIRIUSXM" | "RADIO";
 export type Role = "ADMIN" | "USER";
 
 export interface Track {
@@ -94,6 +94,10 @@ export interface SearchGroup {
 export interface ResolvedStream {
   track: Track;
   streamUrl: string;
+  /** Live radio (no end, no seeking); set by the player, not the server. */
+  live?: boolean;
+  /** An HLS playlist rather than a plain file. */
+  hls?: boolean;
   description: string;
   kbps?: number;
   withinCap: boolean;
@@ -173,4 +177,35 @@ export interface AdminSettings {
   redirectUri: string;
   fromEnvironment: string[];
   version: string;
+}
+
+export interface ChannelView {
+  track: Track;
+  number?: number;
+  category: string;
+  locked: boolean;
+}
+
+export interface NowView {
+  title: string;
+  artist: string;
+  album?: string;
+  artworkUrl?: string;
+  startMs: number;
+  durationMs: number;
+  song?: Track;
+  artistId?: string;
+}
+
+export interface ArtistView {
+  id: string;
+  name: string;
+  artworkUrl?: string;
+  stationId?: string;
+  entityType: string;
+}
+
+export interface StationTracks {
+  station: Track;
+  tracks: Track[];
 }

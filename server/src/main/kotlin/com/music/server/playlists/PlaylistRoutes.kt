@@ -51,6 +51,14 @@ data class HistoryUpload(val listens: List<Listen>)
 
 fun Route.playlistRoutes(services: Services) {
     val art = services.artwork
+    // A Pandora station track's link expires, so it's kept as the song itself (found again when
+    // played); live channels and stations aren't songs, and aren't kept.
+    fun keepable(track: ApiTrack): ApiTrack? = when {
+        track.source == SourceType.SIRIUSXM && track.sourceId.startsWith(Track.STATION_TRACK_PREFIX) ->
+            art.incoming(track).copy(sourceId = "song:" + track.sourceId.substringAfterLast(':'), via = null)
+        track.toTrack().isLive -> null
+        else -> art.incoming(track)
+    }
     fun Playlist.out() = copy(
         summary = summary.out(services),
         entries = entries.map { it.copy(track = art.outgoing(it.track)) },
@@ -64,7 +72,7 @@ fun Route.playlistRoutes(services: Services) {
         post {
             val user = call.requireUser(services)
             val request = call.receive<NewPlaylist>()
-            call.respond(services.playlists.create(user.id, request.name, request.description, request.tracks.map(art::incoming), request.id).out())
+            call.respond(services.playlists.create(user.id, request.name, request.description, request.tracks.mapNotNull(::keepable), request.id).out())
         }
         post("/import") {
             val user = call.requireUser(services)
@@ -113,7 +121,9 @@ fun Route.playlistRoutes(services: Services) {
             post("/tracks") {
                 val user = call.requireUser(services)
                 val request = call.receive<AddTracks>()
-                call.respond(services.playlists.add(user.id, call.parameters["id"].orEmpty(), request.tracks.map(art::incoming), request.position).out())
+                val tracks = request.tracks.mapNotNull(::keepable)
+                if (tracks.isEmpty()) throw ApiError.badRequest("Live radio can't go in a playlist")
+                call.respond(services.playlists.add(user.id, call.parameters["id"].orEmpty(), tracks, request.position).out())
             }
             post("/remove") {
                 val user = call.requireUser(services)

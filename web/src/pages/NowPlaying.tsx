@@ -15,7 +15,9 @@ export function NowPlaying() {
   const buffering = usePlayer((s) => s.buffering);
   const [params, setParams] = useSearchParams();
   const tab = params.get("lyrics") ? "lyrics" : "queue";
-  const track = current?.track ?? item?.track;
+  const liveNow = usePlayer((s) => s.liveNow);
+  const base = current?.track ?? item?.track;
+  const track = base && liveNow ? { ...base, title: liveNow.title || base.title, artist: liveNow.artist || base.title, artworkUrl: liveNow.artworkUrl ?? base.artworkUrl, album: base.title } : base;
 
   if (!track) return <Empty title="Nothing playing">Pick a song to play from search or your playlists.</Empty>;
   const queued = item?.track;
@@ -33,7 +35,7 @@ export function NowPlaying() {
             {current ? `${current.description} · ${SOURCE_LABELS[current.track.source]}` : buffering ? "Finding the best copy…" : ""}
             {differentCopy ? ` (asked for ${SOURCE_LABELS[queued!.source]})` : ""}
           </p>
-          <TrackMenu track={track} />
+          {current?.live ? (liveNow?.song && <TrackMenu track={liveNow.song} />) : <TrackMenu track={track} />}
         </div>
       </section>
       <section className="now-side">
@@ -41,7 +43,7 @@ export function NowPlaying() {
           <button role="tab" aria-selected={tab === "queue"} className={tab === "queue" ? "is-active" : ""} onClick={() => setParams({})}>Queue</button>
           <button role="tab" aria-selected={tab === "lyrics"} className={tab === "lyrics" ? "is-active" : ""} onClick={() => setParams({ lyrics: "1" })}>Lyrics</button>
         </div>
-        {tab === "queue" ? <Queue /> : <Lyrics track={queued ?? track} />}
+        {tab === "queue" ? <Queue /> : current?.live ? (liveNow?.song ? <Lyrics track={liveNow.song} /> : <Empty title="No lyrics for live radio">When a channel says which song is on, its lyrics show here.</Empty>) : <Lyrics track={queued ?? track} />}
       </section>
     </div>
   );

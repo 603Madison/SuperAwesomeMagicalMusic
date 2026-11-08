@@ -25,6 +25,8 @@ import kotlinx.serialization.Serializable
 import okhttp3.Request
 import java.io.IOException
 import java.net.InetAddress
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 @Serializable
 data class LyricLineView(val timeMs: Long? = null, val text: String)
@@ -131,14 +133,25 @@ fun Route.musicRoutes(services: Services) {
         services.streamer.relay(call, call.parameters["id"].orEmpty())
     }
 
+    // Artwork is small and many images load at once (a page of radio stations' logos): an image
+    // server that hangs mustn't hold the browser's few connections, so time limits are short and
+    // addresses that failed aren't tried again for a while.
+    val artHttp = services.http.newBuilder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .callTimeout(12, TimeUnit.SECONDS)
+        .build()
+    val artFailures = ConcurrentHashMap<String, Long>()
     get(Artwork.PATH) {
         val params = call.request.queryParameters
         val upstream = params["u"].orEmpty()
         if (upstream.isEmpty() || !services.artwork.verify(upstream, params["s"].orEmpty())) throw ApiError.notFound()
         val px = params["px"]?.toIntOrNull()?.coerceIn(32, 2048)
+        val sized = Artwork.sized(upstream, px)
+        artFailures[sized]?.let { if (services.clock() - it < ART_RETRY_MS) throw ApiError.notFound() }
         val (type, bytes) = withContext(Dispatchers.IO) {
             try {
-                services.http.newCall(Request.Builder().url(Artwork.sized(upstream, px)).build()).execute().use { response ->
+                artHttp.newCall(Request.Builder().url(sized).build()).execute().use { response ->
                     val type = response.header(HttpHeaders.ContentType).orEmpty()
                     val body = response.body
                     // Only images: anything else from our address could be used against the web player.
@@ -151,7 +164,12 @@ fun Route.musicRoutes(services: Services) {
                     type to bytes
                 }
             } catch (e: IOException) {
+                if (artFailures.size > 5_000) artFailures.clear()
+                artFailures[sized] = services.clock()
                 throw ApiError.notFound()
+            } catch (e: ApiError) {
+                artFailures[sized] = services.clock()
+                throw e
             }
         }
         call.response.header(HttpHeaders.CacheControl, "public, max-age=604800, immutable")
@@ -190,6 +208,7 @@ fun Route.musicRoutes(services: Services) {
 }
 
 private const val MAX_ART_BYTES = 10 * 1024 * 1024
+private const val ART_RETRY_MS = 30L * 60 * 1000
 
 fun qualityOf(kbps: Int): StreamQuality = StreamQuality.fromStored(kbps)
 

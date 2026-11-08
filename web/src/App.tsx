@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { History as HistoryIcon, ListMusic, Search as SearchIcon, Settings as SettingsIcon, Shield, Disc3 } from "lucide-react";
+import { History as HistoryIcon, ListMusic, Radio as RadioIcon, Search as SearchIcon, Settings as SettingsIcon, Shield, Disc3 } from "lucide-react";
 import { session, useSession } from "./lib/session";
 import { usePlayer } from "./player/player";
 import { PlayerBar, useKeyboardShortcuts } from "./components/PlayerBar";
@@ -12,6 +12,7 @@ import { ConnectApp } from "./pages/ConnectApp";
 import { Search } from "./pages/Search";
 import { PlaylistDetail, Playlists } from "./pages/Playlists";
 import { History } from "./pages/History";
+import { Radio } from "./pages/Radio";
 import { NowPlaying } from "./pages/NowPlaying";
 import { Settings } from "./pages/Settings";
 import { Admin } from "./pages/Admin";
@@ -56,7 +57,8 @@ function Shell() {
           <span>SuperAwesome<wbr />MagicalMusic</span>
         </div>
         <NavLink to="/" end className="nav-link"><SearchIcon size={20} /> <span>Search</span></NavLink>
-        <NavLink to="/now-playing" className="nav-link"><Disc3 size={20} /> <span>Now playing</span></NavLink>
+        <NavLink to="/now-playing" className="nav-link nav-now"><Disc3 size={20} /> <span>Now playing</span></NavLink>
+        <NavLink to="/radio" className="nav-link"><RadioIcon size={20} /> <span>Radio</span></NavLink>
         <NavLink to="/playlists" end className="nav-link"><ListMusic size={20} /> <span>Playlists</span></NavLink>
         <NavLink to="/history" className="nav-link"><HistoryIcon size={20} /> <span>History</span></NavLink>
         <NavLink to="/settings" className="nav-link"><SettingsIcon size={20} /> <span>Settings</span></NavLink>
@@ -79,6 +81,7 @@ function Shell() {
         <Routes>
           <Route path="/" element={<Search />} />
           <Route path="/now-playing" element={<NowPlaying />} />
+          <Route path="/radio" element={<Radio />} />
           <Route path="/playlists" element={<Playlists />} />
           <Route path="/playlists/:id" element={<PlaylistDetail />} />
           <Route path="/history" element={<History />} />

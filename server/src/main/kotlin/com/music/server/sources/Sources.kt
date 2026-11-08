@@ -23,7 +23,12 @@ enum class SourceKind(val label: String, val type: SourceType?) {
     QOBUZ("Qobuz", SourceType.QOBUZ),
     YOUTUBE_MUSIC("YouTube Music", SourceType.YOUTUBE_MUSIC),
     LIDARR("Lidarr", null),
+    SIRIUSXM("SiriusXM", SourceType.SIRIUSXM),
+    RADIO("Radio", SourceType.RADIO),
     ;
+
+    /** Live radio: channels and stations rather than songs on demand. */
+    val isLive: Boolean get() = this == SIRIUSXM || this == RADIO
 
     /** A library: searched first, and what Lidarr fills. */
     val isLibrary: Boolean get() = this == JELLYFIN
@@ -145,6 +150,22 @@ class SourceStore(
     }
 
     suspend fun delete(id: String) = db.tx { update("DELETE FROM sources WHERE id = ?", id) }
+
+    /** What a service keeps between sign-ins (sealed like the source's secrets). */
+    suspend fun loadState(sourceId: String): String? = db.tx {
+        one("SELECT value FROM source_state WHERE source_id = ?", sourceId) { it.string("value") }
+    }?.let { runCatching { box.open(it, "state:$sourceId") }.getOrNull() }
+
+    suspend fun saveState(sourceId: String, value: String?) = db.tx {
+        if (value == null) {
+            update("DELETE FROM source_state WHERE source_id = ?", sourceId)
+        } else {
+            update(
+                "INSERT INTO source_state (source_id, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (source_id) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+                sourceId, box.seal(value, "state:$sourceId"), clock(),
+            )
+        }
+    }
 
     suspend fun setHidden(userId: String, sourceId: String, hidden: Boolean) = db.tx {
         update(

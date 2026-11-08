@@ -3,6 +3,7 @@ package com.music.server
 import com.music.player.sources.SourceUnavailableException
 import com.music.server.admin.adminRoutes
 import com.music.server.auth.authRoutes
+import com.music.server.music.liveRoutes
 import com.music.server.music.musicRoutes
 import com.music.server.playlists.playlistRoutes
 import com.music.server.sources.sourceRoutes
@@ -82,6 +83,7 @@ fun Application.module(services: Services) {
         adminRoutes(services)
         sourceRoutes(services)
         musicRoutes(services)
+        liveRoutes(services)
         playlistRoutes(services)
         route("/api/{...}") {
             handle { call.respond(HttpStatusCode.NotFound, ErrorBody("No such API")) }

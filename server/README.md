@@ -12,6 +12,10 @@ computer. Each person gets their own playlists and history, and can add their ow
 - **Playback**: like the Lite app, songs play from your Jellyfin library when it has them, else
   the best copy on a streaming service within your quality setting. ffmpeg converts on the server
   only when needed (over your bitrate cap, or a format the browser can't play).
+- **Live radio**: SiriusXM channels (with what's on now, and Xtra channels) and Pandora artist
+  stations through SiriusXM, each person with their own SiriusXM account; and tens of thousands of
+  local and internet stations from Radio Browser, by name or near you, with song titles shown.
+  Everything streams through the server, so it works from anywhere the server is reachable.
 - **Lidarr**: artists of songs played from outside the library are added for you.
 
 ## Run it
@@ -31,7 +35,8 @@ Or with Compose: copy [`deploy/compose.yaml`](../deploy/compose.yaml) and `docke
 Open http://your-server:8080 and sign in as `admin` with the password from the log (or set
 `SAMM_ADMIN_PASSWORD` before the first start). Then, under **Admin**:
 
-1. **Shared sources**: add your Jellyfin (and Qobuz, Lidarr…). YouTube Music is shared already.
+1. **Shared sources**: add your Jellyfin (and Qobuz, Lidarr…). YouTube Music and Radio are shared
+   already. SiriusXM is best added by each person in their own Settings, with their own account.
 2. **People**: add accounts, or set up single sign-on (below) and let people sign in themselves.
 
 Images are published for `linux/amd64` and `linux/arm64` (a Raspberry Pi 4 or 5 is fine). To

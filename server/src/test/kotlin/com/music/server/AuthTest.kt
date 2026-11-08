@@ -18,16 +18,16 @@ import org.junit.Test
 
 class AuthTest {
     @Test
-    fun `first start makes the break-glass admin and shares YouTube Music`() = serverTest { services ->
+    fun `first start makes the break-glass admin and shares YouTube Music and radio`() = serverTest { services ->
         val admin = services.users.byUsername("admin")!!
         assertTrue(admin.breakGlass)
         assertEquals(Role.ADMIN, admin.role)
-        assertEquals(listOf("YOUTUBE_MUSIC"), services.sources.allGlobal().map { it.kind.name })
+        assertEquals(listOf("YOUTUBE_MUSIC", "RADIO"), services.sources.allGlobal().map { it.kind.name })
 
         // A second start changes nothing.
         services.bootstrap()
         assertEquals(1L, services.users.count())
-        assertEquals(1, services.sources.allGlobal().size)
+        assertEquals(2, services.sources.allGlobal().size)
     }
 
     @Test

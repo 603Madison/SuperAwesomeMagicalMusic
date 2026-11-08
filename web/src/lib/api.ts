@@ -1,4 +1,5 @@
 import type {
+  ArtistView, ChannelView, NowView, StationTracks,
   AdminSettings, AuthConfig, KindsResponse, LidarrRequest, Listen, LyricsView, Playlist, PlaylistSummary,
   ResolvedStream, SearchGroup, ServerSettings, SessionInfo, SourceView, Track, User, OidcSettings,
 } from "./types";
@@ -95,6 +96,23 @@ export const api = {
   testSource: (id: string) => post<{ ok: boolean; message: string }>(`/api/sources/${q(id)}/test`),
   lidarrOptions: (id: string) =>
     get<{ qualityProfiles: Choice[]; metadataProfiles: Choice[]; rootFolders: Choice[] }>(`/api/sources/${q(id)}/lidarr-options`),
+
+  channels: (src: string) => get<ChannelView[]>(`/api/live/sxm/${q(src)}/channels`),
+  channelNow: async (src: string, type: string, id: string, at: number): Promise<NowView | null> => {
+    const result = await get<NowView | null>(`/api/live/sxm/${q(src)}/now?type=${q(type)}&id=${q(id)}&at=${Math.round(at)}`);
+    return result && typeof result === "object" ? result : null;
+  },
+  sxmArtists: (src: string, query: string) => get<ArtistView[]>(`/api/live/sxm/${q(src)}/artists?q=${q(query)}`),
+  station: (src: string, body: { artist?: ArtistView; stationId?: string; name?: string; more?: boolean }) =>
+    post<StationTracks>(`/api/live/sxm/${q(src)}/station`, body),
+  stationProgress: (src: string, stationId: string, trackId: string, elapsedMs: number, start: boolean) =>
+    post<unknown>(`/api/live/sxm/${q(src)}/station-track/${q(stationId)}/${q(trackId)}/progress`, { elapsedMs, start }),
+  stationThumb: (src: string, stationId: string, trackId: string, thumb: "UP" | "DOWN" | "NONE", elapsedMs: number) =>
+    post<unknown>(`/api/live/sxm/${q(src)}/station-track/${q(stationId)}/${q(trackId)}/thumb`, { thumb, elapsedMs }),
+  radioSearch: (src: string, query: string, country?: string) =>
+    get<Track[]>(`/api/live/radio/${q(src)}/search?q=${q(query)}${country ? `&country=${q(country)}` : ""}`),
+  radioNearby: (src: string, lat: number, lon: number) => get<Track[]>(`/api/live/radio/${q(src)}/nearby?lat=${lat}&lon=${lon}`),
+  radioNow: (src: string, id: string) => get<{ title?: string }>(`/api/live/radio/${q(src)}/station/${q(id)}/now`),
 
   users: () => get<User[]>("/api/admin/users"),
   createUser: (username: string, displayName: string, password: string, role: string) =>

@@ -3,7 +3,9 @@ import { api, ApiError, art } from "../lib/api";
 import { trackKey } from "../lib/format";
 import type { ResolvedStream, Track } from "../lib/types";
 import { Leveller } from "./leveller";
+import { asSong, liveStreamOf, splitRadioTitle, splitTwo } from "./live";
 import { usePrefs } from "./prefs";
+import type Hls from "hls.js";
 
 export interface QueueItem {
   id: string;
@@ -28,6 +30,18 @@ interface PlayerState {
   repeat: Repeat;
   /** When the sleep timer stops playback (epoch ms), or "track" for the end of this song. */
   sleepAt: number | "track" | null;
+  /** What's on the live channel or station playing, when it says. */
+  liveNow: LiveNow | null;
+  /** Thumbs given to Pandora station tracks, by track id. */
+  thumbs: Record<string, "UP" | "DOWN">;
+}
+
+export interface LiveNow {
+  title: string;
+  artist: string;
+  artworkUrl?: string;
+  /** The song, to save: it plays from your library or a streaming service. */
+  song?: Track;
 }
 
 export const usePlayer = create<PlayerState>(() => ({
@@ -43,6 +57,8 @@ export const usePlayer = create<PlayerState>(() => ({
   muted: false,
   repeat: "off",
   sleepAt: null,
+  liveNow: null,
+  thumbs: {},
 }));
 
 const set = usePlayer.setState;
@@ -57,6 +73,7 @@ let offset = 0;
 /** Ignores answers for songs that were skipped while being looked up. */
 let loadToken = 0;
 let consecutiveErrors = 0;
+let hls: Hls | null = null;
 const resolutions = new Map<string, { at: number; value: Promise<ResolvedStream> }>();
 
 let newId = 0;
@@ -99,13 +116,13 @@ let reported = false;
 function reportListen() {
   const { current, queue, index } = state();
   const item = queue[index];
-  if (!item || reported) return;
+  if (!item || reported || current?.live) return;
   const length = (item.track.durationMs ?? 0) || state().duration * 1000;
   // Counted like a scrobble: half the song, or four minutes, but at least 30 seconds.
   const needed = Math.max(30_000, Math.min(length / 2 || 30_000, 240_000));
   if (listenedMs < needed) return;
   reported = true;
-  const track = current?.track ?? item.track;
+  const track = asSong(current?.track ?? item.track);
   api.addListens([{ track, playedAt: Date.now() - listenedMs, listenedMs, client: "web" }]).catch(() => undefined);
 }
 
@@ -119,17 +136,22 @@ async function load(index: number, autoplay: boolean, startAt = 0) {
   reported = false;
   const token = ++loadToken;
   audio.pause();
-  set({ index, current: null, buffering: true, error: null, position: startAt, duration: (item.track.durationMs ?? 0) / 1000, playing: autoplay });
+  set({ index, current: null, buffering: true, error: null, position: startAt, duration: (item.track.durationMs ?? 0) / 1000, playing: autoplay, liveNow: null });
   try {
-    const resolved = await resolve(item.track);
+    const live = liveStreamOf(item.track);
+    const resolved: ResolvedStream = live
+      ? { track: item.track, streamUrl: live.url, description: live.description, seekable: !live.live, transcoded: false, withinCap: true, extension: "", live: live.live, hls: live.hls }
+      : await resolve(item.track);
     if (token !== loadToken) return;
     let src = resolved.streamUrl;
     offset = 0;
-    if (startAt > 0 && !resolved.seekable) {
+    if (startAt > 0 && !resolved.seekable && !resolved.live) {
       src += `&start=${startAt.toFixed(1)}`;
       offset = startAt;
     }
-    audio.src = src;
+    await attach(src, resolved.hls === true);
+    if (token !== loadToken) return;
+    if (resolved.live) set({ duration: 0, position: 0 });
     if (startAt > 0 && resolved.seekable) {
       audio.addEventListener("loadedmetadata", () => { audio.currentTime = startAt; }, { once: true });
     }
@@ -140,9 +162,98 @@ async function load(index: number, autoplay: boolean, startAt = 0) {
     else set({ buffering: false });
     consecutiveErrors = 0;
     prefetchNext();
+    onLiveStart(item.track);
   } catch (e) {
     if (token !== loadToken) return;
     failed(e instanceof ApiError ? e.message : "Couldn't play this song");
+  }
+}
+
+/** Points the player at [src]: a plain file, or an HLS playlist (with hls.js where the browser needs it). */
+async function attach(src: string, isHls: boolean) {
+  if (hls) {
+    hls.destroy();
+    hls = null;
+  }
+  if (!isHls || audio.canPlayType("application/vnd.apple.mpegurl")) {
+    audio.src = src;
+    return;
+  }
+  const { default: Hls } = await import("hls.js");
+  if (!Hls.isSupported()) throw new ApiError(0, "This browser can't play live streams");
+  const instance = new Hls({ backBufferLength: 60, maxBufferLength: 60, liveSyncDurationCount: 3 });
+  instance.on(Hls.Events.ERROR, (_, data) => {
+    if (!data.fatal) return;
+    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) instance.startLoad();
+    else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) instance.recoverMediaError();
+    else failed("The live stream stopped");
+  });
+  instance.loadSource(src);
+  instance.attachMedia(audio);
+  hls = instance;
+}
+
+// ---- Live radio: what's on, and SiriusXM's station tracks ----
+
+let livePoll: number | null = null;
+let fetchingMore = false;
+
+function onLiveStart(track: Track) {
+  if (livePoll != null) clearInterval(livePoll);
+  livePoll = null;
+  const live = liveStreamOf(track);
+  if (!live) return;
+  if (live.kind === "station-track") {
+    const [stationId, trackId] = splitTwo(track.sourceId.slice("stationtrack:".length));
+    api.stationProgress(track.via!, stationId, trackId, 0, true).catch(() => undefined);
+    void moreFromStation();
+  }
+  void pollLive();
+  livePoll = window.setInterval(() => void pollLive(), live.kind === "station-track" ? 30_000 : 10_000);
+}
+
+async function pollLive() {
+  const { queue, index, playing } = state();
+  const track = queue[index]?.track;
+  const live = track && liveStreamOf(track);
+  if (!track || !live || (!playing && state().liveNow)) return;
+  try {
+    if (live.kind === "channel") {
+      const [type, id] = splitTwo(track.sourceId.slice("channel:".length));
+      // Where the player is in the stream, as a time: what's heard, not what's newest.
+      const at = hls?.playingDate?.getTime() ?? Date.now();
+      const now = await api.channelNow(track.via!, type, id, at);
+      if (state().queue[state().index]?.track !== track) return;
+      set({ liveNow: now ? { title: now.title, artist: now.artist, artworkUrl: now.artworkUrl, song: now.song } : null });
+    } else if (live.kind === "radio") {
+      const { title } = await api.radioNow(track.via!, track.sourceId.replace(/^hls:/, ""));
+      if (state().queue[state().index]?.track !== track) return;
+      set({ liveNow: title ? splitRadioTitle(title) : null });
+    } else if (playing) {
+      const [stationId, trackId] = splitTwo(track.sourceId.slice("stationtrack:".length));
+      api.stationProgress(track.via!, stationId, trackId, Math.round(audio.currentTime * 1000), false).catch(() => undefined);
+    }
+    updateMediaSession();
+  } catch {
+    // What's-on is a nicety; the music keeps playing.
+  }
+}
+
+/** Near the end of a Pandora station's queue, asks SiriusXM for more of it. */
+async function moreFromStation() {
+  const { queue, index } = state();
+  const last = queue[queue.length - 1]?.track;
+  if (fetchingMore || !last || index < queue.length - 3) return;
+  if (!(last.source === "SIRIUSXM" && last.sourceId.startsWith("stationtrack:") && last.via)) return;
+  const [stationId] = splitTwo(last.sourceId.slice("stationtrack:".length));
+  fetchingMore = true;
+  try {
+    const more = await api.station(last.via, { stationId, name: last.album, more: true });
+    if (more.tracks.length) set({ queue: [...state().queue, ...more.tracks.map(itemOf)] });
+  } catch {
+    // Tried again at the next track.
+  } finally {
+    fetchingMore = false;
   }
 }
 
@@ -239,7 +350,9 @@ function updateMediaSession() {
   if (!("mediaSession" in navigator)) return;
   const item = state().queue[state().index];
   if (!item) return;
-  const track = state().current?.track ?? item.track;
+  const base = state().current?.track ?? item.track;
+  const now = state().liveNow;
+  const track = now ? { ...base, title: now.title || base.title, artist: now.artist || base.title, album: base.title, artworkUrl: now.artworkUrl ?? base.artworkUrl } : base;
   const artwork = art(track.artworkUrl, 512);
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.title,
@@ -369,8 +482,10 @@ export const player = {
       if (rest.length && index < rest.length) void load(index, state().playing);
       else {
         audio.pause();
+        hls?.destroy();
+        hls = null;
         audio.removeAttribute("src");
-        set({ index: rest.length ? rest.length - 1 : -1, current: null, playing: false });
+        set({ index: rest.length ? rest.length - 1 : -1, current: null, playing: false, liveNow: null });
       }
       return;
     }
@@ -433,6 +548,7 @@ export const player = {
 
   seek(seconds: number) {
     const { current, duration, playing } = state();
+    if (current?.live) return;
     const to = Math.max(0, duration > 0 ? Math.min(seconds, duration - 0.5) : seconds);
     if (!current) {
       set({ position: to });
@@ -469,6 +585,36 @@ export const player = {
   sleepIn(minutes: number | "track" | null) {
     audio.volume = state().muted ? 0 : state().volume;
     set({ sleepAt: minutes == null ? null : minutes === "track" ? "track" : Date.now() + minutes * 60_000 });
+  },
+
+  /** Plays a live channel or station (replacing the queue). */
+  playLive(track: Track) {
+    player.playTracks([track]);
+  },
+
+  /** Starts a Pandora artist station: its first tracks, more as they're played. */
+  startStation(tracks: Track[]) {
+    player.playTracks(tracks);
+  },
+
+  /** Thumbs a Pandora station track up or down (down skips it, as Pandora does). */
+  async thumb(direction: "UP" | "DOWN") {
+    const { queue, index, thumbs } = state();
+    const track = queue[index]?.track;
+    if (!track?.via || !track.sourceId.startsWith("stationtrack:")) return;
+    const [stationId, trackId] = splitTwo(track.sourceId.slice("stationtrack:".length));
+    const next = thumbs[trackId] === direction ? "NONE" : direction;
+    const updated = { ...thumbs };
+    if (next === "NONE") delete updated[trackId];
+    else updated[trackId] = next;
+    set({ thumbs: updated });
+    try {
+      await api.stationThumb(track.via, stationId, trackId, next, Math.round(audio.currentTime * 1000));
+      if (next === "DOWN") player.next();
+    } catch (e) {
+      set({ thumbs });
+      throw e;
+    }
   },
 
   get levellingGainDb() {

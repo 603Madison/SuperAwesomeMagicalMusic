@@ -14,6 +14,7 @@ import com.music.server.db.Schema
 import com.music.server.music.Artwork
 import com.music.server.music.Catalog
 import com.music.server.music.LidarrRequests
+import com.music.server.music.LiveProxy
 import com.music.server.music.Streamer
 import com.music.server.playlists.HistoryStore
 import com.music.server.playlists.PlaylistStore
@@ -53,13 +54,14 @@ class Services(
     val throttle = LoginThrottle(clock = clock)
     val sources = SourceStore(db, box, clock)
     val setup = SourceSetup(http)
-    val registry = SourceRegistry(http)
+    val registry = SourceRegistry(http, sources)
     val lidarr = LidarrRequests(db, sources, registry, http, scope, clock)
     val catalog = Catalog(sources, registry, lidarr, clock)
     val streamer = Streamer(http, config.ffmpeg, config.maxTranscodes, selfUrl)
     val playlists = PlaylistStore(db, clock)
     val history = HistoryStore(db)
     val artwork = Artwork(box)
+    val live = LiveProxy(http, box, clock)
 
     override fun close() {
         scope.cancel()
@@ -114,10 +116,9 @@ class Services(
             } else {
                 log.info("Created the break-glass admin account {} with the password from SAMM_ADMIN_PASSWORD", config.adminUsername)
             }
-            if (sources.allGlobal().none { it.kind == SourceKind.YOUTUBE_MUSIC }) {
-                sources.create(ownerId = null, kind = SourceKind.YOUTUBE_MUSIC, name = "YouTube Music", settings = JsonObject(emptyMap()), secrets = JsonObject(emptyMap()))
-            }
         }
+        seed(SourceKind.YOUTUBE_MUSIC, "YouTube Music")
+        seed(SourceKind.RADIO, "Radio")
         val env = config.overrides
         if (env.isNotEmpty()) {
             settings.update { current ->
@@ -138,6 +139,17 @@ class Services(
             env["SAMM_OIDC_CLIENT_SECRET"]?.let { settings.setOidcClientSecret(it) }
         }
         sessions.purgeExpired()
+    }
+
+    /** Shares a source that needs no sign-in with everyone, once (an admin may remove it after). */
+    private suspend fun seed(kind: SourceKind, name: String) {
+        val key = "seeded.${kind.name}"
+        val seeded = db.tx { one("SELECT 1 FROM settings WHERE key = ?", key) { true } } == true
+        if (seeded) return
+        if (sources.allGlobal().none { it.kind == kind }) {
+            sources.create(ownerId = null, kind = kind, name = name, settings = JsonObject(emptyMap()), secrets = JsonObject(emptyMap()))
+        }
+        db.tx { update("INSERT OR REPLACE INTO settings (key, value) VALUES (?, '1')", key) }
     }
 
     /** Sets a new password for the break-glass admin (from the command line) and returns it. */

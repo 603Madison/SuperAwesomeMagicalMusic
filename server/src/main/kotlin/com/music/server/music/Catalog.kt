@@ -75,7 +75,8 @@ class Catalog(
     }
 
     suspend fun resolve(user: User, wanted: Track, via: String?, quality: StreamQuality, thorough: Boolean): Resolution {
-        if (!wanted.source.onDemand) throw ApiError.badRequest("Live radio doesn't play through this")
+        // Songs heard on SiriusXM are found in the person's sources like any other; live streams aren't.
+        if (wanted.isLive) throw ApiError.badRequest("Live radio doesn't play through this")
         val sources = store.activeFor(user)
         val errors = mutableListOf<String>()
 

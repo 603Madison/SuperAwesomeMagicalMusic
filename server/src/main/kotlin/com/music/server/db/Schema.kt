@@ -93,6 +93,14 @@ object Schema {
             PRIMARY KEY (user_id, artist)
         );
         """,
+        // 2: what a service keeps between sign-ins (SiriusXM's session), sealed like secrets.
+        """
+        CREATE TABLE source_state (
+            source_id TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
+            value TEXT NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        """,
     )
 
     val version: Int get() = migrations.size
