@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
@@ -24,8 +25,8 @@ import com.music.player.sources.ArtworkUrls
 import com.music.player.ui.LocalArtworkAllowed
 
 @Composable
-fun Artwork(url: String?, size: Dp, modifier: Modifier = Modifier, corner: Dp = size / 6) {
-    val shape = RoundedCornerShape(corner.coerceAtMost(24.dp))
+fun Artwork(url: String?, size: Dp, modifier: Modifier = Modifier, corner: Dp = size / 6, circle: Boolean = false) {
+    val shape = if (circle) CircleShape else RoundedCornerShape(corner.coerceAtMost(24.dp))
     Box(
         modifier = modifier
             .size(size)

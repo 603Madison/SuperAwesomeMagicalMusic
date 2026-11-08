@@ -24,6 +24,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.music.player.AppContainer
 import com.music.player.data.DownloadStatus
+import com.music.player.browse.TopResult
 import com.music.player.model.Track
 import com.music.player.net.AppJson
 import com.music.player.sources.TrackMatcher
@@ -33,6 +34,7 @@ import com.music.player.sources.siriusxm.SxmChannel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
@@ -374,12 +376,30 @@ class LibraryCallback(
         }
     }.also { if (searches.size > 20) searches.clear() }
 
-    /** Voice requests: a SiriusXM channel by name, else songs (Jellyfin first); empty plays downloads. */
+    /**
+     * Voice requests: a SiriusXM channel by name, else an artist's songs or an album when that's
+     * what was asked for, else songs (Jellyfin first); empty plays downloads.
+     */
     private suspend fun voiceSearch(query: String): List<Track> {
         if (query.isBlank()) return completedDownloads().shuffled().ifEmpty { container.playlists.active().firstOrNull()?.let { container.playlists.entries(it.id) }.orEmpty() }
         siriusXmChannels(query).firstOrNull()?.let { return listOf(it) }
+        if (container.networkMonitor.state.value.isOnline) {
+            runCatching { withTimeoutOrNull(VOICE_SEARCH_MS) { spoken(query) } }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+        }
         val library = runCatching { container.jellyfin.search(query, 25) }.getOrDefault(emptyList())
         return library.ifEmpty { firstStreamingResults(query) }
+    }
+
+    /** What all the sources together make of [query]: an artist's best-known songs, an album, or songs. */
+    private suspend fun spoken(query: String): List<Track>? {
+        val sources = container.browseSources()
+        if (sources.isEmpty()) return null
+        val results = container.browsing.merge(query, container.browsing.search(sources, query, 20))
+        return when (val top = results.top) {
+            is TopResult.OfArtist -> container.browsing.artist(sources, top.artist.name, top.artist.copies)?.topSongs?.map { it.item }
+            is TopResult.OfAlbum -> container.browsing.album(sources, top.album.title, top.album.artist, top.album.copies)?.tracks?.map { it.item }
+            else -> results.songs.map { it.item }
+        }
     }
 
     private suspend fun firstStreamingResults(query: String): List<Track> {
@@ -488,6 +508,7 @@ class LibraryCallback(
             (controller.isPackageNameVerified && controller.packageName in MEDIA_CLIENTS)
 
     companion object {
+        private const val VOICE_SEARCH_MS = 15_000L
         /** Android Auto, Android Automotive's media app, the Assistant and Wear OS. */
         private const val ANDROID_AUTO = "com.google.android.projection.gearhead"
 

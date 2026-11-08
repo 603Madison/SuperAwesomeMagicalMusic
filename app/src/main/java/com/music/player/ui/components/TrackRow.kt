@@ -10,10 +10,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.outlined.Info
@@ -113,6 +115,12 @@ fun ColumnScope.StandardTrackMenuItems(track: Track, downloaded: Boolean, dismis
     }
     // Live channels and stations can't be saved or downloaded; SiriusXM songs can (see the radio screen).
     if (track.isLive) return
+    if (track.artist.isNotBlank()) {
+        MenuItem("Go to artist", Icons.Default.Person) { dismiss(); actions.openArtist(track.artist) }
+        track.album?.takeIf { it.isNotBlank() }?.let { album ->
+            MenuItem("Go to album", Icons.Default.Album) { dismiss(); actions.openAlbum(album, track.artist) }
+        }
+    }
     MenuItem("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) { dismiss(); actions.addToPlaylist(listOf(track)) }
     if (downloaded) {
         MenuItem("Remove download", Icons.Default.DeleteOutline) { dismiss(); actions.removeDownload(track) }

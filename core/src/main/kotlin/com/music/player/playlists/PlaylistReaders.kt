@@ -6,7 +6,9 @@ import com.music.player.net.AppJson
 import com.music.player.net.HttpException
 import com.music.player.net.call
 import com.music.player.net.fetchString
+import com.music.player.sources.MusicSource
 import com.music.player.sources.TrackMatcher
+import com.music.player.sources.jellyfin.JellyfinSource
 import com.music.player.sources.youtube.NewPipeDownloader
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -344,6 +346,18 @@ object ImportMatcher {
      * recording by ISRC, or by title, artist and length. A typed line may have the artist and
      * title the other way round, or be just a title (whose first song is taken).
      */
+    /**
+     * [song] in [source], if it's there: in a library the way a song is found to play (by title,
+     * then among the artist's songs), on a service by searching for it.
+     */
+    suspend fun findIn(song: ListedSong, source: MusicSource): Track? {
+        if (source !is JellyfinSource) return pick(song, source.search(query(song), 10))
+        if (song.line == null && song.artist.isNotBlank()) return source.lookUp(wanted(song))
+        // A typed line: either half may be the title, or the whole line.
+        val terms = listOfNotNull(song.title, song.artist.takeIf { it.isNotBlank() }, song.line).map(TrackMatcher::searchTitle).filter { it.isNotBlank() }.distinct()
+        return pick(song, terms.flatMap { source.search(it, 50) })
+    }
+
     fun pick(song: ListedSong, candidates: List<Track>): Track? {
         val wanted = wanted(song)
         val swapped = if (song.line != null && song.artist.isNotBlank()) wanted.copy(title = song.artist, artist = song.title) else null

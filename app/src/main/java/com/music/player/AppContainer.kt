@@ -11,6 +11,7 @@ import com.music.player.downloads.DownloadRepository
 import com.music.player.downloads.OfflinePlaylistWorker
 import com.music.player.downloads.OfflinePlaylists
 import com.music.player.lidarr.LidarrClient
+import com.music.player.model.SourceType
 import com.music.player.lidarr.LidarrQueueWorker
 import com.music.player.lidarr.LidarrService
 import com.music.player.quality.NetworkClass
@@ -131,8 +132,22 @@ class AppContainer(val context: Context) {
         com.music.player.scrobble.LastFmClient(httpClient),
     ) { networkMonitor.state.value.isOnline }
     val listening = com.music.player.history.ListeningTracker(database.history(), scrobbler, appScope)
+    /** The sources to search and browse, in the order songs play from them: the library, then the services. */
+    suspend fun browseSources(): List<com.music.player.browse.BrowseSource> =
+        (listOf(SourceType.JELLYFIN) + settings.current().fallbackOrder).distinct()
+            .map { catalog.source(it) }
+            .filter { runCatching { it.isAvailable() }.getOrDefault(false) }
+            .map { com.music.player.browse.BrowseSource(it.type.name, it.type == SourceType.JELLYFIN, it) }
+    val remembered = com.music.player.ui.search.RememberedBrowse()
+    val browsing = com.music.player.browse.Browsing(20_000) { source, what, error -> Log.w("Browsing", "${source.via}: $what failed", error) }
     val playlistImporter by lazy {
-        com.music.player.playlists.PlaylistImporter(youtube, jellyfin, com.music.player.playlists.SpotifyPlaylists(httpClient), playlists)
+        com.music.player.playlists.PlaylistImporter(
+            com.music.player.playlists.PlaylistReaders(httpClient),
+            youtube,
+            qobuz,
+            sources = { browseSources().map { it.music } },
+            playlists,
+        )
     }
     val heardSongs = HeardSongs(jellyfin, lidarr, playlists) { catalog.findCopyWithArtwork(it, includeJellyfin = false) }
     val offlinePlaylists = OfflinePlaylists(

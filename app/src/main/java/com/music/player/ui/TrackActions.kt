@@ -18,7 +18,15 @@ class TrackActions(
     private val showAddToPlaylist: (List<Track>) -> Unit,
     private val showMessage: (String) -> Unit,
     private val showInfo: (Track) -> Unit = {},
+    private val showArtist: (name: String) -> Unit = {},
+    private val showAlbum: (title: String, artist: String) -> Unit = { _, _ -> },
 ) {
+    /** Opens an artist's page: their songs and albums from all your sources. */
+    fun openArtist(name: String) = showArtist(name)
+
+    /** Opens an album: its songs, from your library when it has them. */
+    fun openAlbum(title: String, artist: String) = showAlbum(title, artist)
+
     fun play(tracks: List<Track>, index: Int = 0) = container.player.play(tracks, index)
 
     fun shuffle(tracks: List<Track>) = container.player.play(tracks, shuffle = true)

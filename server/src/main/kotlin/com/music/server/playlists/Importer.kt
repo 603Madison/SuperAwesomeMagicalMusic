@@ -2,13 +2,10 @@ package com.music.server.playlists
 
 import com.music.player.browse.AlbumRef
 import com.music.player.model.SourceType
-import com.music.player.model.Track
 import com.music.player.playlists.ImportMatcher
 import com.music.player.playlists.ListedSong
 import com.music.player.playlists.PlaylistReaders
 import com.music.player.playlists.PlaylistService
-import com.music.player.sources.TrackMatcher
-import com.music.player.sources.jellyfin.JellyfinSource
 import com.music.player.sources.qobuz.QobuzSource
 import com.music.player.sources.youtube.YouTubeMusicSource
 import com.music.server.ApiError
@@ -97,7 +94,7 @@ class Importer(
                 searches.withPermit {
                     song to sources.firstNotNullOfOrNull { (source, music) ->
                         val found = try {
-                            if (music is JellyfinSource) inLibrary(music, song) else ImportMatcher.pick(song, music.search(ImportMatcher.query(song), 10))
+                            ImportMatcher.findIn(song, music)
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
@@ -109,13 +106,6 @@ class Importer(
             }
         }.awaitAll()
         matched.mapNotNull { it.second } to matched.filter { it.second == null }.map { it.first }
-    }
-
-    private suspend fun inLibrary(library: JellyfinSource, song: ListedSong): Track? {
-        if (song.line == null && song.artist.isNotBlank()) return library.lookUp(ImportMatcher.wanted(song))
-        // A typed line: either half may be the title, or the whole line.
-        val terms = listOfNotNull(song.title, song.artist.takeIf { it.isNotBlank() }, song.line).map(TrackMatcher::searchTitle).filter { it.isNotBlank() }.distinct()
-        return ImportMatcher.pick(song, terms.flatMap { library.search(it, 50) })
     }
 
     private companion object {

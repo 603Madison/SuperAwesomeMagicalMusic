@@ -7,26 +7,20 @@ import com.music.player.browse.AlbumRef
 import com.music.player.browse.Artist
 import com.music.player.browse.ArtistPage
 import com.music.player.browse.ArtistRef
-import com.music.player.browse.Browsable
+import com.music.player.browse.BrowseSource
+import com.music.player.browse.Browsing
 import com.music.player.browse.Found
 import com.music.player.browse.SearchResults
-import com.music.player.browse.SourceResults
 import com.music.player.browse.TopResult
 import com.music.player.browse.UnifiedSearch
 import com.music.player.model.SourceType
 import com.music.player.model.Track
-import com.music.player.sources.MusicSource
 import com.music.player.sources.TrackMatcher
 import com.music.server.ApiError
 import com.music.server.auth.User
 import com.music.server.sources.SourceRegistry
 import com.music.server.sources.SourceStore
 import com.music.server.sources.StoredSource
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.util.Base64
@@ -98,95 +92,38 @@ data class Everything(val groups: List<SearchGroup>, val results: SearchResults)
  * artist found on YouTube.
  */
 class Browser(private val store: SourceStore, private val registry: SourceRegistry) {
-    /** The person's sources that hold music to browse, libraries first. */
-    private suspend fun browsable(user: User): List<Pair<StoredSource, MusicSource>> =
-        store.activeFor(user).filter { it.kind.isOnDemand }.sortedByDescending { it.kind.isLibrary }
-            .mapNotNull { source -> registry.music(source)?.let { source to it } }
+    private val browsing = Browsing(TIMEOUT_MS) { source, what, error -> CoreLog.w(TAG, "${source.via}: $what failed", error) }
 
-    suspend fun search(user: User, query: String, limit: Int = 25): Everything = coroutineScope {
-        val answers = browsable(user).map { (source, music) ->
-            async {
-                val browse = music as? Browsable
-                val songs = async { ask(source, "search") { music.search(query, limit) } }
-                val artists = async { browse?.let { ask(source, "artist search") { it.searchArtists(query, 8) } } }
-                val albums = async { browse?.let { ask(source, "album search") { it.searchAlbums(query, 12) } } }
-                Answer(source, songs.await(), artists.await(), albums.await())
-            }
-        }.awaitAll()
-        val groups = answers.map { answer ->
+    /** The person's sources that hold music to browse, libraries first. */
+    private suspend fun sources(user: User): List<Pair<StoredSource, BrowseSource>> =
+        store.activeFor(user).filter { it.kind.isOnDemand }.sortedByDescending { it.kind.isLibrary }
+            .mapNotNull { source -> registry.music(source)?.let { source to BrowseSource(source.id, source.kind.isLibrary, it) } }
+
+    suspend fun search(user: User, query: String, limit: Int = 25): Everything {
+        val sources = sources(user)
+        val answers = browsing.search(sources.map { it.second }, query, limit)
+        val groups = answers.mapIndexed { i, answer ->
+            val source = sources[i].first
             SearchGroup(
-                answer.source.id, answer.source.name, answer.source.kind,
-                answer.songs.getOrDefault(emptyList()).map { ApiTrack.of(it, answer.source.id) },
-                answer.songs.exceptionOrNull()?.let { "${answer.source.name}: ${it.message ?: it.javaClass.simpleName}" },
+                source.id, source.name, source.kind,
+                answer.songs.getOrDefault(emptyList()).map { ApiTrack.of(it, source.id) },
+                answer.songs.exceptionOrNull()?.let { "${source.name}: ${it.message ?: it.javaClass.simpleName}" },
             )
         }
-        val results = UnifiedSearch.merge(
-            query,
-            answers.map { answer ->
-                SourceResults(
-                    via = answer.source.id,
-                    library = answer.source.kind.isLibrary,
-                    songs = answer.songs.getOrDefault(emptyList()),
-                    artists = answer.artists?.getOrNull().orEmpty(),
-                    albums = answer.albums?.getOrNull().orEmpty(),
-                )
-            },
-        )
-        Everything(groups, results)
+        return Everything(groups, browsing.merge(query, answers))
     }
 
     /** An artist's page: from the sources they were found on, and the others by their name. */
-    suspend fun artist(user: User, key: BrowseKey): ArtistPage = coroutineScope {
-        val pages = browsable(user).map { (source, music) ->
-            async {
-                val browse = music as? Browsable ?: return@async null
-                val ref = key.r.firstOrNull { it.v == source.id }?.let { ArtistRef(it.s, it.i, key.n) }
-                    ?: ask(source, "artist search") { browse.searchArtists(key.n, 5) }.getOrNull()
-                        ?.firstOrNull { UnifiedSearch.artistKey(it.name) == UnifiedSearch.artistKey(key.n) }
-                    ?: return@async null
-                ask(source, "artist") { browse.artist(ref) }.getOrNull()?.let { Found(source.id, source.kind.isLibrary, it) }
-            }
-        }.awaitAll().filterNotNull()
-        UnifiedSearch.artistPage(pages) ?: throw ApiError.notFound("None of your sources has ${key.n}")
+    suspend fun artist(user: User, key: BrowseKey): ArtistPage {
+        val copies = key.r.map { Found(it.v, false, ArtistRef(it.s, it.i, key.n)) }
+        return browsing.artist(sources(user).map { it.second }, key.n, copies) ?: throw ApiError.notFound("None of your sources has ${key.n}")
     }
 
     /** An album's page: from the sources it was found on, and the others by its title and artist. */
-    suspend fun album(user: User, key: BrowseKey): AlbumPage = coroutineScope {
+    suspend fun album(user: User, key: BrowseKey): AlbumPage {
         val artist = key.a.orEmpty()
-        val wanted = UnifiedSearch.albumKey(key.n, artist)
-        val pages = browsable(user).map { (source, music) ->
-            async {
-                val browse = music as? Browsable ?: return@async null
-                val ref = key.r.firstOrNull { it.v == source.id }?.let { AlbumRef(it.s, it.i, key.n, artist) }
-                    ?: ask(source, "album search") { browse.searchAlbums("${TrackMatcher.primaryArtist(artist)} ${TrackMatcher.searchTitle(key.n)}", 10) }.getOrNull()
-                        ?.firstOrNull { UnifiedSearch.albumKey(it.title, it.artist) == wanted }
-                    ?: return@async null
-                ask(source, "album") { browse.album(ref) }.getOrNull()?.let { Found(source.id, source.kind.isLibrary, it) }
-            }
-        }.awaitAll().filterNotNull()
-        UnifiedSearch.albumPage(pages) ?: throw ApiError.notFound("None of your sources has ${key.n}")
-    }
-
-    private class Answer(
-        val source: StoredSource,
-        val songs: Result<List<Track>>,
-        val artists: Result<List<ArtistRef>>?,
-        val albums: Result<List<AlbumRef>>?,
-    )
-
-    /** A source's answer, or why there isn't one; a source that takes too long is left out. */
-    private suspend fun <T> ask(source: StoredSource, what: String, block: suspend () -> T): Result<T> {
-        val result = withTimeoutOrNull(TIMEOUT_MS) {
-            try {
-                Result.success(block())
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                CoreLog.w(TAG, "${source.name}: $what failed", e)
-                Result.failure(e)
-            }
-        }
-        return result ?: Result.failure(Exception("${source.name} took too long to answer"))
+        val copies = key.r.map { Found(it.v, false, AlbumRef(it.s, it.i, key.n, artist)) }
+        return browsing.album(sources(user).map { it.second }, key.n, artist, copies) ?: throw ApiError.notFound("None of your sources has ${key.n}")
     }
 
     private companion object {

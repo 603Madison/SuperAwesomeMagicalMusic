@@ -2,6 +2,7 @@ package com.music.player.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -38,10 +39,12 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.music.player.lidarr.LidarrEvent
 import com.music.player.model.Track
 import com.music.player.quality.NetworkClass
@@ -54,11 +57,18 @@ import com.music.player.ui.player.NowPlayingSheet
 import com.music.player.ui.playlists.PlaylistDetailScreen
 import com.music.player.ui.playlists.PlaylistsScreen
 import com.music.player.ui.radio.RadioScreen
+import com.music.player.ui.search.AlbumScreen
+import com.music.player.ui.search.ArtistScreen
 import com.music.player.ui.search.SearchScreen
 import com.music.player.ui.settings.SettingsScreen
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
+
+private fun text(name: String) = navArgument(name) {
+    type = NavType.StringType
+    defaultValue = ""
+}
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     SEARCH("search", "Search", Icons.Default.Search),
@@ -91,6 +101,8 @@ fun MusicAppUi() {
             showAddToPlaylist = { addToPlaylist = it },
             showMessage = { message -> scope.launch { snackbar.showSnackbar(message) } },
             showInfo = { infoFor = it },
+            showArtist = { name -> navController.navigate("artist?name=${Uri.encode(name)}") },
+            showAlbum = { title, artist -> navController.navigate("album?title=${Uri.encode(title)}&artist=${Uri.encode(artist)}") },
         )
     }
 
@@ -146,6 +158,16 @@ fun MusicAppUi() {
                     )
                 }
                 composable("history") { com.music.player.ui.history.HistoryScreen(onBack = { navController.popBackStack() }) }
+                composable("artist?name={name}", arguments = listOf(text("name"))) { entry ->
+                    ArtistScreen(entry.arguments?.getString("name").orEmpty(), onBack = { navController.popBackStack() })
+                }
+                composable("album?title={title}&artist={artist}", arguments = listOf(text("title"), text("artist"))) { entry ->
+                    AlbumScreen(
+                        entry.arguments?.getString("title").orEmpty(),
+                        entry.arguments?.getString("artist").orEmpty(),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
                 composable(Tab.RADIO.route) { RadioScreen() }
                 composable(Tab.DOWNLOADS.route) { DownloadsScreen() }
                 composable(Tab.SETTINGS.route) { SettingsScreen() }
@@ -184,7 +206,9 @@ private fun BottomBar(navController: NavHostController) {
     val route = backStack?.destination?.route
     NavigationBar {
         Tab.entries.forEach { tab ->
-            val selected = route == tab.route || (tab == Tab.PLAYLISTS && (route?.startsWith("playlist/") == true || route == "history"))
+            val selected = route == tab.route ||
+                (tab == Tab.PLAYLISTS && (route?.startsWith("playlist/") == true || route == "history")) ||
+                (tab == Tab.SEARCH && (route?.startsWith("artist?") == true || route?.startsWith("album?") == true))
             NavigationBarItem(
                 selected = selected,
                 onClick = {
