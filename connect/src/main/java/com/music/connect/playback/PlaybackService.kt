@@ -46,7 +46,7 @@ import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
 /** A song's stream as chosen when it started: kept, so seeking doesn't ask the server again. */
-data class StreamResolution(val url: String, val description: String, val gainDb: Float?)
+data class StreamResolution(val url: String, val description: String, val gainDb: Float?, val kbps: Int, val atMs: Long)
 
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaLibraryService() {
@@ -126,19 +126,30 @@ class PlaybackService : MediaLibraryService() {
         if (!network.isOnline) throw IOException("\"${track.title}\" isn't downloaded, and there's no connection")
         val settings = c.settings.value
         val kbps = settings.kbpsFor(network.networkClass, network.savingData)
-        val key = "${track.key}|$kbps"
-        val chosen = resolutions[key] ?: runBlocking {
+        // A song keeps the stream it started with while it plays (seeking reopens it, and another
+        // bitrate's bytes wouldn't fit); one fetched ahead is chosen again if the network changed.
+        val pinned = resolutions[track.key]?.takeIf {
+            it.kbps == kbps || track.key == currentKey || System.currentTimeMillis() - it.atMs < PIN_MS
+        }
+        val chosen = pinned ?: runBlocking {
             // Comparing every service costs round trips: only where the link is quick.
             val resolved = c.api.resolve(track, kbps, thorough = network.networkClass == NetworkClass.WIFI)
-            StreamResolution(c.api.absolute(resolved.streamUrl), resolved.description, resolved.gainDb)
-        }.also { resolutions[key] = it }
+            StreamResolution(c.api.absolute(resolved.streamUrl), resolved.description, resolved.gainDb, kbps, System.currentTimeMillis())
+        }.also { resolutions[track.key] = it }
         describe(track, chosen.description)
-        gains[track.key] = chosen.gainDb
-        if (player.currentMediaItem?.let(MediaItems::track)?.key == track.key) loudness.knownGainDb = chosen.gainDb
+        // (ConcurrentHashMap holds no nulls: most songs have no known gain.)
+        chosen.gainDb?.let { gains[track.key] = it } ?: gains.remove(track.key)
+        // This runs on the loader's thread, where the player can't be touched: compare with the
+        // song the player's thread last said is playing.
+        if (currentKey == track.key) loudness.knownGainDb = chosen.gainDb
         return spec.withUri(chosen.url.toUri())
     }
 
-    private val gains = ConcurrentHashMap<String, Float?>()
+    private val gains = ConcurrentHashMap<String, Float>()
+
+    /** The playing song's key, set on the player's thread for other threads to read. */
+    @Volatile
+    private var currentKey: String? = null
 
     private fun describe(track: ApiTrack, description: String) {
         c.playingDescription.value = c.playingDescription.value + (track.key to description)
@@ -146,8 +157,12 @@ class PlaybackService : MediaLibraryService() {
 
     private val listener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            // The same song with new details (what's on a live channel, see showLive): not a new song.
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED && mediaItem?.let(MediaItems::track)?.key == currentKey && currentKey != null) return
             endListen()
-            val track = mediaItem?.let(MediaItems::track) ?: return
+            val track = mediaItem?.let(MediaItems::track)
+            currentKey = track?.key
+            if (track == null) return
             listening = track
             startedAt = System.currentTimeMillis()
             listenedMs = 0
@@ -212,12 +227,13 @@ class PlaybackService : MediaLibraryService() {
         }
         livePoll = scope.launch {
             while (isActive) {
+                // Where playback is in the stream, as a time (the live edge is ahead of what's heard);
+                // read here, on the player's thread.
+                val behindMs = player.currentLiveOffset.takeIf { it != C.TIME_UNSET } ?: 0L
                 val now = withContext(Dispatchers.IO) {
                     runCatching {
                         if (track.isChannel) {
                             val (type, id) = MediaItems.split(track.sourceId.removePrefix("channel:"))
-                            // Where playback is in the stream, as a time (the live edge is ahead of what's heard).
-                            val behindMs = (player.currentLiveOffset.takeIf { it != C.TIME_UNSET } ?: 0L)
                             c.api.channelNow(via, type, id, System.currentTimeMillis() - behindMs)?.let { LiveNow(it.title, it.artist, it.artworkUrl, it.song) }
                         } else {
                             c.api.radioNow(via, track.sourceId.removePrefix("hls:")).title?.let { title ->
@@ -265,5 +281,8 @@ class PlaybackService : MediaLibraryService() {
 
     private companion object {
         const val TAG = "PlaybackService"
+
+        /** How long a stream fetched ahead stays chosen, whatever the network does meanwhile. */
+        const val PIN_MS = 10 * 60_000L
     }
 }

@@ -10,6 +10,7 @@ import androidx.media3.session.MediaLibraryService.LibraryParams
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
 import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.music.connect.Container
 import com.music.connect.net.ApiTrack
@@ -36,8 +37,9 @@ class LibraryCallback(
     private val server: String get() = c.settings.value.server
     private fun art(url: String?) = MediaItems.artworkUri(server, url, 256)
 
+    // Android Auto's older connection waits for this on the main thread: answer at once.
     override fun onGetLibraryRoot(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, params: LibraryParams?): ListenableFuture<LibraryResult<MediaItem>> =
-        scope.future { LibraryResult.ofItem(folder(ROOT, "SuperAwesomeMagicalMusic"), params) }
+        Futures.immediateFuture(LibraryResult.ofItem(folder(ROOT, "SuperAwesomeMagicalMusic"), params))
 
     override fun onGetItem(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, mediaId: String): ListenableFuture<LibraryResult<MediaItem>> =
         scope.future {
@@ -191,7 +193,7 @@ class LibraryCallback(
         )
         .build()
 
-    private companion object {
+    companion object {
         const val ROOT = "root"
         const val PLAYLISTS = "playlists"
         const val PLAYLIST = "playlist:"
@@ -199,7 +201,7 @@ class LibraryCallback(
         const val DOWNLOADS = "downloads"
         const val IN_DOWNLOADS = "indl:"
         const val RADIO = "radio"
-        const val SXM = "sxm:"
-        const val LOCAL_RADIO = "localradio:"
+        private const val SXM = "sxm:"
+        private const val LOCAL_RADIO = "localradio:"
     }
 }

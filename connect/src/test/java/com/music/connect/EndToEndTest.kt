@@ -10,29 +10,11 @@ import com.music.connect.net.ApiTrack
 import com.music.connect.net.ServerApi
 import com.music.connect.net.SignIn
 import com.music.player.model.SourceType
-import com.music.server.ServerConfig
-import com.music.server.Services
-import com.music.server.db.Database
-import com.music.server.db.Schema
-import com.music.server.module
-import com.music.server.sources.SourceKind
-import com.music.server.util.Passwords
-import com.music.server.util.Random
-import com.music.server.util.SecretBox
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.netty.Netty
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.mockwebserver.Dispatcher
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
-import okhttp3.mockwebserver.RecordedRequest
-import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -45,7 +27,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.io.File
-import java.nio.file.Files
 
 /**
  * The app's own code against the real server (in-process, with an in-memory database and a
@@ -55,11 +36,10 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class EndToEndTest {
-    private val audio = ByteArray(5000) { (it % 251).toByte() }
-    private lateinit var jellyfin: MockWebServer
-    private lateinit var services: Services
-    private lateinit var server: io.ktor.server.engine.EmbeddedServer<*, *>
-    private lateinit var base: String
+    private lateinit var test: TestServer
+    private val audio get() = test.audio
+    private val services get() = test.services
+    private val base get() = test.base
     private var token: String? = null
     private val http = OkHttpClient()
     private lateinit var api: ServerApi
@@ -68,40 +48,7 @@ class EndToEndTest {
 
     @Before
     fun start() {
-        jellyfin = MockWebServer().apply {
-            dispatcher = object : Dispatcher() {
-                override fun dispatch(request: RecordedRequest): MockResponse = when {
-                    request.path!!.startsWith("/Items") || request.path!!.startsWith("/Artists") -> MockResponse().setBody(
-                        """{"Items":[{"Id":"song1","Name":"Neon Tidepool","Artists":["Velvet Satellites"],"Album":"Low Orbit","RunTimeTicks":2000000000,
-                           "MediaSources":[{"Id":"ms","MediaStreams":[{"Type":"Audio","Codec":"flac","BitRate":900000}]}]}]}""",
-                    )
-                    request.path!!.startsWith("/Audio/song1/stream") -> MockResponse().setHeader("Content-Type", "audio/flac").setBody(Buffer().write(audio))
-                    else -> MockResponse().setResponseCode(404)
-                }
-            }
-            start()
-        }
-        val serverDb = Database.inMemory().also(Schema::migrate)
-        val config = ServerConfig(dataDir = Files.createTempDirectory("e2e").toFile(), adminPassword = "admin-password")
-        services = Services(config, serverDb, SecretBox(Random.bytes(32)), passwords = Passwords(1_000))
-        runBlocking {
-            services.bootstrap()
-            services.users.create("maddie", password = "correct horse")
-            services.sources.create(
-                ownerId = null, kind = SourceKind.JELLYFIN, name = "Home library",
-                settings = buildJsonObject {
-                    put("serverUrl", jellyfin.url("/").toString().trimEnd('/'))
-                    put("username", "u")
-                    put("userId", "u1")
-                },
-                secrets = buildJsonObject { put("accessToken", "t") },
-            )
-            // Only the library for these tests (no internet services).
-            services.sources.allGlobal().filter { it.kind != SourceKind.JELLYFIN }.forEach { services.sources.delete(it.id) }
-        }
-        server = embeddedServer(Netty, port = 0, host = "127.0.0.1") { module(services) }.start(wait = false)
-        val port = runBlocking { server.engine.resolvedConnectors().first().port }
-        base = "http://127.0.0.1:$port"
+        test = TestServer()
         api = ServerApi(http, { base }, { token })
         context = RuntimeEnvironment.getApplication()
         db = Room.inMemoryDatabaseBuilder(context, ConnectDb::class.java).allowMainThreadQueries().build()
@@ -109,8 +56,7 @@ class EndToEndTest {
 
     @After
     fun stop() {
-        server.stop(100, 1_000)
-        jellyfin.shutdown()
+        test.close()
         db.close()
     }
 
