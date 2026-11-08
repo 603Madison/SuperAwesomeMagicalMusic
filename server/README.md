@@ -1,13 +1,13 @@
 # SuperAwesomeMagicalMusic server
 
 Your own music streaming service. The server signs in to your music services once (Jellyfin,
-Qobuz, YouTube Music, Lidarr) and serves them to everyone you let in, with a web player for the
+YouTube Music, Lidarr) and serves them to everyone you let in, with a web player for the
 computer. Each person gets their own playlists and history, and can add their own services.
 
 - **Accounts**: a local *break-glass* admin made at first start, local accounts, and single
   sign-on with any OpenID Connect provider (Authentik, Keycloak, Authelia, Zitadel…).
 - **Sources**: admins share sources with everyone (the house Jellyfin, a Lidarr); people add
-  their own (their own Jellyfin or Qobuz account) and can switch shared ones off for themselves.
+  their own (their own Jellyfin, for one) and can switch shared ones off for themselves.
   Saved sign-ins are encrypted.
 - **Playback**: like the Lite app, songs play from your Jellyfin library when it has them, else
   the best copy on a streaming service within your quality setting. ffmpeg converts on the server
@@ -35,7 +35,7 @@ Or with Compose: copy [`deploy/compose.yaml`](../deploy/compose.yaml) and `docke
 Open http://your-server:8080 and sign in as `admin` with the password from the log (or set
 `SAMM_ADMIN_PASSWORD` before the first start). Then, under **Admin**:
 
-1. **Shared sources**: add your Jellyfin (and Qobuz, Lidarr…). YouTube Music and Radio are shared
+1. **Shared sources**: add your Jellyfin (and Lidarr…). YouTube Music and Radio are shared
    already. SiriusXM is best added by each person in their own Settings, with their own account.
 2. **People**: add accounts, or set up single sign-on (below) and let people sign in themselves.
 
@@ -104,7 +104,7 @@ location / {
 ## Look after it
 
 - **Back up** the data folder: `samm.db` (accounts, playlists, sources) and `secret.key`. Without
-  the key, saved sign-ins (Jellyfin tokens, Qobuz and API keys) can't be read and must be entered
+  the key, saved sign-ins (Jellyfin tokens, SiriusXM passwords, API keys) can't be read and must be entered
   again; keep it as private as a password.
 - **Update**: `docker pull ghcr.io/603madison/superawesomemagicalmusic:latest` and recreate the
   container. The database updates itself.

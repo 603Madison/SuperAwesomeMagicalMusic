@@ -64,16 +64,6 @@ class SourceSetup(private val http: OkHttpClient) {
             ),
         ),
         KindSpec(
-            SourceKind.QOBUZ, "Qobuz",
-            "Lossless streaming. Needs an app ID and secret issued for Qobuz's API.",
-            listOf(
-                FieldSpec("appId", "App ID", required = true),
-                FieldSpec("appSecret", "App secret", "password", required = true, secret = true),
-                FieldSpec("username", "Email or username", required = true),
-                FieldSpec("password", "Password", "password", secret = true, help = "Used once to sign in; only Qobuz's session token is kept."),
-            ),
-        ),
-        KindSpec(
             SourceKind.YOUTUBE_MUSIC, "YouTube Music",
             "YouTube Music's catalogue, without an account.",
             emptyList(),
@@ -136,25 +126,8 @@ class SourceSetup(private val http: OkHttpClient) {
                     put("transcodeCodec", codec.name)
                 } to buildJsonObject { put("accessToken", config.accessToken) }
             }
-            SourceKind.QOBUZ -> {
-                val appId = required("appId", "The app ID")
-                val appSecret = text("appSecret") ?: previous?.secret("appSecret")?.ifEmpty { null } ?: throw ApiError.badRequest("The app secret is needed")
-                val username = required("username", "The username")
-                val password = text("password")
-                val config = if (password == null && previous != null && previous.setting("username") == username && previous.secret("userAuthToken").isNotEmpty()) {
-                    QobuzConfig(appId, appSecret, username, previous.secret("userAuthToken"))
-                } else {
-                    if (password == null) throw ApiError.badRequest("The password is needed to sign in to Qobuz")
-                    service("Qobuz") { QobuzSource(http) { QobuzConfig() }.login(appId, appSecret, username, password) }
-                }
-                buildJsonObject {
-                    put("appId", config.appId)
-                    put("username", config.username)
-                } to buildJsonObject {
-                    put("appSecret", config.appSecret)
-                    put("userAuthToken", config.userAuthToken)
-                }
-            }
+            // Qobuz's API only works with keys Qobuz gives its partners, so it can't be set up here.
+            SourceKind.QOBUZ -> throw ApiError.badRequest("Qobuz can't be added: its API needs an app ID and secret that Qobuz only gives its partners")
             SourceKind.YOUTUBE_MUSIC, SourceKind.RADIO -> JsonObject(emptyMap()) to JsonObject(emptyMap())
             SourceKind.SIRIUSXM -> {
                 val username = required("username", "The username")

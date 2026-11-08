@@ -95,7 +95,7 @@ fun DownloadsScreen() {
             if (downloads.isEmpty()) {
                 item {
                     Text(
-                        "Nothing downloaded yet. Use “Download” on any song or playlist — from Jellyfin, Qobuz " +
+                        "Nothing downloaded yet. Use “Download” on any song or playlist — from Jellyfin " +
                             "or YouTube Music — to listen without a connection.",
                         modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

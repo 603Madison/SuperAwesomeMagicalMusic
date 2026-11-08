@@ -138,8 +138,9 @@ class BrowseTest {
 
         val bad = user.post("/api/playlists/import") { csrf(); json("""{"url":"https://example.com/playlist/1"}""") }
         assertEquals(HttpStatusCode.BadRequest, bad.status)
-        val noQobuz = user.post("/api/playlists/import") { csrf(); json("""{"url":"https://open.qobuz.com/playlist/123"}""") }
-        assertTrue(noQobuz.obj().str("error").contains("Qobuz account"))
+        val qobuz = user.post("/api/playlists/import") { csrf(); json("""{"url":"https://open.qobuz.com/playlist/123"}""") }
+        assertEquals(HttpStatusCode.BadRequest, qobuz.status)
+        assertTrue(qobuz.obj().str("error").contains("From a list"))
     }
 
     private fun kotlinx.serialization.json.JsonElement.jsonPrimitive() = this as kotlinx.serialization.json.JsonPrimitive

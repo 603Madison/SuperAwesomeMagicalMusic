@@ -12,6 +12,6 @@ Changelog: @SOURCE_URL@/releases
 
 AntiFeatures:
   NonFreeNet:
-    en-US: Plays from SiriusXM, YouTube Music and Qobuz through their non-free services.
+    en-US: Plays from SiriusXM and YouTube Music through their non-free services.
 
 AutoName: SuperAwesomeMagicalMusic Lite

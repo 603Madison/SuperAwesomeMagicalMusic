@@ -153,7 +153,7 @@ private fun ImportDialog(onClose: () -> Unit, onImported: (String) -> Unit) {
                 if (!fromList) {
                     OutlinedTextField(url, { url = it }, label = { Text("Playlist or album link") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Text(
-                        "Spotify, Apple Music, Tidal, Deezer, YouTube, ListenBrainz, or Qobuz (with your Qobuz account). Each song is found in your own sources, your library first.",
+                        "Spotify, Apple Music, Tidal, Deezer, YouTube or ListenBrainz. Each song is found in your own sources, your library first.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -167,7 +167,7 @@ private fun ImportDialog(onClose: () -> Unit, onImported: (String) -> Unit) {
                         maxLines = 10,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Text("One a line, like “Artist - Title”, or a pasted CSV export with title and artist columns.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("One a line, like “Artist - Title”, or a pasted CSV export with title and artist columns (for Qobuz and other services, export one with TuneMyMusic or Soundiiz).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (!online) Text("Importing needs a connection.", color = MaterialTheme.colorScheme.error)
                 if (busy) {

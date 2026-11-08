@@ -1,17 +1,13 @@
 package com.music.server.playlists
 
-import com.music.player.browse.AlbumRef
-import com.music.player.model.SourceType
 import com.music.player.playlists.ImportMatcher
 import com.music.player.playlists.ListedSong
 import com.music.player.playlists.PlaylistReaders
 import com.music.player.playlists.PlaylistService
-import com.music.player.sources.qobuz.QobuzSource
 import com.music.player.sources.youtube.YouTubeMusicSource
 import com.music.server.ApiError
 import com.music.server.auth.User
 import com.music.server.music.ApiTrack
-import com.music.server.sources.SourceKind
 import com.music.server.sources.SourceRegistry
 import com.music.server.sources.SourceStore
 import kotlinx.coroutines.CancellationException
@@ -28,8 +24,8 @@ data class Imported(val name: String, val origin: String, val tracks: List<ApiTr
 
 /**
  * Brings in playlists (and albums) from other services, or a typed list of songs. Songs from
- * YouTube and Qobuz links come as they are (they play from the library anyway when it has them);
- * the others are looked for in the person's sources, their library first.
+ * YouTube links come as they are (they play from the library anyway when it has them); the others
+ * are looked for in the person's sources, their library first.
  */
 class Importer(
     private val http: OkHttpClient,
@@ -40,7 +36,7 @@ class Importer(
     suspend fun fromLink(user: User, link: String): Imported {
         val url = link.trim()
         val service = PlaylistReaders.serviceOf(url)
-            ?: throw ApiError.badRequest("Paste a link to a playlist or album on Spotify, Apple Music, Tidal, Deezer, Qobuz, YouTube or ListenBrainz")
+            ?: throw ApiError.badRequest("Paste a link to a playlist or album on Spotify, Apple Music, Tidal, Deezer, YouTube or ListenBrainz")
         val origin = "Imported from ${service.label}"
         return try {
             when (service) {
@@ -48,7 +44,7 @@ class Importer(
                     val (name, tracks) = YouTubeMusicSource(http).playlist(url)
                     Imported(name.ifBlank { "Imported playlist" }, origin, tracks.map { ApiTrack.of(it, null) }, emptyList(), null)
                 }
-                PlaylistService.QOBUZ -> fromQobuz(user, url, origin)
+                PlaylistService.QOBUZ -> throw ApiError.badRequest(PlaylistReaders.QOBUZ_UNREADABLE)
                 else -> {
                     val read = readers.read(url)
                     if (read.songs.isEmpty()) throw ApiError.badRequest("That playlist looks empty")
@@ -66,19 +62,6 @@ class Importer(
         if (songs.isEmpty()) throw ApiError.badRequest("There are no songs in that list")
         val (found, missing) = find(user, songs)
         return Imported(name.trim().ifBlank { "Imported playlist" }, "Imported from a list", found, missing, null)
-    }
-
-    private suspend fun fromQobuz(user: User, url: String, origin: String): Imported {
-        val source = store.activeFor(user).firstOrNull { it.kind == SourceKind.QOBUZ }
-            ?: throw ApiError.badRequest("Qobuz playlists are read with your Qobuz account: add it in Sources first")
-        val qobuz = registry.music(source) as? QobuzSource ?: throw ApiError.badRequest("Qobuz isn't set up")
-        PlaylistReaders.qobuzPlaylistId(url)?.let { id ->
-            val (name, tracks) = qobuz.playlist(id)
-            return Imported(name.ifBlank { "Imported playlist" }, origin, tracks.map { ApiTrack.of(it, source.id) }, emptyList(), null)
-        }
-        val albumId = PlaylistReaders.qobuzAlbumId(url) ?: throw ApiError.badRequest("That Qobuz link isn't a playlist or album")
-        val album = qobuz.album(AlbumRef(SourceType.QOBUZ, albumId, "", ""))
-        return Imported(album.album.title.ifBlank { "Imported album" }, origin, album.tracks.map { ApiTrack.of(it, source.id) }, emptyList(), null)
     }
 
     /**

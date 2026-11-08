@@ -29,7 +29,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
- * Imports a playlist or album from a link (Spotify, Apple Music, Tidal, Deezer, Qobuz, YouTube,
+ * Imports a playlist or album from a link (Spotify, Apple Music, Tidal, Deezer, YouTube,
  * ListenBrainz), or from a typed or pasted list of songs.
  */
 @Composable
@@ -78,8 +78,8 @@ fun ImportPlaylistDialog(onDismiss: () -> Unit, onImported: (String) -> Unit) {
                         }
                         if (!fromList) {
                             Text(
-                                "A playlist or album on Spotify, Apple Music, Tidal, Deezer, YouTube, ListenBrainz, or Qobuz (with " +
-                                    "your Qobuz account). Songs are found in your Jellyfin library first, then on your streaming services.",
+                                "A playlist or album on Spotify, Apple Music, Tidal, Deezer, YouTube or ListenBrainz. Songs are " +
+                                    "found in your Jellyfin library first, then on YouTube Music.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -103,7 +103,8 @@ fun ImportPlaylistDialog(onDismiss: () -> Unit, onImported: (String) -> Unit) {
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Text(
-                                "One a line, like “Artist - Title”, or a pasted CSV export with title and artist columns.",
+                                "One a line, like “Artist - Title”, or a pasted CSV export with title and artist columns " +
+                                    "(for Qobuz and other services, export one with TuneMyMusic or Soundiiz).",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

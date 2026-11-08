@@ -144,7 +144,6 @@ class AppContainer(val context: Context) {
         com.music.player.playlists.PlaylistImporter(
             com.music.player.playlists.PlaylistReaders(httpClient),
             youtube,
-            qobuz,
             sources = { browseSources().map { it.music } },
             playlists,
         )

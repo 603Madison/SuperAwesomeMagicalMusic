@@ -8,7 +8,6 @@ import com.music.player.lidarr.LidarrReachability
 import com.music.player.nextcloud.SignInState
 import com.music.player.settings.SiriusXmConfig
 import com.music.player.lidarr.LidarrServerOptions
-import com.music.player.model.SourceType
 import com.music.player.net.Http
 import com.music.player.net.HttpException
 import com.music.player.settings.AppSettings
@@ -16,7 +15,6 @@ import com.music.player.settings.DownloadSettings
 import com.music.player.settings.JellyfinConfig
 import com.music.player.settings.LidarrConfig
 import com.music.player.settings.NextcloudConfig
-import com.music.player.settings.QobuzConfig
 import com.music.player.settings.QualitySettings
 import com.music.player.settings.TranscodeCodec
 import kotlinx.coroutines.CancellationException
@@ -36,8 +34,6 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     private val _jellyfin = MutableStateFlow(ActionStatus())
     val jellyfinStatus = _jellyfin.asStateFlow()
-    private val _qobuz = MutableStateFlow(ActionStatus())
-    val qobuzStatus = _qobuz.asStateFlow()
     private val _lidarr = MutableStateFlow(ActionStatus())
     val lidarrStatus = _lidarr.asStateFlow()
     private val _nextcloud = MutableStateFlow(ActionStatus())
@@ -75,21 +71,6 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         "Signed out"
     }
 
-    fun signInQobuz(appId: String, appSecret: String, username: String, password: String, token: String) = act(_qobuz) {
-        val config = if (token.isNotBlank()) {
-            QobuzConfig(appId.trim(), appSecret.trim(), username.trim(), token.trim()).also { container.qobuz.verify(it) }
-        } else {
-            container.qobuz.login(appId.trim(), appSecret.trim(), username.trim(), password)
-        }
-        settings.setQobuz(config)
-        "Signed in to Qobuz"
-    }
-
-    fun signOutQobuz() = act(_qobuz) {
-        settings.setQobuz(QobuzConfig())
-        "Signed out"
-    }
-
     fun signInSiriusXm(username: String, password: String) = act(_siriusXm) {
         val config = SiriusXmConfig(username.trim(), password)
         val channels = container.siriusXm.verify(config)
@@ -122,11 +103,6 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     fun removeLidarrRequest(artistKey: String) = container.lidarr.remove(artistKey)
 
     fun setYouTubeMusicEnabled(enabled: Boolean) = launch { settings.setYouTubeMusicEnabled(enabled) }
-
-    fun preferFirst(type: SourceType) = launch {
-        val order = settings.current().fallbackOrder
-        settings.setFallbackOrder(listOf(type) + order.filter { it != type })
-    }
 
     fun setQuality(quality: QualitySettings) = launch { settings.setQuality(quality) }
 

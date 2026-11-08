@@ -141,7 +141,7 @@ fun SearchScreen() {
                 if (offline.isEmpty()) message("No downloaded songs match")
                 tracks(offline, downloaded) { index -> actions.play(offline, index) }
             }
-            if (state.noSources) message("Set up Jellyfin, Qobuz or YouTube Music in Settings to search")
+            if (state.noSources) message("Sign in to Jellyfin or turn on YouTube Music in Settings to search")
             state.results?.let { results ->
                 val songs = results.songs.map { it.item }
                 if (!state.searching && results.top == null && songs.isEmpty() && results.artists.isEmpty() && results.albums.isEmpty()) {

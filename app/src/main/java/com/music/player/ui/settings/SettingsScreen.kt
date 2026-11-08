@@ -66,7 +66,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.player.data.LidarrRequestEntity
 import com.music.player.lidarr.LidarrReachability
 import com.music.player.nextcloud.SignInState
-import com.music.player.model.SourceType
 import com.music.player.quality.StreamQuality
 import com.music.player.settings.AppSettings
 import com.music.player.settings.TranscodeCodec
@@ -147,9 +146,8 @@ private fun QualitySection(settings: AppSettings, viewModel: SettingsViewModel) 
     Section("Streaming quality") {
         NetworkStatusRow()
         Hint(
-            "Jellyfin transcodes to exactly the bitrate you pick. Qobuz and YouTube Music only offer " +
-                "fixed levels, so they round down to the nearest one (Qobuz can't go below 320 kbps, so " +
-                "lower caps prefer another service when one is available).",
+            "Jellyfin transcodes to exactly the bitrate you pick. YouTube Music only offers fixed " +
+                "levels, so it rounds down to the nearest one.",
         )
         QualitySlider("Wi-Fi", Icons.Default.Wifi, quality.wifi) { viewModel.setQuality(quality.copy(wifi = it)) }
         QualitySlider("Cellular", Icons.Default.SignalCellularAlt, quality.cellular) {
@@ -205,7 +203,7 @@ private fun PlaybackSection(settings: AppSettings, viewModel: SettingsViewModel)
     Section("Playback") {
         ToggleRow(
             "Even out volume",
-            "Songs from Jellyfin, YouTube, Qobuz and SiriusXM play at about the same loudness",
+            "Songs from Jellyfin, YouTube and SiriusXM play at about the same loudness",
             playback.levelVolume,
         ) { viewModel.setPlayback(playback.copy(levelVolume = it)) }
         ToggleRow(
@@ -470,48 +468,7 @@ private fun JellyfinSection(settings: AppSettings, viewModel: SettingsViewModel)
 
 @Composable
 private fun StreamingServicesSection(settings: AppSettings, viewModel: SettingsViewModel) {
-    val status by viewModel.qobuzStatus.collectAsStateWithLifecycle()
-    val qobuz = settings.qobuz
     Section("When Jellyfin doesn't have a song") {
-        Text("Try first", style = MaterialTheme.typography.labelLarge)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(SourceType.QOBUZ, SourceType.YOUTUBE_MUSIC).forEach { type ->
-                FilterChip(
-                    selected = settings.fallbackOrder.firstOrNull() == type,
-                    onClick = { viewModel.preferFirst(type) },
-                    label = { Text(type.label) },
-                )
-            }
-        }
-        HorizontalDivider()
-        Text("Qobuz", style = MaterialTheme.typography.titleSmall)
-        if (qobuz.isConfigured) {
-            Text("Signed in${if (qobuz.username.isNotBlank()) " as ${qobuz.username}" else ""}")
-            OutlinedButton(onClick = viewModel::signOutQobuz) { Text("Sign out of Qobuz") }
-        } else {
-            Hint(
-                "Qobuz's API requires an app ID and secret issued to your application. Sign in with " +
-                    "your e-mail and password, or paste a user auth token instead of the password.",
-            )
-            var appId by rememberSaveable { mutableStateOf(qobuz.appId) }
-            var appSecret by rememberSaveable { mutableStateOf(qobuz.appSecret) }
-            var username by rememberSaveable { mutableStateOf(qobuz.username) }
-            var password by rememberSaveable { mutableStateOf("") }
-            var token by rememberSaveable { mutableStateOf("") }
-            Field("App ID", appId, { appId = it }, keyboardType = KeyboardType.Number)
-            Field("App secret", appSecret, { appSecret = it }, secret = true)
-            Field("E-mail or username", username, { username = it }, keyboardType = KeyboardType.Email)
-            Field("Password", password, { password = it }, secret = true)
-            Field("…or user auth token", token, { token = it }, secret = true)
-            ActionButton(
-                "Sign in to Qobuz",
-                status,
-                enabled = appId.isNotBlank() && appSecret.isNotBlank() &&
-                    (token.isNotBlank() || (username.isNotBlank() && password.isNotBlank())),
-            ) { viewModel.signInQobuz(appId, appSecret, username, password, token) }
-        }
-        StatusText(status)
-        HorizontalDivider()
         ToggleRow(
             "YouTube Music",
             "Stream songs from YouTube Music (no account needed)",

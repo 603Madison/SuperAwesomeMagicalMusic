@@ -132,30 +132,6 @@ class QobuzSource(
         ArtistDetail(ref.copy(name = artist.name ?: ref.name, artworkUrl = artist.picture() ?: ref.artworkUrl), songs.await(), albums)
     }
 
-    /** A Qobuz playlist's name and songs (which needs a Qobuz account). */
-    suspend fun playlist(id: String, max: Int = 2_000): Pair<String, List<Track>> {
-        val config = requireConfig()
-        val tracks = mutableListOf<Track>()
-        var name = ""
-        var offset = 0
-        while (tracks.size < max) {
-            val url = endpoint("playlist/get").newBuilder()
-                .addQueryParameter("playlist_id", id)
-                .addQueryParameter("extra", "tracks")
-                .addQueryParameter("limit", PAGE.toString())
-                .addQueryParameter("offset", offset.toString())
-                .addQueryParameter("app_id", config.appId)
-                .build()
-            val page = AppJson.decodeFromString<QPlaylist>(http.fetchString(authorized(url, config)))
-            name = page.name ?: name
-            val items = page.tracks?.items.orEmpty()
-            tracks += items.filter { it.streamable }.map { it.toTrack() }
-            offset += items.size
-            if (items.isEmpty() || offset >= (page.tracks?.total ?: 0)) break
-        }
-        return name to tracks.take(max)
-    }
-
     override suspend fun stream(sourceId: String, quality: StreamQuality): SourceStream {
         val config = requireConfig()
         val choice = QobuzFormat.choose(quality)
@@ -234,7 +210,6 @@ class QobuzSource(
     companion object {
         const val BASE_URL = "https://www.qobuz.com/api.json/0.2/"
 
-        private const val PAGE = 500
 
         /** request_sig for track/getFileUrl, as computed by Qobuz's own players. */
         fun signature(trackId: String, formatId: Int, timestamp: String, appSecret: String): String =
@@ -332,10 +307,7 @@ private data class QFullAlbum(
 )
 
 @Serializable
-private data class QTrackPage(val items: List<QTrack> = emptyList(), val total: Int? = null)
-
-@Serializable
-private data class QPlaylist(val name: String? = null, val tracks: QTrackPage? = null)
+private data class QTrackPage(val items: List<QTrack> = emptyList())
 
 @Serializable
 private data class QFileUrlResponse(

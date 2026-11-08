@@ -73,11 +73,13 @@ class PlaylistReadersTest {
         assertEquals(PlaylistService.YOUTUBE, PlaylistReaders.serviceOf("https://music.youtube.com/playlist?list=PL1"))
         assertNull(PlaylistReaders.serviceOf("Radiohead - Creep"))
 
-        assertEquals("23113522", PlaylistReaders.qobuzPlaylistId("https://play.qobuz.com/playlist/23113522"))
-        assertEquals("1234567", PlaylistReaders.qobuzPlaylistId("https://www.qobuz.com/us-en/playlists/best-of-jazz/1234567"))
-        assertNull(PlaylistReaders.qobuzPlaylistId("https://play.qobuz.com/album/0634904078164"))
-        assertEquals("0634904078164", PlaylistReaders.qobuzAlbumId("https://www.qobuz.com/us-en/album/ok-computer-radiohead/0634904078164"))
-        assertEquals("tdm7oag5i3jfa", PlaylistReaders.qobuzAlbumId("https://open.qobuz.com/album/tdm7oag5i3jfa?ref=x"))
+    }
+
+    @Test
+    fun `a qobuz link says how to import it instead`() = runBlocking {
+        val error = runCatching { readers.read("https://open.qobuz.com/playlist/23113522") }.exceptionOrNull()
+        assertEquals(PlaylistReaders.QOBUZ_UNREADABLE, error?.message)
+        assertTrue(synchronized(requests) { requests.isEmpty() })
     }
 
     @Test

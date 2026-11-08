@@ -1,7 +1,7 @@
 # SuperAwesomeMagicalMusic
 
 Music for self-hosters. It plays from your **Jellyfin** library first and fills the gaps from
-**Qobuz** or **YouTube Music**. It also plays **SiriusXM** live radio and Pandora artist stations,
+**YouTube Music**. It also plays **SiriusXM** live radio and Pandora artist stations,
 and songs you hear there can be saved to a playlist. Songs Jellyfin doesn't have get their artist
 added to **Lidarr**, queued until your Lidarr server is reachable. Bitrates are set separately for
 Wi-Fi, cellular and **satellite** (T-Satellite and other direct-to-cell services). Every song can be
@@ -15,10 +15,10 @@ This repository holds:
   to every service itself; no server needed.
 - **The server** (`server/`, with the **web player** in `web/`): your own streaming service in
   Docker or Podman. Accounts (local, or single sign-on such as Authentik), sources shared by the
-  admins or added by each person (SiriusXM and Pandora stations, radio, Jellyfin, Qobuz, YouTube
+  admins or added by each person (SiriusXM and Pandora stations, radio, Jellyfin, YouTube
   Music, Lidarr), playlists and history per person, and a web player for the computer. See [server/README.md](server/README.md):
   `docker run -p 8080:8080 -v samm-data:/data ghcr.io/603madison/superawesomemagicalmusic`.
-- **core** (`core/`): the music services (Jellyfin, YouTube Music, Qobuz, SiriusXM, radio, Lidarr,
+- **core** (`core/`): the music services (Jellyfin, YouTube Music, SiriusXM, radio, Lidarr,
   lyrics, scrobbling) as plain Kotlin, shared by the app and the server.
 - **SuperAwesomeMagicalMusic** (`connect/`): the Android app for the server. Enter the server's
   address and sign in (single sign-on through the browser, or a password); your library, radio and
@@ -30,7 +30,7 @@ Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Andro
 
 ## Features
 
-### 1. Sources: Jellyfin first, then Qobuz / YouTube Music, with Lidarr
+### 1. Sources: Jellyfin first, then YouTube Music, with Lidarr
 
 - **Search** works like a streaming app's: every configured source is asked at once and the
   answers become one set of results, with the likeliest match on top (an artist, an album or a
@@ -39,15 +39,12 @@ Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Andro
   out. Artists open on their best-known songs, albums and singles; albums on their songs in
   order, taken from your library when it has the whole album. A song's ⋮ menu goes to its artist
   or album.
-- **Playback always prefers Jellyfin.** Before a Qobuz or YouTube track plays, it is matched
+- **Playback always prefers Jellyfin.** Before a YouTube track plays, it is matched
   against your library (title + artist + duration, ignoring "Remastered", "feat." and similar
   tags), and the Jellyfin copy is used when one exists. A playlist built from YouTube therefore
   switches to your own files once they are in the library.
-- **When Jellyfin doesn't have a song**, it streams from another service. Off satellite every
-  service is asked at once and the best copy that fits your bitrate cap wins (e.g. a Qobuz FLAC
-  over YouTube's 160 kbps Opus). On satellite the first service that fits is used, to save data:
-  the track's own service, then the others in the order you choose in Settings. If a service
-  fails (not signed in, track removed, blocked), the next one is tried.
+- **When Jellyfin doesn't have a song**, it streams from YouTube Music, at the best quality that
+  fits your bitrate cap.
 - **Better networks, better copies:** when you move to a better network (e.g. satellite to Wi-Fi),
   the song playing switches to a better copy where it left off, and songs you replay later are
   picked again for the network you're on.
@@ -76,7 +73,7 @@ Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Andro
   Android Auto.
 - **Save** adds that song to a playlist using the usual rules: the Jellyfin copy if your library
   has it. Otherwise the artist goes to Lidarr and the song is saved as a SiriusXM entry, which
-  plays from Qobuz or YouTube Music until Lidarr has brought the album into Jellyfin.
+  plays from YouTube Music until Lidarr has brought the album into Jellyfin.
 - SiriusXM has no public API. The app uses the private API of SiriusXM's web player, following
   the open-source [sxm-player](https://github.com/yob15662/sxm-player) /
   [omarchy-siriusxm](https://github.com/onesastr/omarchy-siriusxm) clients. SiriusXM can change or
@@ -120,7 +117,7 @@ as well.
 
 ### Listening
 
-- **Even volume.** Songs from Jellyfin, YouTube Music, Qobuz and SiriusXM play at about the same
+- **Even volume.** Songs from Jellyfin, YouTube Music and SiriusXM play at about the same
   loudness. Jellyfin's own loudness value (10.9+) is used where a song has one, which keeps its
   dynamics; anything else is levelled gently while it plays, and boosts never clip. Settings ›
   Playback › Even out volume turns it off; a song's Info shows the gain in use.
@@ -150,11 +147,12 @@ as well.
   lately and any playlists you pick, in one go.
 - **Lidarr:** once Lidarr has downloaded music by an artist it added for you, you get a note.
 - **Import playlists** (the link button on the Playlists tab) from a link to a playlist or album
-  on Spotify, Apple Music, Tidal, Deezer, ListenBrainz, Qobuz (read with your Qobuz account) or
-  YouTube, or from a typed or pasted list ("Artist - Title" lines, or a CSV export from Exportify,
-  TuneMyMusic or Soundiiz). YouTube and Qobuz songs come as they are; the others are found in your
-  Jellyfin library first, then on your streaming services. Spotify, Apple Music and Tidal only
-  share the first 100, 100 and 50 or so songs of a long playlist on their public pages.
+  on Spotify, Apple Music, Tidal, Deezer, ListenBrainz or YouTube, or from a typed or pasted list
+  ("Artist - Title" lines, or a CSV export from Exportify, TuneMyMusic or Soundiiz). YouTube songs
+  come as they are; the others are found in your Jellyfin library first, then on YouTube Music.
+  Spotify, Apple Music and Tidal only share the first 100, 100 and 50 or so songs of a long
+  playlist on their public pages. Qobuz doesn't share playlists in a way apps can read, so export
+  a Qobuz playlist to CSV with TuneMyMusic or Soundiiz and paste that.
 - **Equalizer** (Settings › Playback): your phone's presets and a bass boost; equalizer apps
   such as Wavelet can also work on the app's sound.
 - **Home-screen widget:** what's playing, with previous, play/pause and next. Play picks up
@@ -169,7 +167,6 @@ download quality.
 | Source | How the cap is applied |
 |---|---|
 | Jellyfin | Exact: files at or under the cap play untouched; larger ones are transcoded on the server to the cap (MP3, or AAC, which sounds better at low bitrates). |
-| Qobuz | Fixed tiers: MP3 320 or FLAC (CD / hi-res). Original requests the best FLAC. Any cap uses MP3 320. Qobuz can't go lower, so for caps under 320 another service that fits is preferred, and Qobuz is used only when nothing else has the song. |
 | YouTube Music | Fixed tiers, roughly 48/50/70/128/160 kbps (AAC/Opus). The cap rounds down to the closest tier. |
 
 **Satellite** follows Android's
@@ -208,7 +205,7 @@ size.
 
 ### 3. Offline listening, from every source
 
-"Download" works on songs from Jellyfin, Qobuz and YouTube Music, on whole playlists, and from the
+"Download" works on songs from Jellyfin and YouTube Music, on whole playlists, and from the
 player. Downloads run in the background (WorkManager) at the download quality. Large files are
 fetched in 4 MB chunks, and a dropped connection retries only the current chunk. Downloaded copies
 always play first. When offline, search looks through your downloads.
@@ -222,7 +219,7 @@ them yourself.
 
 **Refresh downloads** (⟳ on a playlist) runs those checks now: it looks for songs from other
 services that Jellyfin has since gained (e.g. once Lidarr brought in the album) and re-checks
-every downloaded song. A download from Qobuz or YouTube Music is replaced by the Jellyfin copy
+every downloaded song. A download from YouTube Music is replaced by the Jellyfin copy
 unless it is clearly better. Songs you stream already play from Jellyfin once it has them.
 
 ### 4. Playlists synced to Nextcloud
@@ -259,9 +256,6 @@ Open **Settings** in the app:
 
 - **Jellyfin**: server URL, username and password. The password is used once to get an access
   token and is not stored.
-- **Qobuz**: Qobuz's API is only open to registered applications, so you need an **app ID and app
-  secret** issued to you. Then sign in with your e-mail/username and password, or paste a user
-  auth token. Full-length streaming needs a paid subscription.
 - **YouTube Music**: on by default, no account needed.
 - **SiriusXM**: your SiriusXM e-mail and password. The password is kept, so the app can sign in
   again when SiriusXM's session expires.
@@ -303,7 +297,7 @@ release keystore, base64-encoded) and `RELEASE_KEYSTORE_PASSWORD`.
 
 ```
 app/src/main/java/com/music/player/
-├── sources/        Jellyfin, Qobuz, YouTube Music, SiriusXM, Radio Browser clients; TrackMatcher; SourceSelector
+├── sources/        Jellyfin, YouTube Music, SiriusXM, Radio Browser clients; TrackMatcher; SourceSelector
 ├── quality/        StreamQuality and the round-down tier selection
 ├── net/            NetworkMonitor (Wi-Fi / cellular / satellite), OkHttp helpers
 ├── lidarr/         Lidarr API client, auto-add-artist service and its request queue

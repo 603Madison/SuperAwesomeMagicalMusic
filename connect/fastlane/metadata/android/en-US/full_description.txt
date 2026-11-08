@@ -2,8 +2,8 @@
 
 <p><b>Everything your server has</b></p>
 <ul>
-<li>Search like a streaming app across your Jellyfin library and every service your server has (Qobuz, YouTube Music and more): a top result, songs, artists and albums, with artist and album pages. Songs play from your library when it has them, else the best copy that fits your quality setting.</li>
-<li>Import playlists from Spotify, Apple Music, Tidal, Deezer, Qobuz, YouTube and ListenBrainz, or from a typed list.</li>
+<li>Search like a streaming app across your Jellyfin library and every service your server has (YouTube Music and more): a top result, songs, artists and albums, with artist and album pages. Songs play from your library when it has them, else the best copy that fits your quality setting.</li>
+<li>Import playlists from Spotify, Apple Music, Tidal, Deezer, YouTube and ListenBrainz, or from a typed list.</li>
 <li>SiriusXM channels (with what's on now) and Pandora artist stations with thumbs, through your own SiriusXM account on the server.</li>
 <li>Tens of thousands of local and internet radio stations.</li>
 <li>Your playlists, shared with the web player, with lyrics, a sleep timer and volume levelling.</li>

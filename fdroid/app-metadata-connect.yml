@@ -13,6 +13,6 @@ Changelog: @SOURCE_URL@/releases
 
 AntiFeatures:
   NonFreeNet:
-    en-US: Plays SiriusXM, YouTube Music and Qobuz (through your own server) where they're set up.
+    en-US: Plays SiriusXM and YouTube Music (through your own server) where they're set up.
 
 AutoName: SuperAwesomeMagicalMusic

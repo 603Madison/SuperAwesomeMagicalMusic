@@ -28,11 +28,6 @@ class QobuzBrowseTest {
                         "tracks":{"items":[{"id":1,"title":"Airbag","duration":287,"performer":{"name":"Radiohead"}},{"id":2,"title":"Paranoid Android","duration":387,"performer":{"name":"Radiohead"}}]}}"""
                     "/api/artist/get" -> """{"id":56,"name":"Radiohead","albums":{"items":[{"id":"a1","title":"Kid A","artist":{"name":"Radiohead"},"release_date_original":"2000-10-02","tracks_count":10}]}}"""
                     "/api/track/search" -> """{"tracks":{"items":[{"id":3,"title":"Creep","performer":{"name":"Radiohead"},"album":{"title":"Pablo Honey"}},{"id":4,"title":"Creep","performer":{"name":"TLC"}}]}}"""
-                    "/api/playlist/get" -> {
-                        val offset = url.queryParameter("offset")!!.toInt()
-                        val items = (offset until minOf(offset + 2, 3)).joinToString(",") { """{"id":$it,"title":"Song $it","performer":{"name":"A"},"album":{"title":"B"}}""" }
-                        """{"name":"Jazz","tracks":{"total":3,"items":[$items]}}"""
-                    }
                     else -> return MockResponse().setResponseCode(404)
                 }
                 return MockResponse().setBody(body)
@@ -63,12 +58,5 @@ class QobuzBrowseTest {
         val artist = qobuz.artist(ArtistRef(SourceType.QOBUZ, "56", "Radiohead"))
         assertEquals(listOf("Kid A"), artist.albums.map { it.title })
         assertEquals(listOf("Radiohead"), artist.topTracks.map { it.artist })
-    }
-
-    @Test
-    fun `playlists are read a page at a time`() = runBlocking {
-        val (name, tracks) = qobuz.playlist("123")
-        assertEquals("Jazz", name)
-        assertEquals(listOf("Song 0", "Song 1", "Song 2"), tracks.map { it.title })
     }
 }

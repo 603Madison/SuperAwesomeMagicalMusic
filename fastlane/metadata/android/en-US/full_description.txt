@@ -1,4 +1,4 @@
-<p>A music player for self-hosters. It plays from your <b>Jellyfin</b> library first and fills the gaps from <b>YouTube Music</b> or <b>Qobuz</b>; artists you're missing are added to <b>Lidarr</b>. It also plays <b>SiriusXM</b> (live channels, Xtra channels and Pandora artist stations) and local <b>radio</b>, and works in <b>Android Auto</b>.</p>
+<p>A music player for self-hosters. It plays from your <b>Jellyfin</b> library first and fills the gaps from <b>YouTube Music</b>; artists you're missing are added to <b>Lidarr</b>. It also plays <b>SiriusXM</b> (live channels, Xtra channels and Pandora artist stations) and local <b>radio</b>, and works in <b>Android Auto</b>.</p>
 
 <p><b>Made for the road</b></p>
 <ul>
@@ -11,8 +11,8 @@
 <ul>
 <li>Even volume across services, lyrics (Jellyfin or LRCLIB), a sleep timer, an equalizer and a home-screen widget.</li>
 <li>Search like a streaming app: one set of results across your library and services, with artist and album pages.</li>
-<li>Playlists synced to your Nextcloud (sign in through the browser, so SSO works), and playlist import from Spotify, Apple Music, Tidal, Deezer, Qobuz, YouTube and ListenBrainz links, or a typed list.</li>
+<li>Playlists synced to your Nextcloud (sign in through the browser, so SSO works), and playlist import from Spotify, Apple Music, Tidal, Deezer, YouTube and ListenBrainz links, or a typed list.</li>
 <li>Listening history, including songs heard on SiriusXM, and scrobbling to ListenBrainz and Last.fm.</li>
 </ul>
 
-<p>Every account is your own: the app talks directly to your servers and services. SiriusXM, YouTube Music and Qobuz are reached through their unofficial or private APIs, which can change without notice.</p>
+<p>Every account is your own: the app talks directly to your servers and services. SiriusXM and YouTube Music are reached through their unofficial or private APIs, which can change without notice.</p>

@@ -33,7 +33,7 @@ enum class PlaylistService(val label: String) {
     DEEZER("Deezer"),
     LISTENBRAINZ("ListenBrainz"),
 
-    /** Read with the person's own Qobuz account, as playable Qobuz songs. */
+    /** Recognised, but not readable: Qobuz only shares playlists through an API that needs partner keys. */
     QOBUZ("Qobuz"),
 
     /** Read as playable YouTube songs. */
@@ -44,7 +44,8 @@ enum class PlaylistService(val label: String) {
  * Reads playlists (and albums) shared from other services, from the links people paste: Spotify,
  * Apple Music, Tidal, Deezer and ListenBrainz, from their public pages and APIs (none needs an
  * account). Their songs are then looked for in the person's own sources ([ImportMatcher]).
- * YouTube and Qobuz links are read by those sources themselves, since their songs play as they are.
+ * YouTube links are read by YouTube Music itself, since its songs play as they are. Qobuz links
+ * can't be read: Qobuz's site turns away apps, and its API needs keys it only gives its partners.
  */
 class PlaylistReaders(
     private val http: OkHttpClient,
@@ -65,6 +66,7 @@ class PlaylistReaders(
             PlaylistService.APPLE_MUSIC -> apple(url)
             PlaylistService.TIDAL -> tidal(url)
             PlaylistService.LISTENBRAINZ -> listenBrainz(url)
+            PlaylistService.QOBUZ -> throw IOException(QOBUZ_UNREADABLE)
             else -> throw IOException("That link can't be read here")
         }
     }
@@ -186,6 +188,11 @@ class PlaylistReaders(
 
     companion object {
         const val MAX_SONGS = 2_000
+
+        /** Why a Qobuz link can't be imported, and what to do instead. */
+        const val QOBUZ_UNREADABLE = "Qobuz doesn't share playlists in a way apps can read. Export it as a CSV file with a " +
+            "service such as TuneMyMusic or Soundiiz, then paste that under “From a list”"
+
         private const val DEEZER_PAGE = 100
         private const val TIDAL_MAX = 50
 
@@ -201,8 +208,6 @@ class PlaylistReaders(
         private val TIDAL_DURATION = Regex("<time slot=\"duration\">([0-9:]+)</time>")
         private val TAG_TEXT = Regex("<a[^>]*>(.*?)</a>", RegexOption.DOT_MATCHES_ALL)
         private val LISTENBRAINZ_ID = Regex("listenbrainz\\.org/(?:1/)?playlist/([0-9a-fA-F-]{36})")
-        private val QOBUZ_PLAYLIST = Regex("qobuz\\.com/(?:[a-z]{2}-[a-z]{2}/)?playlists?/(?:[^/?#]+/)?(\\d+)")
-        private val QOBUZ_ALBUM = Regex("qobuz\\.com/(?:[a-z]{2}-[a-z]{2}/)?album/(?:[^/?#]+/)?([0-9A-Za-z]+)(?:[/?#]|$)")
 
         /** Which service [link] is from, if it's one whose playlists can be read. */
         fun serviceOf(link: String): PlaylistService? {
@@ -218,10 +223,6 @@ class PlaylistReaders(
                 else -> null
             }
         }
-
-        fun qobuzPlaylistId(link: String): String? = QOBUZ_PLAYLIST.find(link)?.groupValues?.get(1)
-
-        fun qobuzAlbumId(link: String): String? = QOBUZ_ALBUM.find(link)?.groupValues?.get(1)
 
         /**
          * Songs typed or pasted as text: a CSV (or tab-separated) export with title and artist

@@ -54,7 +54,7 @@ function PlaybackSettings() {
         </select>
       </Field>
       <Toggle label="Even out volume" help="Songs from different services play at about the same loudness." checked={prefs.levelling} onChange={(levelling) => usePrefs.setState({ levelling })} />
-      <Toggle label="Compare every service for the best copy" help="Starts songs a moment later, but picks e.g. a Qobuz FLAC over a YouTube stream." checked={prefs.thorough} onChange={(thorough) => usePrefs.setState({ thorough })} />
+      <Toggle label="Compare every service for the best copy" help="Starts songs a moment later, but asks every service and picks the best copy that fits your quality setting." checked={prefs.thorough} onChange={(thorough) => usePrefs.setState({ thorough })} />
     </div>
   );
 }

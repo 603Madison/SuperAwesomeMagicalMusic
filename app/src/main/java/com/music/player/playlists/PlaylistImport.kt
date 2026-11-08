@@ -1,10 +1,7 @@
 package com.music.player.playlists
 
-import com.music.player.browse.AlbumRef
-import com.music.player.model.SourceType
 import com.music.player.model.Track
 import com.music.player.sources.MusicSource
-import com.music.player.sources.qobuz.QobuzSource
 import com.music.player.sources.youtube.YouTubeMusicSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -26,14 +23,14 @@ data class ImportResult(
 
 /**
  * Imports a playlist (or album) from a link, or from a typed or pasted list of songs. YouTube
- * and Qobuz links bring their songs as they are (they play from Jellyfin first anyway, like
- * every song); Spotify, Apple Music, Tidal, Deezer and ListenBrainz songs, and typed ones, are
- * looked for in the Jellyfin library first, then on each streaming service in turn.
+ * links bring their songs as they are (they play from Jellyfin first anyway, like every song);
+ * Spotify, Apple Music, Tidal, Deezer and ListenBrainz songs, and typed ones, are looked for in
+ * the Jellyfin library first, then on each streaming service in turn. (Qobuz links can't be read:
+ * see [PlaylistReaders].)
  */
 class PlaylistImporter(
     private val readers: PlaylistReaders,
     private val youtube: YouTubeMusicSource,
-    private val qobuz: QobuzSource,
     /** Where to look for songs, in order: the library, then the streaming services. */
     private val sources: suspend () -> List<MusicSource>,
     private val playlists: PlaylistRepository,
@@ -41,23 +38,11 @@ class PlaylistImporter(
     suspend fun import(url: String, onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }): ImportResult {
         val link = url.trim()
         val service = PlaylistReaders.serviceOf(link)
-            ?: throw IOException("Paste a link to a playlist or album on Spotify, Apple Music, Tidal, Deezer, Qobuz, YouTube or ListenBrainz")
+            ?: throw IOException("Paste a link to a playlist or album on Spotify, Apple Music, Tidal, Deezer, YouTube or ListenBrainz")
         return when (service) {
             PlaylistService.YOUTUBE -> {
                 val (name, tracks) = youtube.playlist(link)
                 save(name.ifBlank { "Imported playlist" }, tracks, emptyList(), null)
-            }
-            PlaylistService.QOBUZ -> {
-                if (!qobuz.isAvailable()) throw IOException("Qobuz playlists are read with your Qobuz account: sign in to Qobuz in Settings first")
-                val id = PlaylistReaders.qobuzPlaylistId(link)
-                if (id != null) {
-                    val (name, tracks) = qobuz.playlist(id)
-                    save(name.ifBlank { "Imported playlist" }, tracks, emptyList(), null)
-                } else {
-                    val albumId = PlaylistReaders.qobuzAlbumId(link) ?: throw IOException("That Qobuz link isn't a playlist or album")
-                    val album = qobuz.album(AlbumRef(SourceType.QOBUZ, albumId, "", ""))
-                    save(album.album.title.ifBlank { "Imported album" }, album.tracks, emptyList(), null)
-                }
             }
             else -> {
                 val read = readers.read(link)

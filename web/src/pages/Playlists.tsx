@@ -99,7 +99,7 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
         {mode === "link" ? (
           <Field
             label="Playlist or album link"
-            help="Spotify, Apple Music, Tidal, Deezer, YouTube, ListenBrainz, or Qobuz (with your Qobuz account). Each song is found in your own sources, your library first."
+            help="Spotify, Apple Music, Tidal, Deezer, YouTube or ListenBrainz. Each song is found in your own sources, your library first."
           >
             <input autoFocus value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
           </Field>
@@ -108,7 +108,7 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
             <Field label="Name">
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Imported playlist" maxLength={200} />
             </Field>
-            <Field label="Songs" help="One a line, like “Artist - Title”; or paste a CSV export (from Exportify, TuneMyMusic, Soundiiz…) with title and artist columns.">
+            <Field label="Songs" help="One a line, like “Artist - Title”; or paste a CSV export (from Exportify, TuneMyMusic, Soundiiz…) with title and artist columns. For Qobuz and other services, export the playlist with TuneMyMusic or Soundiiz.">
               <textarea autoFocus rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder={"Radiohead - Paranoid Android\nFleetwood Mac - Dreams"} />
             </Field>
           </>
