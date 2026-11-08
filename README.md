@@ -259,9 +259,9 @@ Plain-HTTP server URLs are allowed, because home servers often run without TLS o
 ## Installing
 
 **With F-Droid** (gets updates automatically): add the app's own F-Droid repository. Open
-https://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/ on your phone and tap **Add the
+https://603madison.github.io/SuperAwesomeMagicalMusic/ on your phone and tap **Add the
 repository**, or in F-Droid go to Settings › Repositories › **+** and enter
-`https://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/repo` with the fingerprint
+`https://603madison.github.io/SuperAwesomeMagicalMusic/repo` with the fingerprint
 `ED2C0523BC9120F63952EAE882FA4C0FBD3153967130C0A4ADF1AF98D07B5283`. See
 [fdroid/README.md](fdroid/README.md) for how the repository is built.
 

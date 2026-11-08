@@ -71,6 +71,7 @@ class YouTubeMusicSource(
             withinCap = choice.withinCap,
             fileExtension = format?.suffix ?: "m4a",
             kbps = stream.kbps(),
+            codec = if (format.isOpus()) "opus" else "aac",
         )
     }
 

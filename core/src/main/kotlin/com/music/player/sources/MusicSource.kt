@@ -20,6 +20,8 @@ data class SourceStream(
     val kbps: Int? = null,
     /** The gain (dB) that brings this song to -18 LUFS, where the source knows it. */
     val gainDb: Float? = null,
+    /** The audio codec ("flac", "alac", "mp3", "aac", "opus"…), where known. */
+    val codec: String? = null,
 )
 
 interface MusicSource {

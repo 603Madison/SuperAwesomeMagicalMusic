@@ -27,6 +27,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "SuperAwesomeMagicalMusic"
 
-// app: the standalone Android app (SuperAwesomeMagicalMusic Lite).
-// core: the music services (Jellyfin, YouTube Music, Qobuz, SiriusXM…), shared with the server.
-include(":app", ":core")
+// core: the music services (Jellyfin, YouTube Music, Qobuz, SiriusXM…), shared by everything.
+// server: the self-hosted server and its web player.
+// app: the standalone Android app (SuperAwesomeMagicalMusic Lite), which needs the Android SDK;
+// the server's container image is built without it (SAMM_SERVER_ONLY=1).
+include(":core", ":server")
+if (System.getenv("SAMM_SERVER_ONLY") == null) include(":app")

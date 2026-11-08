@@ -2,9 +2,9 @@
 
 The app has its own F-Droid repository, published to GitHub Pages:
 
-- Address: `https://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/repo`
+- Address: `https://603madison.github.io/SuperAwesomeMagicalMusic/repo`
 - Fingerprint: `ED2C0523BC9120F63952EAE882FA4C0FBD3153967130C0A4ADF1AF98D07B5283`
-- Page with an "add" link and QR code: https://603madison.github.io/SuperAwesomeMagicalMusic-Standalone/
+- Page with an "add" link and QR code: https://603madison.github.io/SuperAwesomeMagicalMusic/
 
 It lists the same signed APKs as the GitHub releases (the newest five), so an app installed from a
 release is updated by F-Droid too.

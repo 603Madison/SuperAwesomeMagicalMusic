@@ -62,6 +62,14 @@ class JellyfinSource(
 
     override suspend fun findMatch(track: Track): Track? {
         if (track.source == type) return track
+        return lookUp(track)
+    }
+
+    /**
+     * Looks for [track] by its title and artist, even when it's a Jellyfin track already (from
+     * another Jellyfin server, whose item ids mean nothing here).
+     */
+    suspend fun lookUp(track: Track): Track? {
         val (config, deviceId) = requireConfig()
         // Search by title and filter by artist…
         val byTitle = searchVariants(TrackMatcher.searchTitle(track.title)).flatMap { term ->
@@ -113,6 +121,7 @@ class JellyfinSource(
                 fileExtension = JellyfinStreamPlanner.extensionForCodec(plan.codec),
                 kbps = sourceKbps,
                 gainDb = item.normalizationGain,
+                codec = plan.codec,
             )
             is JellyfinPlan.Transcode -> SourceStream(
                 url = "${config.serverUrl}/Audio/${item.id}/stream.${plan.container}".toHttpUrl().newBuilder()
@@ -136,6 +145,7 @@ class JellyfinSource(
                 supportsRangeRequests = false,
                 kbps = plan.kbps ?: LOSSLESS_KBPS,
                 gainDb = item.normalizationGain,
+                codec = plan.codec,
             )
         }
     }
