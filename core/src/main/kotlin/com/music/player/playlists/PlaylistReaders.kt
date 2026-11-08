@@ -17,6 +17,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -72,7 +73,9 @@ class PlaylistReaders(
 
     // Deezer: its public API, a page at a time.
     private suspend fun deezer(link: String): ReadPlaylist {
-        val url = if (DEEZER_SHORT.containsMatchIn(link)) http.call(get(link)) { it.request.url.toString() } else link
+        // A short link is followed to the playlist it stands for, but only from Deezer's own hosts.
+        val short = link.toHttpUrlOrNull()?.takeIf { it.isHttps && it.host in DEEZER_SHORT_HOSTS }
+        val url = if (short != null) http.call(get(short.toString())) { it.request.url.toString() } else link
         val match = DEEZER_ID.find(url) ?: throw IOException("That Deezer link isn't a playlist or album")
         val (kind, id) = match.destructured
         val about = deezerJson("$deezerApi$kind/$id")
@@ -186,7 +189,7 @@ class PlaylistReaders(
         private const val DEEZER_PAGE = 100
         private const val TIDAL_MAX = 50
 
-        private val DEEZER_SHORT = Regex("(?:link\\.deezer\\.com|deezer\\.page\\.link)/")
+        private val DEEZER_SHORT_HOSTS = setOf("link.deezer.com", "deezer.page.link")
         private val DEEZER_ID = Regex("deezer\\.com/(?:[a-z]{2}(?:-[a-z]{2})?/)?(playlist|album)/(\\d+)")
         private val APPLE_PATH = Regex("music\\.apple\\.com/((?:[a-z]{2}/)?(?:playlist|album)/[^?#\\s]+)")
         private val APPLE_DATA = Regex("<script[^>]*id=\"serialized-server-data\"[^>]*>(.*?)</script>", RegexOption.DOT_MATCHES_ALL)
@@ -208,7 +211,7 @@ class PlaylistReaders(
                 SpotifyPlaylists.isSpotify(url) -> PlaylistService.SPOTIFY
                 "music.apple.com/" in url -> PlaylistService.APPLE_MUSIC
                 "tidal.com/" in url -> PlaylistService.TIDAL
-                "deezer.com/" in url || DEEZER_SHORT.containsMatchIn(url) -> PlaylistService.DEEZER
+                "deezer.com/" in url || DEEZER_SHORT_HOSTS.any { "$it/" in url } -> PlaylistService.DEEZER
                 "listenbrainz.org/" in url -> PlaylistService.LISTENBRAINZ
                 "qobuz.com/" in url -> PlaylistService.QOBUZ
                 "youtube.com/" in url || "youtu.be/" in url -> PlaylistService.YOUTUBE

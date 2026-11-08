@@ -32,9 +32,13 @@ Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Andro
 
 ### 1. Sources: Jellyfin first, then Qobuz / YouTube Music, with Lidarr
 
-- **Search** queries every configured source in parallel. Jellyfin results appear first under
-  "In your library". Qobuz and YouTube Music results appear under "Stream from…", with any song
-  already in your library left out.
+- **Search** works like a streaming app's: every configured source is asked at once and the
+  answers become one set of results, with the likeliest match on top (an artist, an album or a
+  song), then songs, artists and albums. The same song, artist or album found on several sources
+  is shown once (your library's copy when it has one), and which service it comes from is left
+  out. Artists open on their best-known songs, albums and singles; albums on their songs in
+  order, taken from your library when it has the whole album. A song's ⋮ menu goes to its artist
+  or album.
 - **Playback always prefers Jellyfin.** Before a Qobuz or YouTube track plays, it is matched
   against your library (title + artist + duration, ignoring "Remastered", "feat." and similar
   tags), and the Jellyfin copy is used when one exists. A playlist built from YouTube therefore
@@ -106,7 +110,8 @@ Android Auto under **Radio**. Next and previous move between stations in the lis
 The app appears as a media source in Android Auto (and to the system, Android Automotive, the
 Assistant and Wear OS; other apps can only play, pause and skip). You can browse **Playlists**, **Downloads**
 and **SiriusXM** channels by category, search, and ask the Assistant to "play … on SuperAwesomeMagicalMusic": a
-SiriusXM channel name plays that channel, anything else searches Jellyfin first. The
+SiriusXM channel name plays that channel, an artist plays their best-known songs, an album plays
+it, and anything else plays the songs found (Jellyfin first). The
 **Bookmark** (+) button keeps the song you're hearing (on SiriusXM, a Pandora station, or
 anything else) for later and turns into a tick; press it again to take the bookmark back. The next
 time you open the app on your phone, it asks which playlist each bookmarked song goes in, so you
@@ -144,9 +149,12 @@ as well.
 - **Get ready for a trip** (Downloads › Trip): download your most played songs, what you've played
   lately and any playlists you pick, in one go.
 - **Lidarr:** once Lidarr has downloaded music by an artist it added for you, you get a note.
-- **Import playlists** from a link (the link button on the Playlists tab): YouTube and YouTube
-  Music playlists as they are; Spotify playlists (read from Spotify's public embed page, so up to
-  about 100 songs) matched to your Jellyfin library first, then YouTube Music.
+- **Import playlists** (the link button on the Playlists tab) from a link to a playlist or album
+  on Spotify, Apple Music, Tidal, Deezer, ListenBrainz, Qobuz (read with your Qobuz account) or
+  YouTube, or from a typed or pasted list ("Artist - Title" lines, or a CSV export from Exportify,
+  TuneMyMusic or Soundiiz). YouTube and Qobuz songs come as they are; the others are found in your
+  Jellyfin library first, then on your streaming services. Spotify, Apple Music and Tidal only
+  share the first 100, 100 and 50 or so songs of a long playlist on their public pages.
 - **Equalizer** (Settings › Playback): your phone's presets and a bass boost; equalizer apps
   such as Wavelet can also work on the app's sound.
 - **Home-screen widget:** what's playing, with previous, play/pause and next. Play picks up

@@ -88,6 +88,10 @@ class PlaylistReadersTest {
         assertEquals(ListedSong("Hey Jude (Remastered 2015)", "The Beatles", 429_000, "1 (Remastered 2015)", "GBAYE0601690"), read.songs[0])
         val missing = runCatching { readers.read("https://www.deezer.com/playlist/1") }.exceptionOrNull()
         assertTrue(missing?.message, missing?.message?.contains("private") == true)
+        // Only Deezer's own short links are followed: nothing else is fetched for a look-alike.
+        val lookAlike = runCatching { readers.read(server.url("/evil?link.deezer.com/").toString()) }.exceptionOrNull()
+        assertTrue(lookAlike?.message, lookAlike?.message?.contains("isn't a playlist") == true)
+        assertTrue(synchronized(requests) { requests.none { it.startsWith("/evil") } })
     }
 
     @Test

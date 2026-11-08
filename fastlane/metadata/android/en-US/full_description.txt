@@ -10,7 +10,8 @@
 <p><b>Listening</b></p>
 <ul>
 <li>Even volume across services, lyrics (Jellyfin or LRCLIB), a sleep timer, an equalizer and a home-screen widget.</li>
-<li>Playlists synced to your Nextcloud (sign in through the browser, so SSO works), and playlist import from YouTube and Spotify links.</li>
+<li>Search like a streaming app: one set of results across your library and services, with artist and album pages.</li>
+<li>Playlists synced to your Nextcloud (sign in through the browser, so SSO works), and playlist import from Spotify, Apple Music, Tidal, Deezer, Qobuz, YouTube and ListenBrainz links, or a typed list.</li>
 <li>Listening history, including songs heard on SiriusXM, and scrobbling to ListenBrainz and Last.fm.</li>
 </ul>
 
