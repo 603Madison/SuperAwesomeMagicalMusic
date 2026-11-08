@@ -69,7 +69,7 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
             <IconButton label="Thumbs up" active={thumb === "UP"} onClick={() => player.thumb("UP").catch(errorToast)}><ThumbsUp size={18} /></IconButton>
           </>
         )}
-        <IconButton label="Lyrics" onClick={() => navigate("/now-playing?lyrics=1")} disabled={!track || current?.live}><MicVocal size={18} /></IconButton>
+        <IconButton label="Lyrics" onClick={() => navigate("/now-playing?view=lyrics")} disabled={!track || current?.live}><MicVocal size={18} /></IconButton>
         <IconButton label="Queue" active={queueOpen} onClick={onToggleQueue}><ListMusic size={18} /></IconButton>
         <Menu
           label={sleepAt ? "Sleep timer (on)" : "Sleep timer"}

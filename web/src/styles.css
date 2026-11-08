@@ -517,23 +517,183 @@ input[type="range"]:disabled { cursor: default; opacity: 0.5; }
 
 /* ---------- Now playing ---------- */
 
-.now-playing {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 440px); gap: 40px;
-  padding: 32px; max-width: 1240px; margin: 0 auto; min-height: 100%;
+/* Always dark, whatever the theme: the cover's colours wash the whole page. */
+.np {
+  --np-accent: var(--primary);
+  --text: #fff;
+  --muted: rgb(255 255 255 / 0.74);
+  --faint: rgb(255 255 255 / 0.5);
+  --surface-2: rgb(255 255 255 / 0.07);
+  --surface-3: rgb(255 255 255 / 0.11);
+  --primary: var(--np-accent);
+  position: relative; isolation: isolate; height: 100%; overflow: hidden;
+  color: #fff; color-scheme: dark; background: #0c0a10;
 }
-.now-art { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; text-align: center; }
-.now-artwork { width: min(420px, 70vw) !important; height: min(420px, 70vw) !important; border-radius: 24px; box-shadow: var(--shadow); }
-.now-text { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 520px; }
-.now-text h1 { font-size: 2rem; }
-.now-artist { font-size: 1.15rem; color: var(--muted); font-weight: 500; }
-.now-album { color: var(--faint); }
-.now-detail { color: var(--faint); font-size: 0.85rem; margin-top: 4px; }
-.now-side { display: flex; flex-direction: column; min-height: 0; }
-.lyrics ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; font-size: 1.35rem; font-weight: 600; line-height: 1.3; }
-.lyrics ol.is-synced li { color: var(--faint); transition: color 0.3s; }
-.lyrics ol.is-synced li.is-past { color: var(--muted); }
-.lyrics ol.is-synced li.is-current { color: var(--primary); }
-.lyrics-source { color: var(--faint); font-size: 0.8rem; margin-top: 24px; }
+.np-backdrop {
+  position: absolute; inset: 0; z-index: -1; overflow: hidden;
+  background: radial-gradient(ellipse at 25% 30%, color-mix(in srgb, var(--np-accent) 30%, transparent), transparent 65%), #0c0a10;
+  transition: background 1.2s;
+}
+.np-backdrop-layer { position: absolute; inset: 0; animation: np-fade 1.4s ease both; }
+.np-blob {
+  position: absolute; width: 85%; aspect-ratio: 1; object-fit: cover; border-radius: 50%;
+  filter: blur(80px) saturate(1.8); will-change: transform;
+}
+.np-blob-a { left: -18%; top: -32%; opacity: 0.85; animation: np-drift-a 36s ease-in-out infinite alternate; }
+.np-blob-b { right: -22%; bottom: -42%; opacity: 0.7; animation: np-drift-b 44s ease-in-out infinite alternate; }
+.np-shade {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 45%, transparent 35%, rgb(6 4 10 / 0.5)),
+    linear-gradient(180deg, rgb(6 4 10 / 0.25), rgb(6 4 10 / 0.5) 55%, rgb(6 4 10 / 0.72));
+}
+@keyframes np-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes np-drift-a { from { transform: rotate(0deg) scale(1.15); } to { transform: rotate(28deg) scale(1.4) translate(8%, 6%); } }
+@keyframes np-drift-b { from { transform: rotate(0deg) scale(1.3); } to { transform: rotate(-32deg) scale(1.05) translate(-6%, -8%); } }
+
+.np-body {
+  height: 100%; max-width: 1480px; margin: 0 auto;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: clamp(28px, 5vw, 88px);
+  padding: clamp(24px, 5vh, 56px) clamp(24px, 4vw, 64px) clamp(16px, 3vh, 32px);
+}
+.np-hero { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: clamp(18px, 3vh, 32px); min-height: 0; }
+.np-art {
+  width: min(100%, 54vh, 560px); aspect-ratio: 1; border-radius: 22px; flex-shrink: 1; min-height: 0;
+  transform: scale(0.88); transition: transform 0.7s cubic-bezier(0.2, 0.9, 0.25, 1), box-shadow 0.7s;
+  box-shadow: 0 30px 70px -24px rgb(0 0 0 / 0.75), 0 0 140px -40px var(--np-accent);
+}
+.np-art.is-playing { transform: scale(1); box-shadow: 0 40px 90px -24px rgb(0 0 0 / 0.8), 0 0 160px -30px var(--np-accent); }
+.np-artwork { width: 100% !important; height: 100% !important; border-radius: 22px; }
+.np-meta { display: flex; align-items: flex-start; gap: 8px; width: min(100%, 54vh, 560px); }
+.np-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.np-titles h1 {
+  font-size: clamp(1.5rem, 2.4vw, 2.3rem); line-height: 1.12; letter-spacing: -0.015em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.np-artist { font-size: clamp(1rem, 1.2vw, 1.15rem); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-artist a { color: inherit; text-decoration: none; }
+.np-artist a:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.np-dot { color: var(--faint); }
+.np-quality { font-size: 0.76rem; color: var(--faint); letter-spacing: 0.02em; min-height: 1em; }
+.np-live {
+  align-self: flex-start; padding: 2px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; background: var(--np-accent); color: #140d18;
+}
+.np-meta .icon-btn { color: var(--muted); margin-top: 2px; }
+.np-meta .icon-btn:hover { background: rgb(255 255 255 / 0.1); color: #fff; }
+
+.np-fullscreen {
+  position: absolute; top: 14px; right: 14px; z-index: 2; width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center; border: 0; cursor: pointer; color: #fff;
+  background: rgb(255 255 255 / 0.08); backdrop-filter: blur(16px); opacity: 0.55; transition: opacity 0.2s, background 0.2s;
+}
+.np-fullscreen:hover, .np-fullscreen:focus-visible { opacity: 1; background: rgb(255 255 255 / 0.16); }
+
+/* In full screen the player bar is hidden, so the page has its own controls. */
+.np-controls { display: none; flex-direction: column; align-items: center; gap: 14px; width: min(100%, 54vh, 560px); }
+.np.is-fullscreen .np-controls { display: flex; }
+.np-progress { display: flex; align-items: center; gap: 12px; width: 100%; font-size: 0.75rem; color: var(--faint); font-variant-numeric: tabular-nums; }
+.np-progress input {
+  flex: 1; appearance: none; height: 5px; border-radius: 999px; cursor: pointer;
+  background: linear-gradient(to right, #fff var(--np-progress, 0%), rgb(255 255 255 / 0.22) var(--np-progress, 0%));
+}
+.np-progress input::-webkit-slider-thumb { appearance: none; width: 13px; height: 13px; border-radius: 50%; background: #fff; }
+.np-progress input::-moz-range-thumb { width: 13px; height: 13px; border: 0; border-radius: 50%; background: #fff; }
+.np-buttons { display: flex; align-items: center; gap: 28px; }
+.np-buttons button { border: 0; background: none; color: #fff; cursor: pointer; display: grid; place-items: center; opacity: 0.9; }
+.np-buttons button:disabled { opacity: 0.3; cursor: default; }
+.np-buttons .np-play { width: 68px; height: 68px; border-radius: 50%; background: #fff; color: #140d18; opacity: 1; transition: transform 0.15s; }
+.np-buttons .np-play:hover { transform: scale(1.05); }
+.np.is-fullscreen .np-body { padding-top: clamp(32px, 7vh, 80px); padding-bottom: clamp(32px, 7vh, 80px); }
+
+.np-side { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.np-tabs { align-self: flex-start; display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; background: rgb(255 255 255 / 0.08); backdrop-filter: blur(20px); }
+.np-tabs button { border: 0; background: none; color: var(--muted); font-weight: 600; font-size: 0.88rem; padding: 7px 18px; border-radius: 999px; cursor: pointer; transition: background 0.2s, color 0.2s; }
+.np-tabs button:hover { color: #fff; }
+.np-tabs button.is-active { background: rgb(255 255 255 / 0.18); color: #fff; }
+.np-panel { position: relative; flex: 1; min-height: 0; }
+.np-note { display: flex; flex-direction: column; justify-content: center; gap: 6px; color: var(--muted); padding: 0 6px 12vh; }
+.np-note-title { font-size: 1.4rem; font-weight: 700; color: #fff; }
+.np-queue { overflow-y: auto; padding: 14px; border-radius: 22px; background: rgb(255 255 255 / 0.06); backdrop-filter: blur(24px); }
+
+.np-lyrics-scroll {
+  position: relative; height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(transparent, #000 10%, #000 78%, transparent);
+  mask-image: linear-gradient(transparent, #000 10%, #000 78%, transparent);
+}
+.np-lyrics-scroll::-webkit-scrollbar { display: none; }
+/* Room above the first line and below the last, as parts of the panel: the line being sung sits a
+   third of the way down, whatever the window's size. */
+.np-lyrics-lead { height: 36%; }
+.np-lyrics-tail { height: 52%; }
+.np-lyrics.is-plain .np-lyrics-scroll { padding: 4% 0 12%; }
+.np-lyrics ol { list-style: none; margin: 0; padding: 0 8px 0 0; display: flex; flex-direction: column; gap: clamp(6px, 1.2vh, 14px); }
+.np-lyrics li { font-size: clamp(1.4rem, 2.3vw, 2.3rem); font-weight: 700; line-height: 1.22; letter-spacing: -0.012em; overflow-wrap: anywhere; }
+.np-lyrics li > button, .np-lyrics li > span {
+  display: block; width: 100%; text-align: left; font: inherit; color: inherit; background: none; border: 0;
+  padding: 6px 12px; margin: 0 -12px; border-radius: 14px;
+}
+.np-lyrics li > button { cursor: pointer; transition: background 0.2s; }
+.np-lyrics li > button:hover { background: rgb(255 255 255 / 0.07); }
+.np-lyrics li > button:focus-visible { outline: 2px solid rgb(255 255 255 / 0.6); }
+.np-lyrics.is-synced li {
+  color: rgb(255 255 255 / 0.36); transform-origin: left center;
+  transition: color 0.45s, transform 0.45s cubic-bezier(0.2, 0.9, 0.25, 1), filter 0.45s, text-shadow 0.45s;
+}
+.np-lyrics.is-synced li.is-current {
+  color: #fff; transform: scale(1.025);
+  text-shadow: 0 0 32px color-mix(in srgb, var(--np-accent) 75%, transparent);
+}
+.np-lyrics.is-synced li.is-far { filter: blur(1.1px); }
+.np-lyrics.is-synced li.is-far:hover { filter: none; }
+.np-lyrics.is-plain li { font-size: clamp(1.1rem, 1.6vw, 1.45rem); font-weight: 600; color: rgb(255 255 255 / 0.86); }
+.np-lyrics-source { margin-top: 40px; font-size: 0.76rem; color: var(--faint); }
+.np-back {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  padding: 9px 18px; border-radius: 999px; border: 0; cursor: pointer; font-weight: 600; font-size: 0.85rem;
+  color: #140d18; background: rgb(255 255 255 / 0.92); box-shadow: 0 10px 30px rgb(0 0 0 / 0.4);
+  animation: np-fade 0.3s ease both;
+}
+.np-breath { display: inline-flex; gap: 0.32em; align-items: center; height: 1.22em; }
+.np-breath i { width: 0.3em; height: 0.3em; border-radius: 50%; background: currentColor; opacity: 0.5; }
+.np-lyrics li.is-current .np-breath i { animation: np-breathe 1.4s ease-in-out infinite; }
+.np-lyrics li.is-current .np-breath i:nth-child(2) { animation-delay: 0.2s; }
+.np-lyrics li.is-current .np-breath i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes np-breathe { 0%, 100% { opacity: 0.35; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.15); } }
+
+.np-empty { display: grid; place-items: center; }
+.np-empty-text { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 24px; }
+.np-empty-text p { color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .np-blob, .np-backdrop-layer, .np-lyrics li.is-current .np-breath i { animation: none; }
+  .np-art, .np-lyrics.is-synced li { transition: none; }
+}
+
+/* The song in small, above its lyrics or queue on narrow screens. */
+.np-mini {
+  display: none; align-items: center; gap: 12px; width: 100%; padding: 8px; border: 0; border-radius: 18px;
+  background: rgb(255 255 255 / 0.08); backdrop-filter: blur(20px); color: inherit; text-align: left; cursor: pointer;
+}
+.np-mini .artwork { border-radius: 12px; flex-shrink: 0; }
+.np-mini-text { display: flex; flex-direction: column; min-width: 0; }
+.np-mini-title { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-mini-artist { color: var(--muted); font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Narrower windows: one thing at a time (the song, its lyrics or what's next), chosen with the tabs
+   at the top. The page itself never scrolls; only the lyrics and the queue do, in their own panels. */
+@media (max-width: 1000px) {
+  .np-body { display: flex; flex-direction: column; gap: 16px; padding: 16px clamp(16px, 4vw, 40px) 14px; }
+  .np-side { flex: 1; min-height: 0; }
+  .np-tabs { align-self: center; }
+  .np-view-cover .np-side { flex: 0 0 auto; order: -1; }
+  .np-view-cover .np-side > :not(.np-tabs) { display: none; }
+  .np-view-cover .np-hero { flex: 1; justify-content: center; }
+  .np-view-lyrics .np-hero, .np-view-queue .np-hero { display: none; }
+  .np-view-lyrics .np-mini, .np-view-queue .np-mini { display: flex; }
+  .np-art, .np-meta, .np-controls { width: min(100%, 78vw, 46vh, 460px); }
+  .np-fullscreen { top: 16px; right: 16px; }
+}
 
 /* ---------- Settings and admin ---------- */
 
@@ -604,7 +764,6 @@ input[type="range"]:disabled { cursor: default; opacity: 0.5; }
 @media (max-width: 1100px) {
   .shell.with-queue { grid-template-columns: var(--sidebar) minmax(0, 1fr); }
   .queue-panel { position: fixed; right: 0; top: 0; bottom: var(--bar); width: min(var(--queue), 100vw); z-index: 30; box-shadow: var(--shadow); }
-  .now-playing { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
@@ -637,7 +796,17 @@ input[type="range"]:disabled { cursor: default; opacity: 0.5; }
   .playlist-hero { gap: 16px; }
   .playlist-hero .artwork { width: 140px !important; height: 140px !important; }
   .playlist-hero-text h1 { font-size: 1.8rem; }
-  .now-playing { padding: 20px 16px; gap: 24px; }
+  .np-body { padding: 12px 16px 10px; gap: 12px; }
+  .np-art, .np-meta, .np-controls { width: min(100%, 84vw, 40vh, 400px); }
+  .np-art { border-radius: 18px; }
+  .np-artwork { border-radius: 18px; }
+  /* The phone's player bar has no progress or skip buttons: the song's page has them. */
+  .np-view-cover .np-controls { display: flex; gap: 10px; }
+  .np-buttons { gap: 36px; }
+  .np-buttons .np-play { width: 60px; height: 60px; }
+  .np-titles h1 { font-size: 1.45rem; }
+  .np-lyrics li { font-size: 1.5rem; }
+  .np-fullscreen { display: none; }
   .source-row { flex-wrap: wrap; }
   .source-actions { width: 100%; justify-content: flex-end; }
   .settings .panel { padding: 18px 16px; border-radius: 18px; }
