@@ -26,7 +26,7 @@ export function Playlists() {
       />
       {!playlists.length && (
         <Empty icon={<ListMusic size={40} />} title="No playlists yet">
-          Make one, or import one from Spotify or YouTube. Songs are found in your own sources.
+          Make one, or import one from Spotify, Apple Music, Tidal, Deezer, YouTube and more. Songs are found in your own sources.
         </Empty>
       )}
       <div className="card-grid">
@@ -45,19 +45,22 @@ export function Playlists() {
 }
 
 function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported: (id: string) => void }) {
+  const [mode, setMode] = useState<"link" | "list">("link");
   const [url, setUrl] = useState("");
+  const [text, setText] = useState("");
+  const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [missing, setMissing] = useState<string[] | null>(null);
-  const [created, setCreated] = useState<string | null>(null);
+  const [report, setReport] = useState<{ id: string; missing: string[]; note?: string } | null>(null);
+  const ready = mode === "link" ? !!url.trim() : !!text.trim();
   const run = async () => {
+    if (!ready) return;
     setBusy(true);
     try {
-      const result = await api.importPlaylist(url);
+      const result = await api.importPlaylist(mode === "link" ? { url: url.trim() } : { text, name: name.trim() });
       void session.refreshPlaylists();
       toast(`Imported ${plural(result.found, "song")}`);
-      if (result.missing.length) {
-        setMissing(result.missing);
-        setCreated(result.playlist.summary.id);
+      if (result.missing.length || result.note) {
+        setReport({ id: result.playlist.summary.id, missing: result.missing, note: result.note });
         setBusy(false);
       } else {
         onImported(result.playlist.summary.id);
@@ -68,11 +71,17 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
       setBusy(false);
     }
   };
-  if (missing && created) {
+  if (report) {
+    const done = () => { onImported(report.id); onClose(); };
     return (
-      <Modal title="Imported" onClose={() => { onImported(created); onClose(); }} footer={<Button variant="primary" onClick={() => { onImported(created); onClose(); }}>Open the playlist</Button>}>
-        <p>These {plural(missing.length, "song")} weren't found in your sources:</p>
-        <ul className="plain-list">{missing.map((m, i) => <li key={i}>{m}</li>)}</ul>
+      <Modal title="Imported" onClose={done} footer={<Button variant="primary" onClick={done}>Open the playlist</Button>}>
+        {report.note && <p className="notice">{report.note}.</p>}
+        {report.missing.length > 0 && (
+          <>
+            <p>These {plural(report.missing.length, "song")} weren't found in your sources:</p>
+            <ul className="plain-list">{report.missing.map((m, i) => <li key={i}>{m}</li>)}</ul>
+          </>
+        )}
       </Modal>
     );
   }
@@ -80,12 +89,30 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
     <Modal
       title="Import a playlist"
       onClose={onClose}
-      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" busy={busy} disabled={!url.trim()} onClick={run}>Import</Button></>}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" busy={busy} disabled={!ready} onClick={run}>Import</Button></>}
     >
-      <form onSubmit={(e) => { e.preventDefault(); void run(); }}>
-        <Field label="Playlist link" help="A public Spotify playlist, or a YouTube / YouTube Music playlist. Each song is matched in your sources, your library first.">
-          <input autoFocus value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://open.spotify.com/playlist/…" />
-        </Field>
+      <div className="tabs" role="tablist">
+        <button role="tab" aria-selected={mode === "link"} className={mode === "link" ? "is-active" : ""} onClick={() => setMode("link")}>From a link</button>
+        <button role="tab" aria-selected={mode === "list"} className={mode === "list" ? "is-active" : ""} onClick={() => setMode("list")}>From a list</button>
+      </div>
+      <form className="form-stack" onSubmit={(e) => { e.preventDefault(); void run(); }}>
+        {mode === "link" ? (
+          <Field
+            label="Playlist or album link"
+            help="Spotify, Apple Music, Tidal, Deezer, YouTube, ListenBrainz, or Qobuz (with your Qobuz account). Each song is found in your own sources, your library first."
+          >
+            <input autoFocus value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
+          </Field>
+        ) : (
+          <>
+            <Field label="Name">
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Imported playlist" maxLength={200} />
+            </Field>
+            <Field label="Songs" help="One a line, like “Artist - Title”; or paste a CSV export (from Exportify, TuneMyMusic, Soundiiz…) with title and artist columns.">
+              <textarea autoFocus rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder={"Radiohead - Paranoid Android\nFleetwood Mac - Dreams"} />
+            </Field>
+          </>
+        )}
       </form>
       {busy && <p className="muted"><Spinner size={14} /> Finding the songs… this takes a moment for long playlists.</p>}
     </Modal>

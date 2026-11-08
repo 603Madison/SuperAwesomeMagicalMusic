@@ -6,6 +6,7 @@ import com.music.player.browse.AlbumRef
 import com.music.player.browse.ArtistDetail
 import com.music.player.browse.ArtistRef
 import com.music.player.browse.Browsable
+import com.music.player.browse.UnifiedSearch
 import com.music.player.model.SourceType
 import com.music.player.model.Track
 import com.music.player.net.AppJson
@@ -19,6 +20,8 @@ import com.music.player.sources.MusicSource
 import com.music.player.sources.SourceStream
 import com.music.player.sources.SourceUnavailableException
 import com.music.player.sources.TrackMatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -52,17 +55,58 @@ class JellyfinSource(
         return JellyfinConfig(serverUrl = base, username = username, userId = result.user.id, accessToken = result.accessToken)
     }
 
-    override suspend fun search(query: String, limit: Int): List<Track> {
+    override suspend fun search(query: String, limit: Int): List<Track> = coroutineScope {
         val (config, deviceId) = requireConfig()
         // Jellyfin matches titles literally: "fools gold" doesn't find "Fool's Gold", so also try
         // the apostrophe spellings of the query.
-        return searchVariants(query).flatMap { term ->
-            val url = itemsUrl(config)
-                .addQueryParameter("searchTerm", term)
-                .addQueryParameter("limit", limit.toString())
-                .build()
-            fetchItems(url, config, deviceId)
-        }.distinctBy { it.id }.take(limit).map { it.toTrack(config.serverUrl) }
+        val byTitle = async {
+            searchVariants(query).flatMap { term ->
+                val url = itemsUrl(config)
+                    .addQueryParameter("searchTerm", term)
+                    .addQueryParameter("limit", limit.toString())
+                    .build()
+                fetchItems(url, config, deviceId)
+            }
+        }
+        // It only matches titles, so an artist's name also finds their most played songs, and an
+        // album's title its songs.
+        val byArtist = async { runCatching { popularSongsOf(config, deviceId, artistsNamed(config, deviceId, query)) }.getOrDefault(emptyList()) }
+        val byAlbum = async { runCatching { songsOfAlbumsNamed(config, deviceId, query) }.getOrDefault(emptyList()) }
+        (byTitle.await() + byArtist.await() + byAlbum.await()).distinctBy { it.id }.take(limit).map { it.toTrack(config.serverUrl) }
+    }
+
+    /** The ids of the artists called exactly [name]. */
+    private suspend fun artistsNamed(config: JellyfinConfig, deviceId: String, name: String): List<String> {
+        val wanted = UnifiedSearch.artistKey(name)
+        if (wanted.isBlank()) return emptyList()
+        val url = "${config.serverUrl}/Artists".toHttpUrl().newBuilder()
+            .addQueryParameter("userId", config.userId)
+            .addQueryParameter("searchTerm", name.trim())
+            .addQueryParameter("limit", "5")
+            .build()
+        return fetchItems(url, config, deviceId).filter { it.name != null && UnifiedSearch.artistKey(it.name) == wanted }.map { it.id }
+    }
+
+    private suspend fun popularSongsOf(config: JellyfinConfig, deviceId: String, artistIds: List<String>): List<JfItem> {
+        if (artistIds.isEmpty()) return emptyList()
+        val songs = itemsUrl(config)
+            .addQueryParameter("artistIds", artistIds.joinToString(","))
+            .addQueryParameter("sortBy", "PlayCount,SortName")
+            .addQueryParameter("sortOrder", "Descending,Ascending")
+            .addQueryParameter("limit", "10")
+            .build()
+        return fetchItems(songs, config, deviceId)
+    }
+
+    private suspend fun songsOfAlbumsNamed(config: JellyfinConfig, deviceId: String, title: String): List<JfItem> {
+        val wanted = TrackMatcher.normalizeTitle(title)
+        if (wanted.isBlank()) return emptyList()
+        val albums = fetchItems(albumsUrl(config).addQueryParameter("searchTerm", title.trim()).addQueryParameter("limit", "5").build(), config, deviceId)
+            .filter { it.name != null && TrackMatcher.normalizeTitle(it.name) == wanted }
+            .take(2)
+        return albums.flatMap { album ->
+            fetchItems(itemsUrl(config).addQueryParameter("parentId", album.id).addQueryParameter("sortBy", "ParentIndexNumber,IndexNumber,SortName").build(), config, deviceId)
+        }
     }
 
     override suspend fun findMatch(track: Track): Track? {
@@ -83,12 +127,23 @@ class JellyfinSource(
         }.distinctBy { it.id }.take(limit).map { it.toArtist(config.serverUrl) }
     }
 
-    override suspend fun searchAlbums(query: String, limit: Int): List<AlbumRef> {
+    override suspend fun searchAlbums(query: String, limit: Int): List<AlbumRef> = coroutineScope {
         val (config, deviceId) = requireConfig()
-        return searchVariants(query).flatMap { term ->
-            val url = albumsUrl(config).addQueryParameter("searchTerm", term).addQueryParameter("limit", limit.toString()).build()
-            fetchItems(url, config, deviceId)
-        }.distinctBy { it.id }.take(limit).map { it.toAlbum(config.serverUrl) }
+        val byTitle = async {
+            searchVariants(query).flatMap { term ->
+                val url = albumsUrl(config).addQueryParameter("searchTerm", term).addQueryParameter("limit", limit.toString()).build()
+                fetchItems(url, config, deviceId)
+            }
+        }
+        // An artist's name finds their albums too.
+        val byArtist = async {
+            runCatching {
+                val ids = artistsNamed(config, deviceId, query)
+                if (ids.isEmpty()) emptyList()
+                else fetchItems(albumsUrl(config).addQueryParameter("albumArtistIds", ids.joinToString(",")).sortedNewestFirst().addQueryParameter("limit", "20").build(), config, deviceId)
+            }.getOrDefault(emptyList())
+        }
+        (byTitle.await() + byArtist.await()).distinctBy { it.id }.map { it.toAlbum(config.serverUrl) }
     }
 
     override suspend fun album(ref: AlbumRef): AlbumDetail {
@@ -104,16 +159,19 @@ class JellyfinSource(
 
     override suspend fun artist(ref: ArtistRef): ArtistDetail {
         val (config, deviceId) = requireConfig()
+        val about = if (ref.artworkUrl != null) ref else runCatching {
+            val url = "${config.serverUrl}/Items".toHttpUrl().newBuilder()
+                .addQueryParameter("userId", config.userId)
+                .addQueryParameter("ids", ref.id)
+                .addQueryParameter("enableImageTypes", "Primary")
+                .build()
+            fetchItems(url, config, deviceId).firstOrNull()?.toArtist(config.serverUrl)?.copy(name = ref.name)
+        }.getOrNull() ?: ref
         // The artist's own albums; or, for an artist only on others' albums, those.
         val own = fetchItems(albumsUrl(config).addQueryParameter("albumArtistIds", ref.id).sortedNewestFirst().build(), config, deviceId)
         val albums = own.ifEmpty { fetchItems(albumsUrl(config).addQueryParameter("artistIds", ref.id).sortedNewestFirst().build(), config, deviceId) }
-        val top = itemsUrl(config)
-            .addQueryParameter("artistIds", ref.id)
-            .addQueryParameter("sortBy", "PlayCount,SortName")
-            .addQueryParameter("sortOrder", "Descending,Ascending")
-            .addQueryParameter("limit", "10")
-            .build()
-        return ArtistDetail(ref, fetchItems(top, config, deviceId).map { it.toTrack(config.serverUrl) }, albums.map { it.toAlbum(config.serverUrl) })
+        val top = popularSongsOf(config, deviceId, listOf(ref.id))
+        return ArtistDetail(about, top.map { it.toTrack(config.serverUrl) }, albums.map { it.toAlbum(config.serverUrl) })
     }
 
     private fun HttpUrl.Builder.sortedNewestFirst() = addQueryParameter("sortBy", "ProductionYear,SortName").addQueryParameter("sortOrder", "Descending,Ascending")

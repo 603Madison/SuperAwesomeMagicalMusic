@@ -91,6 +91,51 @@ export interface SearchGroup {
   error?: string;
 }
 
+/** An artist, wherever they were found; [id] opens their page. */
+export interface ArtistSummary {
+  id: string;
+  name: string;
+  artworkUrl?: string;
+}
+
+/** An album, wherever it was found; [id] opens it, [artistId] its artist. */
+export interface AlbumSummary {
+  id: string;
+  title: string;
+  artist: string;
+  artistId: string;
+  year?: number;
+  artworkUrl?: string;
+  trackCount?: number;
+}
+
+export interface TopResult {
+  kind: "artist" | "album" | "song";
+  artist?: ArtistSummary;
+  album?: AlbumSummary;
+  track?: Track;
+}
+
+export interface SearchResults {
+  query: string;
+  top?: TopResult;
+  songs: Track[];
+  artists: ArtistSummary[];
+  albums: AlbumSummary[];
+}
+
+export interface ArtistPage {
+  artist: ArtistSummary;
+  topSongs: Track[];
+  albums: AlbumSummary[];
+  singles: AlbumSummary[];
+}
+
+export interface AlbumPage {
+  album: AlbumSummary;
+  tracks: Track[];
+}
+
 export interface ResolvedStream {
   track: Track;
   streamUrl: string;

@@ -1,11 +1,13 @@
 import { useState, type ReactNode } from "react";
-import { ListEnd, ListPlus, ListStart, MoreHorizontal, Pause, Play, Plus, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Disc3, ListEnd, ListPlus, ListStart, Mic2, MoreHorizontal, Pause, Play, Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { duration, SOURCE_LABELS, trackKey } from "../lib/format";
 import { session, useSession } from "../lib/session";
 import type { Track } from "../lib/types";
 import { player, usePlayer } from "../player/player";
 import { Artwork } from "./Artwork";
+import { albumNamed, artistNamed } from "./Cards";
 import { Button, errorToast, Field, Menu, Modal, toast, type MenuItem } from "./ui";
 
 export interface Row {
@@ -55,7 +57,8 @@ export function TrackList({ rows, extraItems, showAlbum = true, numbered = false
                 {showAlbum && row.track.album ? <span className="track-album"> · {row.track.album}</span> : null}
               </div>
             </div>
-            <span className="badge track-source">{SOURCE_LABELS[row.track.source] ?? row.track.source}</span>
+            {/* Where a song plays from is the app's business; radio is worth saying. */}
+            {isRadio(row.track) ? <span className="badge track-source">{SOURCE_LABELS[row.track.source] ?? row.track.source}</span> : <span className="track-source" />}
             <span className="track-duration">{duration(row.track.durationMs)}</span>
             <TrackMenu track={row.track} extra={extraItems?.(row, i)} />
           </li>
@@ -65,9 +68,16 @@ export function TrackList({ rows, extraItems, showAlbum = true, numbered = false
   );
 }
 
+const isRadio = (track: Track) => track.source === "RADIO" || (track.source === "SIRIUSXM" && !track.sourceId.startsWith("song:"));
+
 export function TrackMenu({ track, extra = [] }: { track: Track; extra?: MenuItem[] }) {
   const playlists = useSession((s) => s.playlists);
+  const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
+  const browse: MenuItem[] = isRadio(track) || !track.artist ? [] : [
+    { label: "Go to artist", icon: <Mic2 size={18} />, onSelect: () => navigate(artistNamed(track.artist)) },
+    ...(track.album ? [{ label: "Go to album", icon: <Disc3 size={18} />, onSelect: () => navigate(albumNamed(track.album!, track.artist)) }] : []),
+  ];
   const items: MenuItem[] = [
     { label: "Play next", icon: <ListStart size={18} />, onSelect: () => { player.playNext([track]); toast(`“${track.title}” plays next`); } },
     { label: "Add to queue", icon: <ListEnd size={18} />, onSelect: () => { player.addToQueue([track]); toast(`Added “${track.title}” to the queue`); } },
@@ -79,6 +89,7 @@ export function TrackMenu({ track, extra = [] }: { track: Track; extra?: MenuIte
         ...playlists.map((p) => ({ label: p.name, onSelect: () => addTo(p.id, p.name, [track]) })),
       ],
     },
+    ...browse,
     ...extra,
   ];
   return (

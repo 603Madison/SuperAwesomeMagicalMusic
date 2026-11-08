@@ -1,7 +1,7 @@
 import type {
   ArtistView, ChannelView, NowView, StationTracks,
   AdminSettings, AuthConfig, KindsResponse, LidarrRequest, Listen, LyricsView, Playlist, PlaylistSummary,
-  ResolvedStream, SearchGroup, ServerSettings, SessionInfo, SourceView, Track, User, OidcSettings,
+  ResolvedStream, SearchResults, ArtistPage, AlbumPage, ServerSettings, SessionInfo, SourceView, Track, User, OidcSettings,
 } from "./types";
 
 /** An error from the server, with a message meant for people. */
@@ -65,7 +65,11 @@ export const api = {
   sessions: () => get<SessionInfo[]>("/api/me/sessions"),
   revokeSession: (id: string) => del<unknown>(`/api/me/sessions/${q(id)}`),
 
-  search: (query: string) => get<{ query: string; groups: SearchGroup[] }>(`/api/search?q=${q(query)}`),
+  search: (query: string) => get<SearchResults>(`/api/search?q=${q(query)}`),
+  artist: (id: string) => get<ArtistPage>(`/api/artist?id=${q(id)}`),
+  artistNamed: (name: string) => get<ArtistPage>(`/api/artist?name=${q(name)}`),
+  album: (id: string) => get<AlbumPage>(`/api/album?id=${q(id)}`),
+  albumNamed: (title: string, artist: string) => get<AlbumPage>(`/api/album?title=${q(title)}&artist=${q(artist)}`),
   resolve: (track: Track, kbps: number, codecs: string[], thorough: boolean) =>
     post<ResolvedStream>("/api/play/resolve", { track, kbps, codecs, thorough }),
   lyrics: (track: Track) => post<LyricsView>("/api/lyrics", { track }),
@@ -74,7 +78,8 @@ export const api = {
   playlists: () => get<PlaylistSummary[]>("/api/playlists"),
   playlist: (id: string) => get<Playlist>(`/api/playlists/${q(id)}`),
   createPlaylist: (name: string, tracks: Track[] = []) => post<Playlist>("/api/playlists", { name, tracks }),
-  importPlaylist: (url: string) => post<{ playlist: Playlist; found: number; missing: string[] }>("/api/playlists/import", { url }),
+  importPlaylist: (from: { url?: string; text?: string; name?: string }) =>
+    post<{ playlist: Playlist; found: number; missing: string[]; note?: string }>("/api/playlists/import", from),
   renamePlaylist: (id: string, name: string, description?: string) => patch<PlaylistSummary>(`/api/playlists/${q(id)}`, { name, description }),
   deletePlaylist: (id: string) => del<unknown>(`/api/playlists/${q(id)}`),
   addToPlaylist: (id: string, tracks: Track[], position?: number) => post<Playlist>(`/api/playlists/${q(id)}/tracks`, { tracks, position }),

@@ -83,7 +83,7 @@ export interface MenuItem {
   disabled?: boolean;
 }
 
-export function Menu({ trigger, items, label }: { trigger: ReactNode; items: MenuItem[]; label: string }) {
+export function Menu({ trigger, items, label, buttonClass = "icon-btn" }: { trigger: ReactNode; items: MenuItem[]; label: string; buttonClass?: string }) {
   const [open, setOpen] = useState(false);
   const [stack, setStack] = useState<MenuItem[][]>([]);
   const [pos, setPos] = useState({ top: 0, left: 0, up: false });
@@ -115,7 +115,7 @@ export function Menu({ trigger, items, label }: { trigger: ReactNode; items: Men
 
   return (
     <>
-      <button ref={button} className="icon-btn" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={toggle}>
+      <button ref={button} className={buttonClass} aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={toggle}>
         {trigger}
       </button>
       {open && createPortal(

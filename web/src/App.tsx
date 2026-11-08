@@ -10,6 +10,7 @@ import { Mosaic } from "./components/Artwork";
 import { Login } from "./pages/Login";
 import { ConnectApp } from "./pages/ConnectApp";
 import { Search } from "./pages/Search";
+import { AlbumView, ArtistView } from "./pages/Browse";
 import { PlaylistDetail, Playlists } from "./pages/Playlists";
 import { History } from "./pages/History";
 import { Radio } from "./pages/Radio";
@@ -80,6 +81,8 @@ function Shell() {
       <main className="content">
         <Routes>
           <Route path="/" element={<Search />} />
+          <Route path="/artist" element={<ArtistView />} />
+          <Route path="/album" element={<AlbumView />} />
           <Route path="/now-playing" element={<NowPlaying />} />
           <Route path="/radio" element={<Radio />} />
           <Route path="/playlists" element={<Playlists />} />
