@@ -9,6 +9,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -130,6 +131,73 @@ class ScreensTest {
         } finally {
             server.close()
         }
+    }
+
+    @Test
+    fun `another device playing, and the devices sheet`() {
+        val server = TestServer()
+        val http = OkHttpClient()
+        var web: okhttp3.WebSocket? = null
+        try {
+            val app = RuntimeEnvironment.getApplication()
+            val c = app.container
+            val token = runBlocking {
+                val signedIn = ServerApi(http, { server.base }, { null }).login(server.base, "maddie", "correct horse", "Test phone")
+                c.prefs.signIn(server.base, signedIn.token!!, signedIn.user, "Home music")
+                c.settings.first { it.token == signedIn.token }
+                signedIn.token!!
+            }
+            c.devices.start()
+            // The web player, playing.
+            val song = """{"source":"JELLYFIN","sourceId":"s1","title":"Neon Tidepool","artist":"Velvet Satellites","via":"src"}"""
+            web = http.newWebSocket(
+                okhttp3.Request.Builder().url("${server.base}/api/connect/ws?id=web-device-1&name=Chrome%20on%20Linux&kind=web").header("Authorization", "Bearer $token").build(),
+                object : okhttp3.WebSocketListener() {
+                    override fun onOpen(webSocket: okhttp3.WebSocket, response: okhttp3.Response) {
+                        webSocket.send("""{"type":"state","state":{"track":$song,"queue":[$song],"index":0,"positionMs":72000,"durationMs":214000,"playing":true,"volume":0.7}}""")
+                    }
+                },
+            )
+            val player = PlayerConnection(app) { server.base }
+            compose.setContent {
+                ConnectTheme {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        CompositionLocalProvider(LocalPlayer provides player) { MainScaffold() }
+                    }
+                }
+            }
+            waitForText("Playing on Chrome on Linux")
+            compose.onNodeWithText("Neon Tidepool").assertExists()
+            save("remote")
+            compose.onNodeWithTag("remote-player").performClick()
+            waitForText("This phone")
+            compose.onNodeWithText("Play on").assertExists()
+            compose.mainClock.advanceTimeBy(1_000)
+            saveWithTopWindow("devices")
+        } finally {
+            web?.close(1000, null)
+            app().container.devices.stop()
+            server.close()
+        }
+    }
+
+    private fun app() = RuntimeEnvironment.getApplication()
+
+    /** Draws the window with the one above it (a sheet or dialog) on top. */
+    private fun saveWithTopWindow(name: String) {
+        compose.waitForIdle()
+        val global = Class.forName("android.view.WindowManagerGlobal")
+        val instance = global.getMethod("getInstance").invoke(null)
+        @Suppress("UNCHECKED_CAST")
+        val views = global.getDeclaredField("mViews").apply { isAccessible = true }.get(instance) as List<android.view.View>
+        val base = compose.activity.window.decorView
+        val bitmap = Bitmap.createBitmap(base.width, base.height, Bitmap.Config.ARGB_8888)
+        compose.runOnUiThread {
+            val canvas = Canvas(bitmap)
+            base.draw(canvas)
+            views.lastOrNull()?.takeIf { it !== base }?.draw(canvas)
+        }
+        File(out, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
     private fun waitForText(text: String, substring: Boolean = false) {

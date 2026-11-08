@@ -2,6 +2,7 @@ package com.music.connect.playback
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
@@ -31,6 +32,8 @@ import com.music.connect.MainActivity
 import com.music.connect.R
 import com.music.connect.container
 import com.music.connect.net.ApiTrack
+import com.music.connect.net.ConnectCommand
+import com.music.connect.net.PlayState
 import com.music.player.quality.NetworkClass
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +47,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /** A song's stream as chosen when it started: kept, so seeking doesn't ask the server again. */
 data class StreamResolution(val url: String, val description: String, val gainDb: Float?, val kbps: Int, val atMs: Long)
@@ -94,6 +99,90 @@ class PlaybackService : MediaLibraryService() {
             .setSessionActivity(open)
             .build()
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_notification) })
+
+        // This phone among the person's devices: say what's playing, and do what the others ask.
+        c.devices.start()
+        player.addListener(object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) = reportState()
+        })
+        scope.launch { c.devices.commands.collect(::obey) }
+        scope.launch {
+            while (isActive) {
+                delay(15_000)
+                if (player.isPlaying) reportState(force = true)
+            }
+        }
+    }
+
+    private var reported: String? = null
+    private var reportedAt = 0L
+    private var reportedPosition = 0L
+
+    /** Tells the person's other devices what's playing, when that changes (or the position jumps). */
+    private fun reportState(force: Boolean = false) {
+        val track = player.currentMediaItem?.let(MediaItems::track)
+        val playing = player.isPlaying || (player.playWhenReady && player.playbackState == Player.STATE_BUFFERING)
+        val position = player.currentPosition.coerceAtLeast(0)
+        val volume = phoneVolume()
+        val key = "${track?.key}|${player.currentMediaItemIndex}|$playing|${player.mediaItemCount}|$volume|${player.repeatMode}"
+        val expected = reportedPosition + if (playing) SystemClock.elapsedRealtime() - reportedAt else 0
+        if (!force && key == reported && abs(position - expected) < 3_000) return
+        reported = key
+        reportedAt = SystemClock.elapsedRealtime()
+        reportedPosition = position
+        c.devices.report(
+            PlayState(
+                track = track,
+                queue = (0 until player.mediaItemCount).mapNotNull { MediaItems.track(player.getMediaItemAt(it)) },
+                index = player.currentMediaItemIndex,
+                positionMs = position,
+                durationMs = player.duration.takeIf { it > 0 } ?: track?.durationMs ?: 0,
+                playing = playing,
+                volume = volume,
+                live = track?.isLive == true,
+                repeat = when (player.repeatMode) {
+                    Player.REPEAT_MODE_ONE -> "one"
+                    Player.REPEAT_MODE_ALL -> "all"
+                    else -> "off"
+                },
+            ),
+        )
+    }
+
+    private val audio by lazy { getSystemService(AudioManager::class.java) }
+
+    /** The phone's media volume (what its volume buttons change), 0 to 1. */
+    private fun phoneVolume(): Double {
+        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        return audio.getStreamVolume(AudioManager.STREAM_MUSIC).toDouble() / max
+    }
+
+    /** What another device asked: control what's playing here, or carry on what it was playing. */
+    private fun obey(command: ConnectCommand) {
+        when (command.action) {
+            "play" -> {
+                if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                player.play()
+            }
+            "pause" -> player.pause()
+            "next" -> player.seekToNextMediaItem()
+            "previous" -> player.seekToPrevious()
+            "seek" -> command.positionMs?.let { player.seekTo(it) }
+            "volume" -> command.volume?.let { volume ->
+                val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC, (volume.coerceIn(0.0, 1.0) * max).roundToInt(), 0)
+                reportState(force = true)
+            }
+            "take" -> command.state?.takeIf { it.queue.isNotEmpty() }?.let { state ->
+                val server = c.settings.value.server
+                val items = state.queue.map { track -> MediaItems.playable(track, server) { url -> MediaItems.artworkUri(server, url, 512) } }
+                // Live radio joins where the broadcast is now; songs carry on from the same moment.
+                val start = if (state.live) C.TIME_UNSET else state.positionMs.coerceAtLeast(0)
+                player.setMediaItems(items, state.index.coerceIn(0, items.size - 1), start)
+                player.prepare()
+                player.playWhenReady = state.playing
+            }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
@@ -103,6 +192,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        c.devices.stop()
         endListen()
         queueStore.save(player)
         scope.cancel()

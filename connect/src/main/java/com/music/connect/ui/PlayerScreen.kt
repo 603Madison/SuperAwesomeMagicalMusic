@@ -35,6 +35,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -87,6 +88,7 @@ fun PlayerScreen(onClose: () -> Unit) {
                 IconButton(onClick = onClose) { Icon(Icons.Rounded.KeyboardArrowDown, "Close") }
                 Spacer(Modifier.weight(1f))
                 if (nowSong != null) IconButton(onClick = { addTo = true }) { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, "Add to playlist") }
+                DevicesButton()
                 SleepTimerButton()
             }
         }
@@ -167,7 +169,7 @@ fun PlayerScreen(onClose: () -> Unit) {
 }
 
 @Composable
-private fun Progress(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) {
+internal fun Progress(positionMs: Long, durationMs: Long, accent: androidx.compose.ui.graphics.Color? = null, onSeek: (Long) -> Unit) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     val fraction = dragging ?: if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
@@ -176,6 +178,7 @@ private fun Progress(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit)
             onValueChange = { dragging = it },
             onValueChangeFinished = { dragging?.let { onSeek((it * durationMs).toLong()) }; dragging = null },
             enabled = durationMs > 0,
+            colors = accent?.let { SliderDefaults.colors(thumbColor = it, activeTrackColor = it, inactiveTrackColor = it.copy(alpha = 0.24f)) } ?: SliderDefaults.colors(),
         )
         Row {
             Text(duration((fraction * durationMs).toLong()), style = MaterialTheme.typography.labelSmall)

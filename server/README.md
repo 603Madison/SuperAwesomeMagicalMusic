@@ -32,6 +32,64 @@ docker logs superawesomemagicalmusic   # shows the break-glass admin's password,
 
 Or with Compose: copy [`deploy/compose.yaml`](../deploy/compose.yaml) and `docker compose up -d`.
 
+### With Podman, started by systemd
+
+Podman's Quadlet (Podman 4.4 and later) turns a small file into a systemd service. As the user
+that runs it, save this as `~/.config/containers/systemd/superawesomemagicalmusic.container`
+(or, as root, in `/etc/containers/systemd/`):
+
+```ini
+[Unit]
+Description=SuperAwesomeMagicalMusic
+
+[Container]
+Image=ghcr.io/603madison/superawesomemagicalmusic:latest
+ContainerName=superawesomemagicalmusic
+# Only the reverse proxy on this machine reaches it.
+PublishPort=127.0.0.1:8080:8080
+# A named volume: Podman gives it to the container's user (a folder you made yourself would
+# need UserNS=keep-id:uid=1000,gid=1000 with rootless Podman).
+Volume=samm-data:/data
+Environment=SAMM_PUBLIC_URL=https://music.example.com
+Environment=SAMM_TRUST_PROXY=true
+Environment=TZ=America/New_York
+# With podman-auto-update.timer on, new releases are pulled and started by themselves.
+AutoUpdate=registry
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
+```
+
+```sh
+systemctl --user daemon-reload
+systemctl --user start superawesomemagicalmusic
+loginctl enable-linger "$USER"                           # keep it running after you log out
+systemctl --user enable --now podman-auto-update.timer   # optional: daily updates
+journalctl --user -u superawesomemagicalmusic            # the admin's first password is here
+```
+
+(As root, the same without `--user`, and no linger.)
+
+### Moving to another machine
+
+Everything is in the data volume. Stop the server so the database is still, then copy it:
+
+```sh
+# On the old machine (Docker; with Podman, `podman volume export samm-data -o samm-data.tar`):
+docker stop superawesomemagicalmusic
+docker run --rm -v samm-data:/data -v "$PWD":/out alpine tar cf /out/samm-data.tar -C /data .
+# On the new one, before the first start:
+podman volume create samm-data
+podman volume import samm-data samm-data.tar
+```
+
+Accounts, playlists, saved sign-ins and the admin's password come along. If the address
+changes, set the new `SAMM_PUBLIC_URL`, update the single sign-on redirect URI at your identity
+provider, and sign the phones in again with the new address.
+
 Open http://your-server:8080 and sign in as `admin` with the password from the log (or set
 `SAMM_ADMIN_PASSWORD` before the first start). Then, under **Admin**:
 
@@ -80,8 +138,9 @@ Environment variables (all optional):
 
 ### Behind a reverse proxy
 
-Set `SAMM_PUBLIC_URL` and `SAMM_TRUST_PROXY=true`, and don't buffer responses (songs stream).
-Caddy needs nothing special:
+Set `SAMM_PUBLIC_URL` and `SAMM_TRUST_PROXY=true`, don't buffer responses (songs stream), and
+let WebSockets through: open web players and phones keep one open at `/api/connect/ws` to see and
+control each other. Caddy needs nothing special:
 
 ```
 music.example.com {
@@ -92,9 +151,19 @@ music.example.com {
 nginx:
 
 ```nginx
+# In the http block:
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# In the server block:
 location / {
     proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
     proxy_set_header Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_buffering off;
@@ -107,7 +176,9 @@ location / {
   the key, saved sign-ins (Jellyfin tokens, SiriusXM passwords, API keys) can't be read and must be entered
   again; keep it as private as a password.
 - **Update**: `docker pull ghcr.io/603madison/superawesomemagicalmusic:latest` and recreate the
-  container. The database updates itself.
+  container (with Quadlet: `podman auto-update`, or pull and `systemctl --user restart
+  superawesomemagicalmusic`). The database updates itself. Each release is also tagged with its
+  version (`:1.17.0`), to stay on one or go back.
 - **Lost the admin password?**
   `docker exec superawesomemagicalmusic /opt/samm/bin/samm-server reset-admin-password` prints a
   new one (or give it one: `… reset-admin-password 'new password'`).

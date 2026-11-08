@@ -13,6 +13,7 @@ import com.music.connect.data.Settings
 import com.music.connect.data.SyncWorker
 import com.music.connect.net.ApiJson
 import com.music.connect.net.ApiTrack
+import com.music.connect.net.ConnectClient
 import com.music.connect.net.Listen
 import com.music.connect.net.NetworkMonitor
 import com.music.connect.net.ServerApi
@@ -29,6 +30,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -59,6 +61,9 @@ class Container(val context: Context) {
 
     val liveNow = MutableStateFlow<LiveNow?>(null)
 
+    /** This phone among the person's devices (see ConnectClient). */
+    val devices = ConnectClient(context, http, { settings.value.server }, { settings.value.token }, scope)
+
     /** What's playing came from where, at what quality (filled in by the playback service). */
     val playingDescription = MutableStateFlow<Map<String, String>>(emptyMap())
 
@@ -82,9 +87,14 @@ class Container(val context: Context) {
         }
         network.start()
         SyncWorker.schedulePeriodic(context)
+        // Signed in or out, or another server: this phone's place among the devices follows.
+        scope.launch {
+            settings.map { it.server to it.token }.distinctUntilChanged().drop(1).collect { devices.restart() }
+        }
         // Back online: send what waited (playlist changes, listens) and fetch queued downloads.
         scope.launch {
             online.collect { isOnline ->
+                if (isOnline) devices.retry()
                 if (isOnline && settings.value.signedIn) {
                     SyncWorker.enqueue(context)
                     DownloadWorker.enqueue(context, settings.value.downloadOnWifiOnly)

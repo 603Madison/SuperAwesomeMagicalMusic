@@ -21,6 +21,17 @@ import com.music.connect.R
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+/**
+ * The web player's purple (its --primary), the same whatever the phone's own colours: for what
+ * should look alike on every device, like another device being in control.
+ */
+val SitePurple: Color
+    @Composable get() = if (isSystemInDarkTheme()) Color(0xFFCFBDFF) else Color(0xFF5B3FD1)
+
+/** For content on [SitePurple]. */
+val OnSitePurple: Color
+    @Composable get() = if (isSystemInDarkTheme()) Color(0xFF341A86) else Color.White
+
 // Used where the phone has no Material You colours (Android 11 and older): a deep violet with rose accents.
 private val DarkColors = darkColorScheme(
     primary = Color(0xFFCFBDFF),

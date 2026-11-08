@@ -141,6 +141,12 @@ private fun MiniPlayer(onOpen: () -> Unit) {
     val state by player.state.collectAsState()
     val c = appContainer()
     val live by c.liveNow.collectAsState()
+    val devices by c.devices.devices.collectAsState()
+    // Another device playing (or the last to play) while this phone isn't: the bar controls that one.
+    c.devices.remote(devices)?.takeIf { !state.playing }?.let { remote ->
+        RemoteMiniPlayer(remote)
+        return
+    }
     val track = state.track ?: return
     val title = if (state.live && live != null) live!!.title else track.title
     val subtitle = if (state.live && live != null) "${live!!.artist} · ${track.title}" else track.artist
@@ -156,6 +162,7 @@ private fun MiniPlayer(onOpen: () -> Unit) {
                     Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
                     Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                DevicesButton()
                 IconButton(onClick = { player.toggle() }) { Icon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play") }
                 if (!state.live) IconButton(onClick = { player.next() }) { Icon(Icons.Rounded.SkipNext, "Next") }
             }
