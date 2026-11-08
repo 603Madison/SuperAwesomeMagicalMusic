@@ -9,6 +9,10 @@ data class ServerConfig(
     val port: Int = 8080,
     /** Trust X-Forwarded-* headers from a reverse proxy in front of the server. */
     val trustProxy: Boolean = false,
+    /** How many proxies in a row are in front (each adds the address it saw to X-Forwarded-For). */
+    val proxies: Int = 1,
+    /** A header the proxy in front sets to the visitor's address (Cloudflare's CF-Connecting-IP). */
+    val clientIpHeader: String? = null,
     val adminUsername: String = "admin",
     /** The break-glass admin's password for a new server; generated (and logged once) if empty. */
     val adminPassword: String? = null,
@@ -26,6 +30,8 @@ data class ServerConfig(
             host = env["SAMM_HOST"]?.ifBlank { null } ?: "0.0.0.0",
             port = env["SAMM_PORT"]?.toIntOrNull() ?: 8080,
             trustProxy = env["SAMM_TRUST_PROXY"]?.lowercase() in setOf("1", "true", "yes"),
+            proxies = env["SAMM_PROXIES"]?.trim()?.toIntOrNull()?.coerceIn(1, 10) ?: 1,
+            clientIpHeader = env["SAMM_CLIENT_IP_HEADER"]?.trim()?.takeIf { it.matches(Regex("[A-Za-z0-9-]{1,64}")) },
             adminUsername = env["SAMM_ADMIN_USERNAME"]?.ifBlank { null } ?: "admin",
             adminPassword = env["SAMM_ADMIN_PASSWORD"]?.ifBlank { null },
             ffmpeg = env["SAMM_FFMPEG"]?.ifBlank { null } ?: "ffmpeg",

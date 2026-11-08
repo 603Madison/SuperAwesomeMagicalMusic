@@ -78,7 +78,7 @@ fun Route.authRoutes(services: Services) {
 
         post("/login") {
             val request = call.receive<LoginRequest>()
-            val address = "ip:${call.request.origin.remoteAddress}"
+            val address = "ip:${clientAddress(call.request.local.remoteAddress, call.request.headers, services.config)}"
             val account = "user:${request.username.trim().lowercase()}"
             services.throttle.check(address, account)
             val user = services.users.checkPassword(request.username, request.password)
@@ -182,7 +182,7 @@ fun Route.authRoutes(services: Services) {
         post("/password") {
             val principal = call.principal(services) ?: throw ApiError.unauthorized()
             val change = call.receive<PasswordChange>()
-            val address = "ip:${call.request.origin.remoteAddress}"
+            val address = "ip:${clientAddress(call.request.local.remoteAddress, call.request.headers, services.config)}"
             val account = "user:${principal.user.username.lowercase()}"
             services.throttle.check(address, account)
             if (!principal.user.hasPassword) throw ApiError.badRequest("This account signs in through single sign-on")

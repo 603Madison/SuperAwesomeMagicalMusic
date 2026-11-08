@@ -125,4 +125,31 @@ class AuthTest {
         assertEquals("false", config.str("localLogin"))
         assertNotNull(config["oidc"])
     }
+
+    @Test
+    fun `behind a proxy, the visitor's address is the one the proxy saw, not one they wrote`() {
+        val direct = "10.151.2.1"
+        fun headers(vararg pairs: Pair<String, String>) = io.ktor.http.headersOf(*pairs.map { it.first to listOf(it.second) }.toTypedArray())
+        val forged = headers("X-Forwarded-For" to "6.6.6.6, 203.0.113.7")
+        // Not behind a proxy: the connection's address, whatever the headers say.
+        assertEquals(direct, com.music.server.auth.clientAddress(direct, forged, ServerConfig(java.io.File("."))))
+        // One proxy: the entry it added (the last), never the one the visitor wrote.
+        val proxy = ServerConfig(java.io.File("."), trustProxy = true)
+        assertEquals("203.0.113.7", com.music.server.auth.clientAddress(direct, forged, proxy))
+        // Cloudflare, then the proxy: the proxy added Cloudflare's address; the visitor's is before it.
+        val twoHops = headers("X-Forwarded-For" to "6.6.6.6, 203.0.113.7, 172.70.1.1")
+        assertEquals("203.0.113.7", com.music.server.auth.clientAddress(direct, twoHops, proxy.copy(proxies = 2)))
+        // Or Cloudflare's own header, which visitors can't set.
+        val cloudflare = proxy.copy(clientIpHeader = "CF-Connecting-IP")
+        val withHeader = headers("X-Forwarded-For" to "6.6.6.6, 203.0.113.7, 172.70.1.1", "CF-Connecting-IP" to "203.0.113.7")
+        assertEquals("203.0.113.7", com.music.server.auth.clientAddress(direct, withHeader, cloudflare))
+        // Fewer entries than proxies, or none: the earliest a proxy added, else the connection's.
+        assertEquals("203.0.113.7", com.music.server.auth.clientAddress(direct, headers("X-Forwarded-For" to "203.0.113.7"), proxy.copy(proxies = 2)))
+        assertEquals(direct, com.music.server.auth.clientAddress(direct, headers(), proxy))
+        // From the environment.
+        val env = ServerConfig.fromEnvironment(mapOf("SAMM_TRUST_PROXY" to "true", "SAMM_PROXIES" to "2", "SAMM_CLIENT_IP_HEADER" to "CF-Connecting-IP"))
+        assertEquals(2, env.proxies)
+        assertEquals("CF-Connecting-IP", env.clientIpHeader)
+        assertNull(ServerConfig.fromEnvironment(mapOf("SAMM_CLIENT_IP_HEADER" to "bad header: x")).clientIpHeader)
+    }
 }

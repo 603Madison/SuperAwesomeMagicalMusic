@@ -131,6 +131,8 @@ Environment variables (all optional):
 | `SAMM_PORT` | `8080` | |
 | `SAMM_PUBLIC_URL` | | The address people use, e.g. `https://music.example.com`. Needed for single sign-on behind a proxy. |
 | `SAMM_TRUST_PROXY` | `false` | Believe `X-Forwarded-*` headers (only behind your own reverse proxy). |
+| `SAMM_PROXIES` | `1` | How many proxies in a row are in front, each adding to `X-Forwarded-For` (Cloudflare, then your own proxy: `2`). Used to tell visitors apart when slowing down password guessing. |
+| `SAMM_CLIENT_IP_HEADER` | | A header the proxy in front sets to the visitor's address, used instead: `CF-Connecting-IP` behind Cloudflare. Only when every way in goes through it. |
 | `SAMM_ADMIN_USERNAME` | `admin` | The break-glass admin, made at first start. |
 | `SAMM_ADMIN_PASSWORD` | generated | Its first password. |
 | `SAMM_MAX_TRANSCODES` | `4` | Songs converted at once. |
@@ -140,7 +142,9 @@ Environment variables (all optional):
 
 Set `SAMM_PUBLIC_URL` and `SAMM_TRUST_PROXY=true`, don't buffer responses (songs stream), and
 let WebSockets through: open web players and phones keep one open at `/api/connect/ws` to see and
-control each other. Caddy needs nothing special:
+control each other. Behind Cloudflare (proxied, or a Cloudflare Tunnel) also set
+`SAMM_CLIENT_IP_HEADER=CF-Connecting-IP`, so the server knows each visitor's own address.
+Caddy needs nothing special:
 
 ```
 music.example.com {

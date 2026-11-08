@@ -1,9 +1,11 @@
 package com.music.server.auth
 
 import com.music.server.ApiError
+import com.music.server.ServerConfig
 import com.music.server.Services
 import io.ktor.http.Cookie
 import io.ktor.http.CookieEncoding
+import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.server.application.ApplicationCall
@@ -74,6 +76,20 @@ fun ApplicationCall.clearedSessionCookie() = Cookie(
     httpOnly = true,
     extensions = mapOf("SameSite" to "Strict"),
 )
+
+/**
+ * Where a request came from, for slowing down password guessing. Behind a reverse proxy, the
+ * address the proxy saw: the header it sets ([ServerConfig.clientIpHeader], like Cloudflare's
+ * CF-Connecting-IP), else the X-Forwarded-For entry added by the first of [ServerConfig.proxies]
+ * proxies, counted from the end. Never simply the first entry: whoever sends the request can
+ * write that one, and so get round the limit or use up someone else's.
+ */
+fun clientAddress(direct: String, headers: Headers, config: ServerConfig): String {
+    if (!config.trustProxy) return direct
+    config.clientIpHeader?.let { name -> headers[name]?.trim()?.takeIf { it.isNotEmpty() }?.let { return it } }
+    val chain = headers.getAll("X-Forwarded-For").orEmpty().flatMap { it.split(',') }.map { it.trim() }.filter { it.isNotEmpty() }
+    return chain.getOrNull((chain.size - config.proxies).coerceAtLeast(0)) ?: direct
+}
 
 /**
  * Slows down password guessing: after [maxFailures] wrong passwords for an account, or
