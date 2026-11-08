@@ -197,6 +197,18 @@ class SiriusXmClientTest {
     }
 
     @Test
+    fun `what an xtra channel played before is listed, newest first`() = runTest {
+        val now = 1_000_000L
+        val client = client(clock = { now })
+        client.maxBitrate = 128_000
+        client.xtraPlaylist("channel-xtra", "x1")
+        client.xtraPlaylist("channel-xtra", "x1") // peeks: song-2 joins
+        // intro, song-1 and song-2 play from 0, 20 and 40 seconds in.
+        assertEquals(listOf("song-1", "intro"), client.recentCuts("channel-xtra", "x1", now + 45_000).map { it.title })
+        assertEquals(emptyList<String>(), client.recentCuts("channel-xtra", "x1", now + 5_000).map { it.title })
+    }
+
+    @Test
     fun `nothing new from peeking waits before asking again`() = runTest {
         var now = 1_000_000L
         val client = client(clock = { now })

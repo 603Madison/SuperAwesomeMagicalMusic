@@ -527,6 +527,17 @@ class SiriusXmClient(
         return cut
     }
 
+    /**
+     * The songs played on [channelId] before the one on at [heardAtMs], most recent first: from
+     * the channel's schedule (the last three hours), or what an Xtra channel has played.
+     */
+    suspend fun recentCuts(type: String, channelId: String, heardAtMs: Long, limit: Int = 25): List<SxmCut> {
+        val current = cutAt(type, channelId, heardAtMs)
+        val before = current?.startMs ?: heardAtMs
+        val cuts = if (type == LINEAR) schedules[channelId]?.first.orEmpty() else xtraChannels[channelId]?.stream?.played().orEmpty()
+        return cuts.filter { it.isSong && it.startMs < before }.sortedByDescending { it.startMs }.distinctBy { it.id }.take(limit)
+    }
+
     private fun parseLineup(raw: JsonObject) = SiriusXmParser.parseChannels(raw)
 
     private fun lineupQuery() = mapOf(

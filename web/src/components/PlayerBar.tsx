@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ListMusic, Loader2, Moon, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, ThumbsDown, ThumbsUp, Volume1, Volume2, VolumeX, MicVocal,
@@ -7,7 +7,9 @@ import { errorToast } from "./ui";
 import { splitTwo } from "../player/live";
 import { duration } from "../lib/format";
 import { player, usePlayer } from "../player/player";
+import { useSeek } from "../player/useSeek";
 import { Artwork } from "./Artwork";
+import { canFavorite, FavoriteButton } from "./Favorite";
 import { IconButton, Menu } from "./ui";
 
 export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; onToggleQueue: () => void }) {
@@ -39,7 +41,7 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
             <div className="player-text">
               <Link to="/now-playing" className="player-title">{track.title}</Link>
               <div className="player-artist">{track.artist}</div>
-              <div className={`player-detail ${error ? "is-error" : ""}`}>{current?.live && !error && <span className="live-pill">Live</span>}{detail}</div>
+              <div className={`player-detail ${error ? "is-error" : ""}`}>{detail}</div>
             </div>
           </>
         ) : (
@@ -69,6 +71,7 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
             <IconButton label="Thumbs up" active={thumb === "UP"} onClick={() => player.thumb("UP").catch(errorToast)}><ThumbsUp size={18} /></IconButton>
           </>
         )}
+        {current?.live && canFavorite(base) && <FavoriteButton track={base} size={18} />}
         <IconButton label="Lyrics" onClick={() => navigate("/now-playing?view=lyrics")} disabled={!track || current?.live}><MicVocal size={18} /></IconButton>
         <IconButton label="Queue" active={queueOpen} onClick={onToggleQueue}><ListMusic size={18} /></IconButton>
         <Menu
@@ -86,31 +89,37 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
   );
 }
 
+/**
+ * Live radio has no end and can't be scrubbed. When the channel says how long the song is, how far
+ * into it the stream is; and, once, that it's live.
+ */
+function LiveProgress() {
+  const now = usePlayer((s) => s.liveNow);
+  usePlayer((s) => s.position); // Moves along with the stream.
+  const clock = player.liveClock();
+  const length = now?.durationMs ?? 0;
+  if (!now?.startMs || length <= 0 || clock == null) return <div className="progress progress-live"><span className="live-pill">Live</span></div>;
+  const into = Math.min(Math.max(clock - now.startMs, 0), length);
+  return (
+    <div className="progress progress-live has-song">
+      <span className="time"><span className="live-pill">Live</span></span>
+      <div className="live-bar" role="progressbar" aria-label="How far into the song" aria-valuemin={0} aria-valuemax={length} aria-valuenow={into}>
+        <div style={{ width: `${(into / length) * 100}%` }} />
+      </div>
+      <span className="time">{duration(length)}</span>
+    </div>
+  );
+}
+
 function Progress() {
-  const position = usePlayer((s) => s.position);
-  const total = usePlayer((s) => s.duration);
   const live = usePlayer((s) => s.current?.live);
-  const [dragging, setDragging] = useState<number | null>(null);
-  if (live) return <div className="progress progress-live"><span className="live-pill">Live</span></div>;
-  const shown = dragging ?? position;
-  const max = total > 0 ? total : 0;
+  const seek = useSeek();
+  if (live) return <LiveProgress />;
   return (
     <div className="progress">
-      <span className="time">{duration(shown * 1000)}</span>
-      <input
-        type="range"
-        min={0}
-        max={max || 1}
-        step={0.1}
-        value={Math.min(shown, max || 1)}
-        disabled={!max}
-        aria-label="Position in the song"
-        style={{ "--fill": `${max ? (Math.min(shown, max) / max) * 100 : 0}%` } as React.CSSProperties}
-        onChange={(e) => setDragging(Number(e.target.value))}
-        onPointerUp={() => { if (dragging != null) { player.seek(dragging); setDragging(null); } }}
-        onKeyUp={() => { if (dragging != null) { player.seek(dragging); setDragging(null); } }}
-      />
-      <span className="time">{duration(max * 1000)}</span>
+      <span className="time">{duration(seek.shown * 1000)}</span>
+      <input {...seek.input} aria-label="Position in the song" style={{ "--fill": `${seek.fill}%` } as React.CSSProperties} />
+      <span className="time">{duration(seek.max * 1000)}</span>
     </div>
   );
 }

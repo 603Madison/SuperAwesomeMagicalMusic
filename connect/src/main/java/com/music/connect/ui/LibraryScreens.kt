@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
@@ -34,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,35 +59,55 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistsScreen(onOpen: (String) -> Unit) {
     val c = appContainer()
     val playlists by c.library.all.collectAsState(initial = emptyList())
+    val online by c.online.collectAsState()
     val scope = rememberCoroutineScope()
     var creating by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
+    var refreshing by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
+    // Playlists made or changed elsewhere (the web player, another phone) arrive when this opens,
+    // and on a pull down.
+    fun refresh(byHand: Boolean) {
+        scope.launch {
+            if (byHand) refreshing = true
+            try {
+                c.library.sync()
+            } catch (e: Exception) {
+                if (byHand) c.tell(if (Library.isOffline(e)) "Offline: these are the playlists on your phone" else e.message ?: "Couldn't refresh")
+            } finally {
+                refreshing = false
+            }
+        }
+    }
+    LaunchedEffect(online) { if (online) refresh(byHand = false) }
     Scaffold(
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = { creating = true }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("New playlist") })
         },
     ) { padding ->
-        LazyColumn(Modifier.padding(padding).fillMaxSize()) {
-            item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = { importing = true }) { Icon(Icons.Rounded.FileDownload, null); Spacer(Modifier.width(8.dp)); Text("Import a playlist") }
-                }
-            }
-            if (playlists.isEmpty()) item { Empty("No playlists yet", "Make one here or on the web player, or import one from Spotify, Apple Music, Tidal, Deezer and more; they're kept on your phone too.", Icons.AutoMirrored.Rounded.QueueMusic) }
-            items(playlists, key = { it.id }) { p ->
-                Row(Modifier.fillMaxWidth().clickable { onOpen(p.id) }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Artwork(p.artwork.firstOrNull(), 56.dp)
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${p.count} songs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refresh(byHand = true) }, modifier = Modifier.padding(padding).fillMaxSize()) {
+            LazyColumn(Modifier.fillMaxSize()) {
+                item {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) {
+                        OutlinedButton(onClick = { importing = true }) { Icon(Icons.Rounded.FileDownload, null); Spacer(Modifier.width(8.dp)); Text("Import a playlist") }
                     }
-                    if (p.keepOffline) Icon(Icons.Rounded.DownloadForOffline, "Kept offline", tint = MaterialTheme.colorScheme.primary)
+                }
+                if (playlists.isEmpty()) item { Empty("No playlists yet", "Make one here or on the web player, or import one from Spotify, Apple Music, Tidal, Deezer and more; they're kept on your phone too.", Icons.AutoMirrored.Rounded.QueueMusic) }
+                items(playlists, key = { it.id }) { p ->
+                    Row(Modifier.fillMaxWidth().clickable { onOpen(p.id) }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Artwork(p.artwork.firstOrNull(), 56.dp)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${p.count} songs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (p.keepOffline) Icon(Icons.Rounded.DownloadForOffline, "Kept offline", tint = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
         }

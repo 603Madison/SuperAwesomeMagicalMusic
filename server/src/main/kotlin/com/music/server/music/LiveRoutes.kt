@@ -2,6 +2,7 @@ package com.music.server.music
 
 import com.music.player.sources.radio.RadioStation
 import com.music.player.sources.siriusxm.SiriusXmClient
+import com.music.player.sources.siriusxm.SxmCut
 import com.music.player.sources.siriusxm.SiriusXmParser
 import com.music.player.sources.siriusxm.SxmArtist
 import com.music.player.sources.siriusxm.SxmThumb
@@ -24,6 +25,7 @@ import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -64,6 +66,10 @@ data class ThumbRequest(val thumb: String, val elapsedMs: Long = 0)
 @Serializable
 data class RadioNow(val title: String? = null)
 
+/** Making a live channel or station a favourite, or not. */
+@Serializable
+data class FavoriteChange(val track: ApiTrack, val favorite: Boolean)
+
 fun Route.liveRoutes(services: Services) {
     val proxy = services.live
     val art = services.artwork
@@ -84,7 +90,40 @@ fun Route.liveRoutes(services: Services) {
 
     fun stationsOut(source: StoredSource, stations: List<RadioStation>) = stations.map { art.outgoing(ApiTrack.of(it.toTrack(), source.id)) }
 
+    /** What's (or what was) on, with the song's own cover when the channel has none. */
+    suspend fun nowView(user: User, cut: SxmCut, waitMs: Long): NowView {
+        val song = if (cut.isSong) cut.toTrack() else null
+        val cover = cut.artworkUrl ?: song?.let { services.songArt.of(user, it, waitMs) }
+        return NowView(
+            title = cut.title,
+            artist = cut.artist,
+            album = cut.album,
+            artworkUrl = art.wrap(cover),
+            startMs = cut.startMs,
+            durationMs = cut.durationMs,
+            song = song?.let { art.outgoing(ApiTrack.of(it.copy(artworkUrl = cover), null)) },
+            artistId = cut.artistId,
+        )
+    }
+
     route("/api/live") {
+        // ---- Favourites: channels and stations, on any of the person's sources ----
+
+        get("/favorites") {
+            val user = call.requireUser(services)
+            call.respond(services.liveFavorites.list(user.id).map(art::outgoing))
+        }
+
+        put("/favorites") {
+            val user = call.requireUser(services)
+            val change = call.receive<FavoriteChange>()
+            val track = art.incoming(change.track)
+            if (!track.toTrack().isLive || track.toTrack().isSiriusXmStationTrack) throw ApiError.badRequest("Only channels and stations can be favourites")
+            if (track.via.isNullOrBlank() || services.sources.accessible(user, track.via) == null) throw ApiError.notFound("That source isn't available")
+            services.liveFavorites.set(user.id, track, change.favorite)
+            call.respond(services.liveFavorites.list(user.id).map(art::outgoing))
+        }
+
         // ---- SiriusXM ----
 
         get("/sxm/{src}/channels") {
@@ -131,18 +170,18 @@ fun Route.liveRoutes(services: Services) {
             if (type != SiriusXmClient.LINEAR) runCatching { client.onXtraHeard(type, id, at) }
             val cut = SourceSetup.service("SiriusXM") { client.cutAt(type, id, at) }
             if (cut == null) return@get call.respond(HttpStatusCode.NoContent, "")
-            call.respond(
-                NowView(
-                    title = cut.title,
-                    artist = cut.artist,
-                    album = cut.album,
-                    artworkUrl = art.wrap(cut.artworkUrl),
-                    startMs = cut.startMs,
-                    durationMs = cut.durationMs,
-                    song = if (cut.isSong) art.outgoing(ApiTrack.of(cut.toTrack(), null)) else null,
-                    artistId = cut.artistId,
-                ),
-            )
+            call.respond(nowView(user, cut, waitMs = 2_500))
+        }
+
+        // The songs the channel played before this one (its last three hours), most recent first.
+        get("/sxm/{src}/recent") {
+            val user = call.requireUser(services)
+            val (_, client) = call.siriusXm(user)
+            val params = call.request.queryParameters
+            val at = params["at"]?.toLongOrNull() ?: services.clock()
+            val cuts = SourceSetup.service("SiriusXM") { client.recentCuts(params["type"].orEmpty(), params["id"].orEmpty(), at, 30) }
+            // Covers already found show now; the rest are looked for, for the next look.
+            call.respond(cuts.map { nowView(user, it, waitMs = 0) })
         }
 
         get("/sxm/{src}/artists") {

@@ -109,6 +109,21 @@ class EndToEndTest {
     }
 
     @Test
+    fun `a playlist made in the web player arrives on the phone`() = runBlocking {
+        signInWithPassword()
+        val library = Library(db, api)
+        library.sync()
+        assertTrue(library.all.first().isEmpty())
+        // Made on the web: straight on the server.
+        val maddie = services.users.byUsername("maddie")!!
+        val song = api.search("neon").allSongs.single()
+        val made = services.playlists.create(maddie.id, "From the web", "", listOf(com.music.server.music.ApiTrack(song.source, song.sourceId, song.title, song.artist, via = song.via)))
+        library.sync()
+        assertEquals(listOf("From the web"), library.all.first().map { it.name })
+        assertEquals(listOf("Neon Tidepool"), library.entriesNow(made.summary.id).map { it.track.title })
+    }
+
+    @Test
     fun `the browser sign-in's code works only with this app's secret`() = runBlocking {
         // What the web page does once signed in: ask for a code for this app's challenge.
         val cookies = mutableMapOf<String, String>()

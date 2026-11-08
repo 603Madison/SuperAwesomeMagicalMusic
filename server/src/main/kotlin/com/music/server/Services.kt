@@ -12,6 +12,8 @@ import com.music.server.auth.UserStore
 import com.music.server.db.Database
 import com.music.server.db.Schema
 import com.music.server.music.Artwork
+import com.music.server.music.LiveFavorites
+import com.music.server.music.SongArt
 import com.music.server.music.BrowseViews
 import com.music.server.music.Browser
 import com.music.server.playlists.Importer
@@ -68,6 +70,8 @@ class Services(
     val importer = Importer(http, sources, registry)
     val views = BrowseViews(artwork)
     val live = LiveProxy(http, box, clock)
+    val liveFavorites = LiveFavorites(db, clock)
+    val songArt = SongArt(sources, registry, scope, clock)
 
     override fun close() {
         scope.cancel()

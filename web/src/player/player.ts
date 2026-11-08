@@ -32,6 +32,8 @@ interface PlayerState {
   sleepAt: number | "track" | null;
   /** What's on the live channel or station playing, when it says. */
   liveNow: LiveNow | null;
+  /** What was on before, since it was tuned in (newest first). */
+  liveHistory: LiveNow[];
   /** Thumbs given to Pandora station tracks, by track id. */
   thumbs: Record<string, "UP" | "DOWN">;
 }
@@ -42,6 +44,12 @@ export interface LiveNow {
   artworkUrl?: string;
   /** The song, to save: it plays from your library or a streaming service. */
   song?: Track;
+  album?: string;
+  /** When the song started and how long it is (SiriusXM says; radio stations don't). */
+  startMs?: number;
+  durationMs?: number;
+  /** When it was first heard here. */
+  heardAt?: number;
 }
 
 export const usePlayer = create<PlayerState>(() => ({
@@ -58,6 +66,7 @@ export const usePlayer = create<PlayerState>(() => ({
   repeat: "off",
   sleepAt: null,
   liveNow: null,
+  liveHistory: [],
   thumbs: {},
 }));
 
@@ -136,7 +145,7 @@ async function load(index: number, autoplay: boolean, startAt = 0) {
   reported = false;
   const token = ++loadToken;
   audio.pause();
-  set({ index, current: null, buffering: true, error: null, position: startAt, duration: (item.track.durationMs ?? 0) / 1000, playing: autoplay, liveNow: null });
+  set({ index, current: null, buffering: true, error: null, position: startAt, duration: (item.track.durationMs ?? 0) / 1000, playing: autoplay, liveNow: null, liveHistory: [] });
   try {
     const live = liveStreamOf(item.track);
     const resolved: ResolvedStream = live
@@ -212,6 +221,18 @@ function onLiveStart(track: Track) {
   livePoll = window.setInterval(() => void pollLive(), live.kind === "station-track" ? 30_000 : 10_000);
 }
 
+/** What's on now; the song before goes into the history when it changes. */
+function heard(now: LiveNow | null) {
+  const before = state().liveNow;
+  const same = before && now && before.title === now.title && before.artist === now.artist;
+  if (same) {
+    set({ liveNow: { ...now, heardAt: before.heardAt } });
+    return;
+  }
+  const history = before ? [before, ...state().liveHistory.filter((h) => h.title !== before.title || h.artist !== before.artist)].slice(0, 50) : state().liveHistory;
+  set({ liveNow: now ? { ...now, heardAt: Date.now() } : null, liveHistory: history });
+}
+
 async function pollLive() {
   const { queue, index, playing } = state();
   const track = queue[index]?.track;
@@ -224,11 +245,11 @@ async function pollLive() {
       const at = hls?.playingDate?.getTime() ?? Date.now();
       const now = await api.channelNow(track.via!, type, id, at);
       if (state().queue[state().index]?.track !== track) return;
-      set({ liveNow: now ? { title: now.title, artist: now.artist, artworkUrl: now.artworkUrl, song: now.song } : null });
+      heard(now ? { title: now.title, artist: now.artist, album: now.album, artworkUrl: now.artworkUrl, song: now.song, startMs: now.startMs, durationMs: now.durationMs } : null);
     } else if (live.kind === "radio") {
       const { title } = await api.radioNow(track.via!, track.sourceId.replace(/^hls:/, ""));
       if (state().queue[state().index]?.track !== track) return;
-      set({ liveNow: title ? splitRadioTitle(title) : null });
+      heard(title ? splitRadioTitle(title) : null);
     } else if (playing) {
       const [stationId, trackId] = splitTwo(track.sourceId.slice("stationtrack:".length));
       api.stationProgress(track.via!, stationId, trackId, Math.round(audio.currentTime * 1000), false).catch(() => undefined);
@@ -445,6 +466,11 @@ leveller.setEnabled(usePrefs.getState().levelling);
 // ---- What the interface calls ----
 
 export const player = {
+  /** Where a live stream is, as a time (what's heard, not what's newest); null when it can't say. */
+  liveClock(): number | null {
+    return hls?.playingDate?.getTime() ?? null;
+  },
+
   /** Replaces the queue with [tracks] and plays from [start]. */
   playTracks(tracks: Track[], start = 0) {
     if (!tracks.length) return;
@@ -485,7 +511,7 @@ export const player = {
         hls?.destroy();
         hls = null;
         audio.removeAttribute("src");
-        set({ index: rest.length ? rest.length - 1 : -1, current: null, playing: false, liveNow: null });
+        set({ index: rest.length ? rest.length - 1 : -1, current: null, playing: false, liveNow: null, liveHistory: [] });
       }
       return;
     }

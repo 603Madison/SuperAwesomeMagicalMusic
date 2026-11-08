@@ -101,6 +101,16 @@ object Schema {
             updated_at INTEGER NOT NULL
         );
         """,
+        // 3: each person's favourite live channels and stations.
+        """
+        CREATE TABLE live_favorites (
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            track TEXT NOT NULL,
+            added_at INTEGER NOT NULL,
+            PRIMARY KEY (user_id, key)
+        );
+        """,
     )
 
     val version: Int get() = migrations.size

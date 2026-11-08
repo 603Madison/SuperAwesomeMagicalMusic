@@ -390,13 +390,37 @@ input:not([type="checkbox"]):not([type="range"]):focus, select:focus, textarea:f
 .channel.is-current .channel-number { color: inherit; opacity: 0.8; }
 .card-button { border: 0; background: none; text-align: left; cursor: pointer; }
 .card-button:disabled { cursor: progress; }
+/* "Live", with a beating dot. The letter spacing adds room after the last letter, so the left
+   padding has as much more: the word sits in the middle. */
 .live-pill {
-  display: inline-block; padding: 1px 8px; margin-right: 6px; border-radius: 999px;
-  background: var(--accent-container); color: var(--accent); font-size: 0.7rem; font-weight: 700;
-  letter-spacing: 0.06em; text-transform: uppercase; vertical-align: 1px;
+  display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px calc(8px + 0.06em); border-radius: 999px;
+  background: var(--accent-container); color: var(--accent); font-size: 0.7rem; font-weight: 700; line-height: 1.5;
+  letter-spacing: 0.06em; text-transform: uppercase; vertical-align: 1px; white-space: nowrap;
 }
+.live-pill::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0;
+  animation: live-beat 1.6s ease-in-out infinite;
+}
+@keyframes live-beat { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.75); } }
+@media (prefers-reduced-motion: reduce) { .live-pill::before { animation: none; } }
 @media (prefers-color-scheme: dark) { .live-pill { color: #ffd9e2; } }
 .progress-live { justify-content: center; height: 18px; }
+.progress-live.has-song { justify-content: flex-start; }
+.progress-live .time { min-width: 54px; display: flex; justify-content: center; }
+.live-bar { flex: 1; height: 5px; border-radius: 999px; background: var(--surface-4); overflow: hidden; }
+.live-bar > div { height: 100%; border-radius: inherit; background: var(--primary); transition: width 1s linear; }
+.favorite-btn.is-favorite { color: var(--accent); }
+.favorites { margin-bottom: 8px; }
+.favorite-card { position: relative; }
+.favorite-card .card-button { display: flex; flex-direction: column; gap: 8px; color: inherit; padding: 0; min-width: 0; }
+.favorite-card .card-button > .artwork { width: 100% !important; height: auto !important; aspect-ratio: 1; border-radius: 14px; }
+.favorite-card.is-current .card-title { color: var(--primary); }
+.favorite-card .card-sub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.favorite-corner {
+  position: absolute; top: 18px; right: 18px; width: 34px; height: 34px;
+  background: rgb(0 0 0 / 0.45); color: #fff; backdrop-filter: blur(8px);
+}
+.favorite-corner.is-favorite { color: #ff8fb3; }
 .small { font-size: 0.8rem; }
 .muted a { color: var(--primary); }
 
@@ -519,7 +543,8 @@ input[type="range"]:disabled { cursor: default; opacity: 0.5; }
 
 /* Always dark, whatever the theme: the cover's colours wash the whole page. */
 .np {
-  --np-accent: var(--primary);
+  /* The cover's colour (set on the page when there's one), else the app's own, as on dark. */
+  --np-accent: #cfbdff;
   --text: #fff;
   --muted: rgb(255 255 255 / 0.74);
   --faint: rgb(255 255 255 / 0.5);
@@ -575,10 +600,6 @@ input[type="range"]:disabled { cursor: default; opacity: 0.5; }
 .np-artist a:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
 .np-dot { color: var(--faint); }
 .np-quality { font-size: 0.76rem; color: var(--faint); letter-spacing: 0.02em; min-height: 1em; }
-.np-live {
-  align-self: flex-start; padding: 2px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: 700;
-  letter-spacing: 0.08em; text-transform: uppercase; background: var(--np-accent); color: #140d18;
-}
 .np-meta .icon-btn { color: var(--muted); margin-top: 2px; }
 .np-meta .icon-btn:hover { background: rgb(255 255 255 / 0.1); color: #fff; }
 
@@ -669,6 +690,29 @@ input[type="range"]:disabled { cursor: default; opacity: 0.5; }
   .np-blob, .np-backdrop-layer, .np-lyrics li.is-current .np-breath i { animation: none; }
   .np-art, .np-lyrics.is-synced li { transition: none; }
 }
+
+/* Live radio: the channel above the song, how far into the song it is, and what played before. */
+.np-channel { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 6px; font-size: 0.85rem; color: var(--muted); }
+.np-channel .artwork { border-radius: 7px; flex-shrink: 0; }
+.np-channel-name { font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-channel-number { color: var(--faint); white-space: nowrap; }
+.np .live-pill { background: var(--np-accent); color: #140d18; margin-left: 2px; }
+.np-live-song { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 0.75rem; color: var(--faint); font-variant-numeric: tabular-nums; }
+.np-live-bar { flex: 1; height: 4px; border-radius: 999px; background: rgb(255 255 255 / 0.18); overflow: hidden; }
+.np-live-bar > div { height: 100%; border-radius: inherit; background: #fff; transition: width 1s linear; }
+.np-meta .favorite-btn { color: var(--muted); margin-top: 2px; }
+.np-meta .favorite-btn:hover { background: rgb(255 255 255 / 0.1); color: #fff; }
+.np-meta .favorite-btn.is-favorite { color: var(--np-accent); }
+.np-played { overflow-y: auto; padding: 10px; border-radius: 22px; background: rgb(255 255 255 / 0.06); backdrop-filter: blur(24px); }
+.np-played ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.np-played-row { display: flex; align-items: center; gap: 12px; padding: 6px; border-radius: 14px; }
+.np-played-row:hover { background: rgb(255 255 255 / 0.07); }
+.np-played-row .artwork { border-radius: 10px; flex-shrink: 0; }
+.np-played-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.np-played-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-played-artist { color: var(--muted); font-size: 0.86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-played-when { color: var(--faint); font-size: 0.78rem; white-space: nowrap; }
+.np-played .icon-btn { color: var(--muted); }
 
 /* The song in small, above its lyrics or queue on narrow screens. */
 .np-mini {

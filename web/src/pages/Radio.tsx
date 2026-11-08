@@ -4,6 +4,8 @@ import { api } from "../lib/api";
 import type { ArtistView, ChannelView, SourceView, Track } from "../lib/types";
 import { player, usePlayer } from "../player/player";
 import { Artwork } from "../components/Artwork";
+import { FavoriteButton } from "../components/Favorite";
+import { liveKey, useSession } from "../lib/session";
 import { Button, Empty, errorToast, PageHeader, Spinner, useLoad } from "../components/ui";
 
 type Tab = "sxm" | "pandora" | "radio";
@@ -30,6 +32,7 @@ export function Radio() {
           </select>
         )}
       />
+      <Favorites />
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={shown === "sxm"} className={shown === "sxm" ? "is-active" : ""} onClick={() => setTab("sxm")}>SiriusXM</button>
         <button role="tab" aria-selected={shown === "pandora"} className={shown === "pandora" ? "is-active" : ""} onClick={() => setTab("pandora")}>Pandora stations</button>
@@ -44,6 +47,30 @@ export function Radio() {
       {shown === "pandora" && sxm && <Stations source={sxm} />}
       {shown === "radio" && (radio ? <RadioStations source={radio} /> : <Empty title="Radio is off">An admin can add the Radio source in Admin › Shared sources.</Empty>)}
     </div>
+  );
+}
+
+/** The person's favourite channels and stations, from wherever they are: one tap to play. */
+function Favorites() {
+  const favorites = useSession((s) => s.favorites);
+  const playingKey = usePlayer((s) => { const t = s.queue[s.index]?.track; return t ? liveKey(t) : null; });
+  if (!favorites.length) return null;
+  return (
+    <section className="favorites">
+      <h2 className="section-title">Favourites</h2>
+      <div className="card-row">
+        {favorites.map((track) => (
+          <div key={liveKey(track)} className={`card favorite-card ${playingKey === liveKey(track) ? "is-current" : ""}`}>
+            <button className="card-button" onClick={() => player.playLive(track)} title={`Play ${track.title}`}>
+              <Artwork url={track.artworkUrl} size={136} />
+              <div className="card-title">{track.title}</div>
+              <div className="card-sub">{track.artist}</div>
+            </button>
+            <FavoriteButton track={track} size={18} className="icon-btn favorite-corner" />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

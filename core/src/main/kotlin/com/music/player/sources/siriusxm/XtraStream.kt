@@ -147,6 +147,10 @@ class XtraStream(
         return track.cut?.copy(startMs = track.startMs, durationMs = track.durationMs)
     }
 
+    /** Every song on the stream so far, where each starts on the stream's clock. */
+    @Synchronized
+    fun played(): List<SxmCut> = tracks.mapNotNull { track -> track.cut?.copy(startMs = track.startMs, durationMs = track.durationMs) }
+
     companion object {
         /** About four hours of 10-second segments. */
         const val MAX_SEGMENTS = 1500

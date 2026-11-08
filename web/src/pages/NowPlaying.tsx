@@ -3,11 +3,14 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Maximize2, Minimize2, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { api, art } from "../lib/api";
 import { duration } from "../lib/format";
-import type { LyricsView, Track } from "../lib/types";
+import type { LyricsView, NowView, Track } from "../lib/types";
 import { player, usePlayer } from "../player/player";
+import { useSeek } from "../player/useSeek";
 import { Artwork } from "../components/Artwork";
 import { albumNamed, artistNamed } from "../components/Cards";
 import { Queue } from "../components/Queue";
+import { canFavorite, FavoriteButton } from "../components/Favorite";
+import { splitTwo } from "../player/live";
 import { TrackMenu } from "../components/TrackList";
 import { Button, Spinner } from "../components/ui";
 
@@ -33,9 +36,10 @@ export function NowPlaying() {
 
   const base = current?.track ?? item?.track;
   const live = !!current?.live;
+  // On live radio: the song on now (when the channel says), its cover (or the channel's), its album.
   const track = base && liveNow
-    ? { ...base, title: liveNow.title || base.title, artist: liveNow.artist || base.title, artworkUrl: liveNow.artworkUrl ?? base.artworkUrl, album: base.title }
-    : base;
+    ? { ...base, title: liveNow.title || base.title, artist: liveNow.artist || base.title, artworkUrl: liveNow.artworkUrl ?? base.artworkUrl, album: liveNow.album }
+    : live && base ? { ...base, album: undefined } : base;
   const accent = useAccent(track?.artworkUrl);
   const style = (accent ? { "--np-accent": accent } : {}) as CSSProperties;
 
@@ -69,19 +73,20 @@ export function NowPlaying() {
           </div>
           <div className="np-meta">
             <div className="np-titles">
-              {live && <span className="np-live">Live</span>}
+              {live && base && <Channel channel={base} />}
               <h1 title={track.title}>{track.title}</h1>
               <p className="np-artist">
                 {song?.artist ? <Link to={artistNamed(song.artist)}>{track.artist}</Link> : track.artist}
                 {track.album && (
                   <>
                     <span className="np-dot"> · </span>
-                    {!live && song?.artist ? <Link to={albumNamed(track.album, song.artist)}>{track.album}</Link> : <span>{track.album}</span>}
+                    {song?.artist ? <Link to={albumNamed(track.album, song.artist)}>{track.album}</Link> : <span>{track.album}</span>}
                   </>
                 )}
               </p>
-              <p className="np-quality">{current ? current.description : buffering ? "Finding the best copy…" : ""}</p>
+              {live ? <LiveSong /> : <p className="np-quality">{current ? current.description : buffering ? "Finding the best copy…" : ""}</p>}
             </div>
+            {live && canFavorite(base) && <FavoriteButton track={base} size={22} />}
             {song && !song.sourceId.startsWith("channel:") && <TrackMenu track={song} />}
           </div>
           <Controls live={live} />
@@ -91,7 +96,7 @@ export function NowPlaying() {
           <div className="np-tabs" role="tablist">
             {narrow && <button role="tab" aria-selected={view === "cover"} className={view === "cover" ? "is-active" : ""} onClick={() => show("cover")}>Song</button>}
             <button role="tab" aria-selected={view === "lyrics"} className={view === "lyrics" ? "is-active" : ""} onClick={() => show("lyrics")}>Lyrics</button>
-            <button role="tab" aria-selected={view === "queue"} className={view === "queue" ? "is-active" : ""} onClick={() => show("queue")}>Up next</button>
+            <button role="tab" aria-selected={view === "queue"} className={view === "queue" ? "is-active" : ""} onClick={() => show("queue")}>{live ? "Played" : "Up next"}</button>
           </div>
           {/* On narrow screens, the song stays in view above its lyrics or queue. */}
           <button className="np-mini" onClick={() => show("cover")} aria-label="Show the cover">
@@ -102,7 +107,7 @@ export function NowPlaying() {
             </span>
           </button>
           {view === "queue" ? (
-            <div className="np-panel np-queue"><Queue /></div>
+            live && base ? <Played channel={base} /> : <div className="np-panel np-queue"><Queue /></div>
           ) : lyricsFor ? (
             <Lyrics track={lyricsFor} seekable={!live} />
           ) : (
@@ -112,6 +117,98 @@ export function NowPlaying() {
       </div>
     </div>
   );
+}
+
+/** The live channel or station: its logo and name, and that it's live. */
+function Channel({ channel }: { channel: Track }) {
+  const number = channel.source === "SIRIUSXM" ? channel.artist.replace(/^SiriusXM( · )?/, "") : "";
+  return (
+    <div className="np-channel">
+      <Artwork url={channel.artworkUrl} size={28} px={64} alt="" />
+      <span className="np-channel-name" title={channel.title}>{channel.title}</span>
+      {number && <span className="np-channel-number">{number}</span>}
+      <span className="live-pill">Live</span>
+    </div>
+  );
+}
+
+/** How far into the song on the radio the stream is, when the channel says how long it is. */
+function LiveSong() {
+  const now = usePlayer((s) => s.liveNow);
+  usePlayer((s) => s.position); // Moves along with the stream.
+  const clock = player.liveClock();
+  const length = now?.durationMs ?? 0;
+  if (!now?.startMs || length <= 0 || clock == null) return null;
+  const into = Math.min(Math.max(clock - now.startMs, 0), length);
+  return (
+    <div className="np-live-song" aria-label={`${duration(into)} of ${duration(length)}`}>
+      <span>{duration(into)}</span>
+      <div className="np-live-bar"><div style={{ width: `${(into / length) * 100}%` }} /></div>
+      <span>{duration(length)}</span>
+    </div>
+  );
+}
+
+/**
+ * What the channel played before: SiriusXM's last three hours, or for a radio station what it
+ * said since it was tuned in. Any song can be saved, played or looked up.
+ */
+function Played({ channel }: { channel: Track }) {
+  const nowTitle = usePlayer((s) => s.liveNow?.title);
+  const history = usePlayer((s) => s.liveHistory);
+  const sxm = channel.source === "SIRIUSXM" && channel.sourceId.startsWith("channel:") && !!channel.via;
+  const [recent, setRecent] = useState<NowView[] | null>(null);
+
+  useEffect(() => {
+    if (!sxm) return;
+    let cancelled = false;
+    const [type, id] = splitTwo(channel.sourceId.slice("channel:".length));
+    api.channelRecent(channel.via!, type, id, player.liveClock() ?? Date.now()).then(
+      (songs) => !cancelled && setRecent(songs),
+      () => !cancelled && setRecent([]),
+    );
+    return () => { cancelled = true; };
+  }, [sxm, channel.via, channel.sourceId, nowTitle]);
+
+  const clock = player.liveClock() ?? Date.now();
+  const rows: { title: string; artist: string; artworkUrl?: string; song?: Track; at?: number }[] = sxm
+    ? (recent ?? []).map((r) => ({ ...r, at: clock - r.startMs }))
+    : history.map((h) => ({ ...h, at: h.heardAt ? Date.now() - h.heardAt : undefined }));
+
+  if (sxm && recent === null) return <div className="np-panel np-note"><Spinner /></div>;
+  if (!rows.length) {
+    return (
+      <div className="np-panel np-note">
+        <p className="np-note-title">Nothing yet</p>
+        <p>{sxm ? "The channel hasn't said what it played before this." : "Songs the station plays while you listen are listed here."}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="np-panel np-played">
+      <ol>
+        {rows.map((row, i) => (
+          <li key={`${i}-${row.title}`} className="np-played-row">
+            <Artwork url={row.artworkUrl ?? channel.artworkUrl} size={48} px={128} alt="" />
+            <div className="np-played-text">
+              <span className="np-played-title">{row.title}</span>
+              <span className="np-played-artist">{row.artist}</span>
+            </div>
+            {row.at != null && <span className="np-played-when">{ago(row.at)}</span>}
+            {row.song && <TrackMenu track={row.song} />}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+/** "Just now", "4 min ago", "1 h 12 min ago". */
+function ago(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  return `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ""} ago`;
 }
 
 /** The cover, huge and blurred and slowly drifting, behind everything; songs crossfade into each other. */
@@ -141,20 +238,14 @@ function Backdrop({ url }: { url?: string }) {
 /** Play, skip and the time: in full screen, where the player bar isn't. */
 function Controls({ live }: { live: boolean }) {
   const playing = usePlayer((s) => s.playing);
-  const position = usePlayer((s) => s.position);
-  const total = usePlayer((s) => s.duration);
+  const seek = useSeek();
   return (
     <div className="np-controls">
-      {!live && total > 0 && (
+      {!live && seek.max > 0 && (
         <div className="np-progress">
-          <span>{duration(position * 1000)}</span>
-          <input
-            type="range" min={0} max={total} step={0.5} value={Math.min(position, total)}
-            onChange={(e) => player.seek(Number(e.target.value))}
-            aria-label="Position"
-            style={{ "--np-progress": `${(Math.min(position, total) / total) * 100}%` } as CSSProperties}
-          />
-          <span>{duration(total * 1000)}</span>
+          <span>{duration(seek.shown * 1000)}</span>
+          <input {...seek.input} aria-label="Position" style={{ "--np-progress": `${seek.fill}%` } as CSSProperties} />
+          <span>{duration(seek.max * 1000)}</span>
         </div>
       )}
       <div className="np-buttons">

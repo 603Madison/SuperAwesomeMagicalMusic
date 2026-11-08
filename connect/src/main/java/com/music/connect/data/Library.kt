@@ -6,6 +6,7 @@ import com.music.connect.net.ApiTrack
 import com.music.connect.net.Playlist
 import com.music.connect.net.ServerApi
 import com.music.connect.net.ServerException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -133,7 +134,16 @@ class Library(
         for (summary in remote) {
             val mine = local[summary.id]
             if (mine == null || mine.revision != summary.revision || playlists.count(summary.id) != summary.count) {
-                store(api.playlist(summary.id), keepOffline = mine?.keepOffline ?: false)
+                try {
+                    store(api.playlist(summary.id), keepOffline = mine?.keepOffline ?: false)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Offline or signed out: try again later. Anything else is this playlist's
+                    // alone, and mustn't keep the others from arriving.
+                    if (isOffline(e) || (e is ServerException && e.code == 401)) throw e
+                    Log.w(TAG, "Couldn't bring playlist ${summary.id} up to date: ${e.message}")
+                }
             }
         }
         val remoteIds = remote.map { it.id }.toSet()
