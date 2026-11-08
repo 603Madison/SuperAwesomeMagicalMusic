@@ -10,6 +10,7 @@ import androidx.annotation.OptIn
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -19,7 +20,9 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -51,7 +54,30 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** A song's stream as chosen when it started: kept, so seeking doesn't ask the server again. */
-data class StreamResolution(val url: String, val description: String, val gainDb: Float?, val kbps: Int, val atMs: Long)
+data class StreamResolution(
+    val url: String,
+    val description: String,
+    val gainDb: Float?,
+    val kbps: Int,
+    val atMs: Long,
+    /** The stream's own bitrate, as the server knows it. */
+    val streamKbps: Int? = null,
+    val transcoded: Boolean = false,
+)
+
+/** Where a song being played comes from, for its details (see TrackInfoDialog). */
+data class StreamFacts(
+    val description: String,
+    val kbps: Int? = null,
+    /** The bitrate cap it was picked under (0: original quality). */
+    val capKbps: Int? = null,
+    val transcoded: Boolean = false,
+    val gainDb: Float? = null,
+    val downloaded: Boolean = false,
+)
+
+/** The audio the player is decoding, as it says. */
+data class AudioDetails(val key: String?, val mime: String?, val codecs: String?, val sampleRateHz: Int?, val channels: Int?, val bitrateKbps: Int?)
 
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaLibraryService() {
@@ -59,7 +85,7 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaLibrarySession
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val loudness = LoudnessProcessor()
+    private val loudness get() = c.loudness
     private val resolutions = ConcurrentHashMap<String, StreamResolution>()
     private lateinit var queueStore: QueueStore
 
@@ -91,6 +117,18 @@ class PlaybackService : MediaLibraryService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
         player.addListener(listener)
+        player.addAnalyticsListener(object : AnalyticsListener {
+            override fun onAudioInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: Format, decoderReuseEvaluation: DecoderReuseEvaluation?) {
+                c.audioDetails.value = AudioDetails(
+                    key = player.currentMediaItem?.let(MediaItems::track)?.key,
+                    mime = format.sampleMimeType,
+                    codecs = format.codecs,
+                    sampleRateHz = format.sampleRate.takeIf { it != Format.NO_VALUE },
+                    channels = format.channelCount.takeIf { it != Format.NO_VALUE },
+                    bitrateKbps = listOf(format.averageBitrate, format.bitrate, format.peakBitrate).firstOrNull { it != Format.NO_VALUE && it > 0 }?.let { it / 1000 },
+                )
+            }
+        })
         loudness.enabled = c.settings.value.levelling
         scope.launch { c.settings.collect { loudness.enabled = it.levelling } }
 
@@ -209,7 +247,7 @@ class PlaybackService : MediaLibraryService() {
         val track = MediaItems.trackOf(spec.uri) ?: return spec
         val file = runBlocking { c.downloads.fileFor(track) }
         if (file != null) {
-            describe(track, "Downloaded")
+            describe(track, StreamFacts("Downloaded copy", downloaded = true))
             return spec.withUri(Uri.fromFile(file))
         }
         val network = c.network.state.value
@@ -224,9 +262,9 @@ class PlaybackService : MediaLibraryService() {
         val chosen = pinned ?: runBlocking {
             // Comparing every service costs round trips: only where the link is quick.
             val resolved = c.api.resolve(track, kbps, thorough = network.networkClass == NetworkClass.WIFI)
-            StreamResolution(c.api.absolute(resolved.streamUrl), resolved.description, resolved.gainDb, kbps, System.currentTimeMillis())
+            StreamResolution(c.api.absolute(resolved.streamUrl), resolved.description, resolved.gainDb, kbps, System.currentTimeMillis(), resolved.kbps, resolved.transcoded)
         }.also { resolutions[track.key] = it }
-        describe(track, chosen.description)
+        describe(track, StreamFacts(chosen.description, chosen.streamKbps, chosen.kbps, chosen.transcoded, chosen.gainDb))
         // (ConcurrentHashMap holds no nulls: most songs have no known gain.)
         chosen.gainDb?.let { gains[track.key] = it } ?: gains.remove(track.key)
         // This runs on the loader's thread, where the player can't be touched: compare with the
@@ -241,8 +279,9 @@ class PlaybackService : MediaLibraryService() {
     @Volatile
     private var currentKey: String? = null
 
-    private fun describe(track: ApiTrack, description: String) {
-        c.playingDescription.value = c.playingDescription.value + (track.key to description)
+    private fun describe(track: ApiTrack, facts: StreamFacts) {
+        c.playingDescription.value = c.playingDescription.value + (track.key to facts.description)
+        c.streamFacts.value = c.streamFacts.value + (track.key to facts)
     }
 
     private val listener = object : Player.Listener {

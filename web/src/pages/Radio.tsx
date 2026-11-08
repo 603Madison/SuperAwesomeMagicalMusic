@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Lock, MapPin, Radio as RadioIcon, Search as SearchIcon } from "lucide-react";
+import { Heart, Lock, MapPin, Radio as RadioIcon, Search as SearchIcon } from "lucide-react";
 import { api } from "../lib/api";
 import type { ArtistView, ChannelView, SourceView, Track } from "../lib/types";
 import { player, usePlayer } from "../player/player";
 import { Artwork } from "../components/Artwork";
-import { FavoriteButton } from "../components/Favorite";
-import { liveKey, useSession } from "../lib/session";
-import { Button, Empty, errorToast, PageHeader, Spinner, useLoad } from "../components/ui";
+import { favoriteOf, FavoriteButton, isStation, playFavorite, rememberStation } from "../components/Favorite";
+import { liveKey, session, useSession } from "../lib/session";
+import { Button, Empty, errorToast, PageHeader, Spinner, toast, useLoad } from "../components/ui";
 
 type Tab = "sxm" | "pandora" | "radio";
 
@@ -53,7 +53,7 @@ export function Radio() {
 /** The person's favourite channels and stations, from wherever they are: one tap to play. */
 function Favorites() {
   const favorites = useSession((s) => s.favorites);
-  const playingKey = usePlayer((s) => { const t = s.queue[s.index]?.track; return t ? liveKey(t) : null; });
+  const playingKey = usePlayer((s) => { const f = favoriteOf(s.queue[s.index]?.track); return f ? liveKey(f) : null; });
   if (!favorites.length) return null;
   return (
     <section className="favorites">
@@ -61,7 +61,7 @@ function Favorites() {
       <div className="card-row">
         {favorites.map((track) => (
           <div key={liveKey(track)} className={`card favorite-card ${playingKey === liveKey(track) ? "is-current" : ""}`}>
-            <button className="card-button" onClick={() => player.playLive(track)} title={`Play ${track.title}`}>
+            <button className="card-button" onClick={() => void playFavorite(track)} title={`Play ${track.title}`}>
               <Artwork url={track.artworkUrl} size={136} />
               <div className="card-title">{track.title}</div>
               <div className="card-sub">{track.artist}</div>
@@ -146,7 +146,8 @@ function Stations({ source }: { source: SourceView }) {
   const start = async (artist: ArtistView) => {
     setStarting(artist.id);
     try {
-      const { tracks } = await api.station(source.id, { artist });
+      const { station, tracks } = await api.station(source.id, { artist });
+      rememberStation(station);
       if (!tracks.length) throw new Error("SiriusXM sent nothing for this station");
       player.startStation(tracks);
     } catch (err) { errorToast(err); }
@@ -164,14 +165,53 @@ function Stations({ source }: { source: SourceView }) {
       {artists && !artists.length && <Empty title="No stations found">Try the artist's full name.</Empty>}
       <div className="card-grid">
         {(artists ?? []).map((a) => (
-          <button key={a.id} className="card card-button" onClick={() => start(a)} disabled={starting != null}>
-            <Artwork url={a.artworkUrl} size={180} />
-            <div className="card-title">{a.name}</div>
-            <div className="card-sub">{starting === a.id ? "Starting…" : a.stationId ? "Pandora station" : "Artist"}</div>
-          </button>
+          <div key={a.id} className="card favorite-card">
+            <button className="card-button" onClick={() => start(a)} disabled={starting != null}>
+              <Artwork url={a.artworkUrl} size={180} />
+              <div className="card-title">{a.name}</div>
+              <div className="card-sub">{starting === a.id ? "Starting…" : a.stationId ? "Pandora station" : "Artist"}</div>
+            </button>
+            <StationHeart source={source} artist={a} />
+          </div>
         ))}
       </div>
     </>
+  );
+}
+
+/** A heart on an artist's Pandora station: the station is made (or found) when it's favourited. */
+function StationHeart({ source, artist }: { source: SourceView; artist: ArtistView }) {
+  const favorites = useSession((s) => s.favorites);
+  const [busy, setBusy] = useState(false);
+  const saved = favorites.find((f) => isStation(f) && f.via === source.id && (f.sourceId.endsWith(`:${artist.stationId ?? "\u0000"}`) || f.title === artist.name));
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      if (saved) {
+        await session.setFavorite(saved, false);
+        toast(`Removed ${saved.title} from your favourites`);
+      } else {
+        const { station } = await api.station(source.id, { artist });
+        rememberStation(station);
+        await session.setFavorite(station, true);
+        toast(`${station.title} is in your favourites, at the top of this page`);
+      }
+    } catch (e) {
+      errorToast(e);
+    }
+    setBusy(false);
+  };
+  return (
+    <button
+      className={`icon-btn favorite-corner favorite-btn ${saved ? "is-favorite" : ""}`}
+      onClick={() => void toggle()}
+      disabled={busy}
+      aria-pressed={!!saved}
+      aria-label={saved ? `Remove ${artist.name}'s station from favourites` : `Add ${artist.name}'s station to favourites`}
+      title={saved ? "Favourite (click to remove)" : "Add to favourites"}
+    >
+      <Heart size={18} fill={saved ? "currentColor" : "none"} />
+    </button>
   );
 }
 

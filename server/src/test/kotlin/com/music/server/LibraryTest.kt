@@ -202,6 +202,9 @@ class LibraryTest {
         val all = setOf("flac", "mp3", "aac", "opus")
 
         assertNull(streamer.plan(flac, StreamQuality.Original, all, 0.0).format)
+        // Started part-way, it's converted from there: lossless stays lossless, for a speaker too.
+        assertEquals(OutputFormat.FLAC, streamer.plan(flac, StreamQuality.Original, setOf("flac", "mp3", "wav"), 30.0).format)
+        assertEquals(OutputFormat.MP3, streamer.plan(opus, StreamQuality.Original, setOf("flac", "mp3", "wav"), 0.0).format)
         // Over the cap: converted down to it, as Opus where the player has it.
         val capped = streamer.plan(flac, StreamQuality.Capped(128), all, 0.0)
         assertEquals(OutputFormat.OPUS, capped.format)

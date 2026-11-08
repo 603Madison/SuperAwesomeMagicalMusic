@@ -66,7 +66,8 @@ class Streamer(
         val overCap = !stream.withinCap || (cap != null && (stream.kbps ?: 0) > cap + CAP_SLACK_KBPS)
         // An unknown codec is converted rather than risked, unless the player didn't say what it plays.
         val playable = codecs == null || (codec != null && codec in codecs)
-        val mustSeek = start > 0 && !stream.supportsRangeRequests
+        // Asked to start part-way (players that can't seek by themselves, like speakers): converted from there.
+        val mustSeek = start > 0
         if (!overCap && playable && !mustSeek) return StreamPlan(null, null)
 
         val lossless = codec in LOSSLESS || (stream.kbps ?: 0) >= LOSSLESS_KBPS

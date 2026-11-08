@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -76,6 +77,7 @@ fun PlayerScreen(onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
     var tab by remember { mutableIntStateOf(0) }
     var addTo by remember { mutableStateOf(false) }
+    var info by remember { mutableStateOf(false) }
     var thumbs by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     val track = state.track ?: run {
         Empty("Nothing playing")
@@ -91,15 +93,16 @@ fun PlayerScreen(onClose: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.Rounded.KeyboardArrowDown, "Close") }
                 Spacer(Modifier.weight(1f))
-                if (track.isLive) {
-                    val favorite = favorites.any { it.key == track.key }
+                // The channel or station playing, or the Pandora station this song is from.
+                c.favoriteOf(track)?.let { target ->
+                    val favorite = favorites.any { it.key == target.key }
                     IconButton(onClick = {
-                        c.setFavorite(track, !favorite)
-                        c.tell(if (favorite) "Removed ${track.title} from your favourites" else "${track.title} is in your favourites, on the Radio tab")
+                        c.setFavorite(target, !favorite)
+                        c.tell(if (favorite) "Removed ${target.title} from your favourites" else "${target.title} is in your favourites, on the Radio tab")
                     }) {
                         Icon(
                             if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                            if (favorite) "Remove ${track.title} from favourites" else "Add ${track.title} to favourites",
+                            if (favorite) "Remove ${target.title} from favourites" else "Add ${target.title} to favourites",
                             tint = if (favorite) SiteRose else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -107,6 +110,7 @@ fun PlayerScreen(onClose: () -> Unit) {
                 if (nowSong != null) IconButton(onClick = { addTo = true }) { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, "Add to playlist") }
                 DevicesButton()
                 SleepTimerButton()
+                IconButton(onClick = { info = true }) { Icon(Icons.Outlined.Info, "Details") }
             }
         }
         item {
@@ -183,6 +187,7 @@ fun PlayerScreen(onClose: () -> Unit) {
         }
     }
     if (addTo && nowSong != null) AddToPlaylistDialog(listOf(nowSong)) { addTo = false }
+    if (info) TrackInfoDialog(track) { info = false }
 }
 
 @Composable

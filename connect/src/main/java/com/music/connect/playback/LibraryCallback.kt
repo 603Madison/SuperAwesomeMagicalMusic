@@ -187,7 +187,11 @@ class LibraryCallback(
     }
 
     private suspend fun expand(mediaId: String): Pair<List<MediaItem>, Int> {
-        MediaItems.track(mediaId)?.let { return listOf(MediaItems.playable(it, server, ::art)) to 0 }
+        MediaItems.track(mediaId)?.let { track ->
+            // A favourite Pandora station: started, rather than tuned in like a channel.
+            if (track.isPandoraStation) return c.tracksOf(track).map { MediaItems.playable(it, server, ::art) } to 0
+            return listOf(MediaItems.playable(track, server, ::art)) to 0
+        }
         if (mediaId.startsWith(IN_PLAYLIST)) {
             val (id, index) = mediaId.removePrefix(IN_PLAYLIST).let { it.substringBeforeLast(':') to (it.substringAfterLast(':').toIntOrNull() ?: 0) }
             return c.library.entriesNow(id).map { MediaItems.playable(it.track, server, ::art) } to index

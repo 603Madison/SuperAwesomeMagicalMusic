@@ -33,6 +33,10 @@ data class Settings(
     /** Downloads wait for Wi-Fi (or another unmetered network). */
     val downloadOnWifiOnly: Boolean = true,
     val levelling: Boolean = true,
+    /** Finds MusicCast speakers on the Wi-Fi, and lets the person's devices play on them. */
+    val speakers: Boolean = true,
+    /** Speakers' addresses typed in, for networks where they can't be found by themselves. */
+    val speakerAddresses: List<String> = emptyList(),
 ) {
     val signedIn: Boolean get() = server.isNotEmpty() && token != null
 
@@ -76,6 +80,8 @@ class Prefs(private val context: Context) {
         prefs[KBPS_DOWNLOAD] = next.kbpsDownload
         prefs[DOWNLOAD_WIFI_ONLY] = next.downloadOnWifiOnly
         prefs[LEVELLING] = next.levelling
+        prefs[SPEAKERS] = next.speakers
+        prefs[SPEAKER_ADDRESSES] = next.speakerAddresses.joinToString("\n")
         next.user?.let { prefs[USER] = ApiJson.encodeToString(User.serializer(), it) }
     }
 
@@ -90,6 +96,8 @@ class Prefs(private val context: Context) {
         kbpsDownload = prefs[KBPS_DOWNLOAD] ?: 0,
         downloadOnWifiOnly = prefs[DOWNLOAD_WIFI_ONLY] ?: true,
         levelling = prefs[LEVELLING] ?: true,
+        speakers = prefs[SPEAKERS] ?: true,
+        speakerAddresses = prefs[SPEAKER_ADDRESSES].orEmpty().lines().map { it.trim() }.filter { it.isNotEmpty() },
     )
 
     private companion object {
@@ -103,5 +111,7 @@ class Prefs(private val context: Context) {
         val KBPS_DOWNLOAD = intPreferencesKey("kbps_download")
         val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("download_wifi_only")
         val LEVELLING = booleanPreferencesKey("levelling")
+        val SPEAKERS = booleanPreferencesKey("speakers")
+        val SPEAKER_ADDRESSES = stringPreferencesKey("speaker_addresses")
     }
 }

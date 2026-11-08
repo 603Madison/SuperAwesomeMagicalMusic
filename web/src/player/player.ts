@@ -653,6 +653,15 @@ export const player = {
   get levellingGainDb() {
     return leveller.currentGainDb;
   },
+
+  /** Seconds loaded ahead of where it's playing. */
+  bufferedAhead(): number {
+    const at = audio.currentTime;
+    for (let i = 0; i < audio.buffered.length; i++) {
+      if (audio.buffered.start(i) <= at + 0.5 && audio.buffered.end(i) >= at) return Math.max(0, audio.buffered.end(i) - at);
+    }
+    return 0;
+  },
 };
 
 function shuffled<T>(items: T[]): T[] {

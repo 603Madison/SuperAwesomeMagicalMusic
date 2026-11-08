@@ -24,9 +24,37 @@ This repository holds:
   address and sign in (single sign-on through the browser, or a password); your library, radio and
   playlists are there. Playlists are kept on the phone and changes made offline sync when you're
   back; songs and whole playlists download for offline listening; quality is set separately for
-  Wi-Fi, mobile data and satellite; Android Auto, voice search and lyrics. Installs alongside Lite.
+  Wi-Fi, mobile data and satellite; Android Auto, voice search and lyrics. Your devices work
+  together (play on one, control it from another, move the music between them), and at home your
+  Yamaha MusicCast speakers join them. Installs alongside Lite.
 
 Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Android 8.0+ (API 26).
+
+## In action
+
+The web player's Now Playing page: the cover's colours fill the window, and the lyrics follow the
+song (the line being sung is big and bright; click any line to jump there).
+
+![Now Playing in the web player, with the cover beside lyrics that follow the song](docs/screenshots/web-now-playing-lyrics.jpg)
+
+| The Song view (cover and details, no scrolling) | One search box for artists, albums and songs |
+| --- | --- |
+| ![Now Playing's Song view](docs/screenshots/web-now-playing.jpg) | ![Search with a top result, songs and albums](docs/screenshots/web-search.jpg) |
+| **An artist's page** | **The web player on a phone** |
+| ![An artist's page with their popular songs](docs/screenshots/web-artist.jpg) | <img src="docs/screenshots/web-phone.jpg" alt="Now Playing on a phone, with its own controls" width="300"> |
+
+The SuperAwesomeMagicalMusic app (for the server): an artist's page, controlling the web player
+from the phone (devices work together, like Spotify Connect, and MusicCast speakers join them),
+and favourite stations at the top of Radio.
+
+<p>
+  <img src="docs/screenshots/app-artist.png" alt="The app's artist page" width="250">
+  <img src="docs/screenshots/app-devices.png" alt="The app controlling the web player, with the devices to play on" width="250">
+  <img src="docs/screenshots/app-radio.png" alt="Favourite stations at the top of the app's Radio tab" width="250">
+</p>
+
+The screenshots use a made-up demo library (Velvet Satellites aren't a real band), so the covers
+are generated.
 
 ## Features
 

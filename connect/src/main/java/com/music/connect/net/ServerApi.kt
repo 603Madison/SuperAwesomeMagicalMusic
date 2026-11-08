@@ -38,6 +38,20 @@ data class ApiTrack(
     val isStationTrack: Boolean get() = source == SourceType.SIRIUSXM && sourceId.startsWith("stationtrack:")
     val isRadio: Boolean get() = source == SourceType.RADIO
 
+    /** A Pandora artist station itself (kept as a favourite; played by starting the station). */
+    val isPandoraStation: Boolean get() = source == SourceType.SIRIUSXM && sourceId.startsWith(PANDORA_STATION)
+
+    /** The Pandora station a station track, or a station, is. */
+    val pandoraStationId: String? get() = when {
+        isPandoraStation -> sourceId.removePrefix(PANDORA_STATION)
+        isStationTrack -> sourceId.removePrefix("stationtrack:").substringBefore(':')
+        else -> null
+    }
+
+    companion object {
+        const val PANDORA_STATION = "channel:artist-station:"
+    }
+
     /** Live: no end and no seeking (SiriusXM channels, radio stations). */
     val isLive: Boolean get() = isChannel || isRadio
 
@@ -232,10 +246,11 @@ class ServerApi(
         slow.newCall(request("POST", "${base()}/api/playlists/import", body, true)).execute().use { parse(it, ImportResult.serializer()) }
     }
 
-    suspend fun resolve(track: ApiTrack, kbps: Int, thorough: Boolean): ResolvedStream =
+    /** Where [track] streams from, as a player that plays [codecs] gets it (the phone plays them all). */
+    suspend fun resolve(track: ApiTrack, kbps: Int, thorough: Boolean, codecs: List<String> = CODECS): ResolvedStream =
         post(
             "${base()}/api/play/resolve",
-            ApiJson.encodeToString(ResolveBody.serializer(), ResolveBody(track, kbps, CODECS, thorough)),
+            ApiJson.encodeToString(ResolveBody.serializer(), ResolveBody(track, kbps, codecs, thorough)),
             ResolvedStream.serializer(),
         )
 

@@ -50,7 +50,7 @@ class TestServer(val audio: ByteArray = ByteArray(5000) { (it % 251).toByte() })
         dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val url = request.requestUrl!!
-                if (url.encodedPath.startsWith("/Audio/song1/stream")) {
+                if (url.encodedPath.startsWith("/Audio/song1/stream") || url.encodedPath.startsWith("/Audio/song2/stream")) {
                     return MockResponse().setHeader("Content-Type", "audio/flac").setBody(Buffer().write(audio))
                 }
                 val term = url.queryParameter("searchTerm")?.lowercase()
@@ -63,6 +63,7 @@ class TestServer(val audio: ByteArray = ByteArray(5000) { (it % 251).toByte() })
                     url.encodedPath != "/Items" -> return MockResponse().setResponseCode(404)
                     url.queryParameter("ids") == "ar1" -> listOf(artist)
                     url.queryParameter("ids") == "song1" -> listOf(song)
+                    url.queryParameter("ids") == "song2" -> listOf(song2)
                     url.queryParameter("parentId") == "al1" || url.queryParameter("artistIds") == "ar1" -> listOf(song, song2)
                     else -> listOf(song).filter { named("Neon Tidepool") }
                 }

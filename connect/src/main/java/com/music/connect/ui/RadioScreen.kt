@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.rounded.HeartBroken
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -100,6 +102,8 @@ private fun Favorites(favorites: List<ApiTrack>) {
     val c = appContainer()
     val player = LocalPlayer.current
     val playing by player.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    val playingKey = c.favoriteOf(playing.track)?.key
     var menuFor by remember { mutableStateOf<String?>(null) }
     SectionTitle("Favourites")
     LazyRow(
@@ -108,11 +112,17 @@ private fun Favorites(favorites: List<ApiTrack>) {
         modifier = Modifier.padding(bottom = 12.dp).testTag("favorites"),
     ) {
         items(favorites, key = { it.key }) { track ->
-            val current = playing.track?.key == track.key
+            val current = playingKey == track.key
             Box {
                 Column(
                     Modifier.width(88.dp).combinedClickable(
-                        onClick = { player.play(listOf(track)) },
+                        onClick = {
+                            scope.launch {
+                                runCatching { c.tracksOf(track) }
+                                    .onSuccess { if (it.isNotEmpty()) player.play(it) else c.tell("SiriusXM sent nothing for this station") }
+                                    .onFailure { c.tell(it.message ?: "Couldn't start ${track.title}") }
+                            }
+                        },
                         onLongClick = { menuFor = track.key },
                         onLongClickLabel = "More",
                     ),
@@ -218,7 +228,10 @@ private fun Stations(source: SourceView) {
                 Modifier.fillMaxWidth().clickable {
                     scope.launch {
                         runCatching { c.api.station(source.id, artist, null, null, false) }
-                            .onSuccess { if (it.tracks.isNotEmpty()) player.play(it.tracks) else c.tell("SiriusXM sent nothing for this station") }
+                            .onSuccess {
+                                c.rememberStation(it.station)
+                                if (it.tracks.isNotEmpty()) player.play(it.tracks) else c.tell("SiriusXM sent nothing for this station")
+                            }
                             .onFailure { c.tell(it.message ?: "Couldn't start the station") }
                     }
                 }.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -226,12 +239,51 @@ private fun Stations(source: SourceView) {
             ) {
                 Artwork(artist.artworkUrl, 52.dp)
                 Spacer(Modifier.width(12.dp))
-                Column {
+                Column(Modifier.weight(1f)) {
                     Text(artist.name, style = MaterialTheme.typography.bodyLarge)
                     Text(if (artist.stationId != null) "Pandora station" else "Artist station", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                StationHeart(source, artist)
             }
         }
+    }
+}
+
+/** A heart on an artist's Pandora station: the station is made (or found) when it's favourited. */
+@Composable
+private fun StationHeart(source: SourceView, artist: ArtistView) {
+    val c = appContainer()
+    val scope = rememberCoroutineScope()
+    val favorites by c.favorites.collectAsState()
+    var busy by remember { mutableStateOf(false) }
+    val saved = favorites.firstOrNull { f ->
+        f.isPandoraStation && f.via == source.id && (f.pandoraStationId == artist.stationId || f.title == artist.name)
+    }
+    IconButton(
+        enabled = !busy,
+        onClick = {
+            busy = true
+            scope.launch {
+                if (saved != null) {
+                    c.setFavorite(saved, false)
+                } else {
+                    runCatching { c.api.station(source.id, artist, null, null, false) }
+                        .onSuccess {
+                            c.rememberStation(it.station)
+                            c.setFavorite(it.station, true)
+                            c.tell("${it.station.title} is in your favourites, at the top of the Radio tab")
+                        }
+                        .onFailure { c.tell(it.message ?: "Couldn't make the station") }
+                }
+                busy = false
+            }
+        },
+    ) {
+        Icon(
+            if (saved != null) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+            if (saved != null) "Remove ${artist.name}'s station from favourites" else "Add ${artist.name}'s station to favourites",
+            tint = if (saved != null) SiteRose else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

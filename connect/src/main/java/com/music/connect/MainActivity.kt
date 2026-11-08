@@ -60,6 +60,8 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         if (container.settings.value.signedIn) SyncWorker.enqueue(this)
+        // A speaker playing from the phone while the app was in the background: keep it going.
+        com.music.connect.speakers.SpeakerService.keepAliveIfPlaying(this)
     }
 
     override fun onDestroy() {

@@ -40,6 +40,16 @@ class LiveFavoritesTest {
         }
         assertEquals(HttpStatusCode.BadRequest, song.status)
 
+        // A Pandora station can be one (it's played by starting the station); one of its songs can't.
+        val pandora = """{"source":"SIRIUSXM","sourceId":"channel:artist-station:abc123","title":"Phoebe Bridgers","artist":"Pandora station · SiriusXM","via":"$radio"}"""
+        val withStation = maddie.put("/api/live/favorites") { csrf(); json("""{"track":$pandora,"favorite":true}""") }.json().jsonArray
+        assertEquals(listOf("Phoebe Bridgers", "Lake FM"), withStation.map { it.jsonObject.str("title") })
+        val stationSong = maddie.put("/api/live/favorites") {
+            csrf(); json("""{"track":{"source":"SIRIUSXM","sourceId":"stationtrack:abc123:t9","title":"Motion Sickness","artist":"Phoebe Bridgers","via":"$radio"},"favorite":true}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, stationSong.status)
+        maddie.put("/api/live/favorites") { csrf(); json("""{"track":$pandora,"favorite":false}""") }
+
         val removed = maddie.put("/api/live/favorites") { csrf(); json("""{"track":$station,"favorite":false}""") }.json().jsonArray
         assertTrue(removed.isEmpty())
         assertTrue(maddie.get("/api/live/favorites").json().jsonArray.isEmpty())

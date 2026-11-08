@@ -1,6 +1,13 @@
 package com.music.connect.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Speaker
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -67,6 +74,8 @@ fun SettingsScreen() {
             ToggleRow("Only on Wi-Fi", "Downloads wait for Wi-Fi or another unmetered network.", settings.downloadOnWifiOnly) { v -> update { it.copy(downloadOnWifiOnly = v) } }
         }
 
+        Panel("Speakers") { SpeakerSettings(settings, ::update) }
+
         Panel("Account") {
             Text(settings.user?.displayName ?: "", style = MaterialTheme.typography.titleMedium)
             Text("${settings.user?.username} on ${settings.serverName.ifBlank { settings.server }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -130,5 +139,78 @@ private fun ToggleRow(label: String, help: String, checked: Boolean, onChange: (
             Text(help, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked, onCheckedChange = onChange)
+    }
+}
+
+/** Yamaha MusicCast speakers: on or off, the ones found, and ones added by address. */
+@Composable
+private fun SpeakerSettings(settings: Settings, update: ((Settings) -> Settings) -> Unit) {
+    val c = appContainer()
+    val found by c.speakers.found.collectAsState()
+    val searching by c.speakers.searching.collectAsState()
+    val network by c.network.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    var adding by remember { mutableStateOf(false) }
+    ToggleRow(
+        "MusicCast speakers",
+        "At home, Yamaha MusicCast speakers show up among your devices: anything you play, on the web or here, can play on them. The phone hands them each song, so it stays on the Wi-Fi meanwhile.",
+        settings.speakers,
+    ) { v -> update { it.copy(speakers = v) } }
+    if (!settings.speakers) return
+    when {
+        network.networkClass != NetworkClass.WIFI -> Text("They're found when the phone is on Wi-Fi.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        found.isEmpty() && !searching -> Text("None found on this Wi-Fi.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    found.forEach { speaker ->
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("speaker-${speaker.deviceId}")) {
+            Icon(Icons.Rounded.Speaker, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(speaker.name, style = MaterialTheme.typography.bodyLarge)
+                Text(listOf(speaker.model, speaker.host).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val problem = c.speakers.problemOf(speaker.deviceId)?.collectAsState()?.value
+                problem?.let { Text("Last problem: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            }
+        }
+    }
+    settings.speakerAddresses.forEach { address ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Added: $address", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            TextButton(onClick = { update { it.copy(speakerAddresses = it.speakerAddresses - address) } }) { Text("Remove") }
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = { scope.launch { c.speakers.refresh() } }, enabled = !searching && network.networkClass == NetworkClass.WIFI) {
+            Text(if (searching) "Searching…" else "Search again")
+        }
+        TextButton(onClick = { adding = true }) { Text("Add by address") }
+    }
+    if (adding) {
+        var address by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { adding = false },
+            title = { Text("Add a speaker") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Its IP address, from the MusicCast app (the speaker's Settings › Network) or your router.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(address, { address = it.trim() }, singleLine = true, placeholder = { Text("192.168.1.40") })
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val added = address
+                        update { it.copy(speakerAddresses = (it.speakerAddresses + added).distinct()) }
+                        adding = false
+                        scope.launch {
+                            kotlinx.coroutines.delay(300)
+                            c.speakers.refresh()
+                        }
+                    },
+                    enabled = address.matches(Regex("[0-9A-Za-z.:\\[\\]-]{3,64}")),
+                ) { Text("Add") }
+            },
+            dismissButton = { TextButton(onClick = { adding = false }) { Text("Cancel") } },
+        )
     }
 }

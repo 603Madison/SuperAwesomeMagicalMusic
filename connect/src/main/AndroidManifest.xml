@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- MusicCast speakers: finding them on the Wi-Fi, and staying awake while one plays from the phone. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Only to find radio stations near you when you ask. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -86,6 +90,10 @@
                 tools:node="remove" />
         </provider>
 
+        <service
+            android:name=".speakers.SpeakerService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"

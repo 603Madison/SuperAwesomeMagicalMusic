@@ -17,7 +17,9 @@ import com.music.connect.net.ConnectClient
 import com.music.connect.net.Listen
 import com.music.connect.net.NetworkMonitor
 import com.music.connect.net.ServerApi
+import com.music.connect.speakers.Speakers
 import com.music.player.AppInfo
+import com.music.player.model.SourceType
 import com.music.player.CoreLog
 import com.music.player.net.Http
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -64,8 +66,42 @@ class Container(val context: Context) {
     /** This phone among the person's devices (see ConnectClient). */
     val devices = ConnectClient(context, http, { settings.value.server }, { settings.value.token }, scope)
 
+    /** MusicCast speakers on the Wi-Fi, as the person's devices (see Speakers). */
+    val speakers = Speakers(context, http, api, settings, network.state, scope) { tell(it) }
+
     /** The person's favourite channels and stations, shared with the web player (see [refreshFavorites]). */
     val favorites = MutableStateFlow<List<ApiTrack>>(emptyList())
+
+    /** Pandora stations started on this phone, by id: their names, for the heart while they play. */
+    private val stations = java.util.concurrent.ConcurrentHashMap<String, ApiTrack>()
+
+    fun rememberStation(station: ApiTrack) {
+        if (station.isPandoraStation) station.pandoraStationId?.let { stations[it] = station }
+    }
+
+    /**
+     * What the heart beside [track] keeps: the channel or radio station itself, or the Pandora
+     * station a song came from; null for anything else.
+     */
+    fun favoriteOf(track: ApiTrack?): ApiTrack? {
+        if (track?.via == null) return null
+        if (track.isStationTrack) {
+            val id = track.pandoraStationId ?: return null
+            val sourceId = ApiTrack.PANDORA_STATION + id
+            return stations[id]
+                ?: favorites.value.firstOrNull { it.sourceId == sourceId && it.via == track.via }
+                ?: ApiTrack(SourceType.SIRIUSXM, sourceId, "Pandora station", "Pandora station · SiriusXM", "Pandora artist stations", via = track.via)
+        }
+        return track.takeIf { it.isLive }
+    }
+
+    /** What playing [favorite] plays: the channel or station, or a Pandora station's first songs. */
+    suspend fun tracksOf(favorite: ApiTrack): List<ApiTrack> {
+        if (!favorite.isPandoraStation) return listOf(favorite)
+        val started = api.station(favorite.via ?: return emptyList(), null, favorite.pandoraStationId, favorite.title, false)
+        rememberStation(started.station)
+        return started.tracks
+    }
 
     /** Fetches the favourites again (when online and signed in). */
     suspend fun refreshFavorites() {
@@ -87,6 +123,15 @@ class Container(val context: Context) {
                 }
         }
     }
+
+    /** Evens out loudness between songs (in the playback service's audio path; the details show it). */
+    val loudness = com.music.connect.playback.LoudnessProcessor()
+
+    /** Each song played's stream details (filled in by the playback service), for its details. */
+    val streamFacts = MutableStateFlow<Map<String, com.music.connect.playback.StreamFacts>>(emptyMap())
+
+    /** The audio being decoded now (codec, sample rate…), as the player says. */
+    val audioDetails = MutableStateFlow<com.music.connect.playback.AudioDetails?>(null)
 
     /** What's playing came from where, at what quality (filled in by the playback service). */
     val playingDescription = MutableStateFlow<Map<String, String>>(emptyMap())
@@ -110,6 +155,7 @@ class Container(val context: Context) {
             }
         }
         network.start()
+        speakers.start()
         SyncWorker.schedulePeriodic(context)
         // Signed in or out, or another server: this phone's place among the devices follows.
         scope.launch {

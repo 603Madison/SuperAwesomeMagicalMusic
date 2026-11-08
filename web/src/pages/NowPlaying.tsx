@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Maximize2, Minimize2, Pause, Play, SkipBack, SkipForward } from "lucide-react";
+import { Info, Maximize2, Minimize2, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { api, art } from "../lib/api";
 import { duration } from "../lib/format";
 import type { LyricsView, NowView, Track } from "../lib/types";
@@ -9,10 +9,11 @@ import { useSeek } from "../player/useSeek";
 import { Artwork } from "../components/Artwork";
 import { albumNamed, artistNamed } from "../components/Cards";
 import { Queue } from "../components/Queue";
-import { canFavorite, FavoriteButton } from "../components/Favorite";
+import { favoriteOf, FavoriteButton } from "../components/Favorite";
 import { splitTwo } from "../player/live";
 import { TrackMenu } from "../components/TrackList";
-import { Button, Spinner } from "../components/ui";
+import { Button, IconButton, Spinner } from "../components/ui";
+import { TrackInfo } from "../components/TrackInfo";
 
 /**
  * What's playing, made to be looked at: the cover large and still, the room washed in its
@@ -37,8 +38,11 @@ export function NowPlaying() {
   };
   const root = useRef<HTMLDivElement>(null);
   const fullscreen = useFullscreen(root);
+  const [info, setInfo] = useState(false);
 
   const base = current?.track ?? item?.track;
+  // The channel or station playing, or the Pandora station this song is from.
+  const favorite = favoriteOf(base);
   const live = !!current?.live;
   // On live radio: the song on now (when the channel says), its cover (or the channel's), its album.
   const track = base && liveNow
@@ -75,23 +79,29 @@ export function NowPlaying() {
           <div className={`np-art ${playing ? "is-playing" : ""}`}>
             <Artwork url={track.artworkUrl} size={480} px={1024} alt="" className="np-artwork" />
           </div>
+          {/* As wide as the cover: the channel above, the song with its buttons, then how far in. */}
           <div className="np-meta">
-            <div className="np-titles">
-              {live && base && <Channel channel={base} />}
-              <h1 title={track.title}>{track.title}</h1>
-              <p className="np-artist">
-                {song?.artist ? <Link to={artistNamed(song.artist)}>{track.artist}</Link> : track.artist}
-                {track.album && (
-                  <>
-                    <span className="np-dot"> · </span>
-                    {song?.artist ? <Link to={albumNamed(track.album, song.artist)}>{track.album}</Link> : <span>{track.album}</span>}
-                  </>
-                )}
-              </p>
-              {live ? <LiveSong /> : <p className="np-quality">{current ? current.description : buffering ? "Finding the best copy…" : ""}</p>}
+            {live && base && <Channel channel={base} />}
+            <div className="np-meta-row">
+              <div className="np-titles">
+                <h1 title={track.title}>{track.title}</h1>
+                <p className="np-artist">
+                  {song?.artist ? <Link to={artistNamed(song.artist)}>{track.artist}</Link> : track.artist}
+                  {track.album && (
+                    <>
+                      <span className="np-dot"> · </span>
+                      {song?.artist ? <Link to={albumNamed(track.album, song.artist)}>{track.album}</Link> : <span>{track.album}</span>}
+                    </>
+                  )}
+                </p>
+              </div>
+              <div className="np-actions">
+                {favorite && <FavoriteButton track={favorite} size={22} />}
+                <IconButton label="Details" onClick={() => setInfo(true)}><Info size={20} /></IconButton>
+                {song && !song.sourceId.startsWith("channel:") && <TrackMenu track={song} />}
+              </div>
             </div>
-            {live && canFavorite(base) && <FavoriteButton track={base} size={22} />}
-            {song && !song.sourceId.startsWith("channel:") && <TrackMenu track={song} />}
+            {live ? <LiveSong /> : <p className="np-quality">{current ? current.description : buffering ? "Finding the best copy…" : ""}</p>}
           </div>
           <Controls live={live} />
         </section>
@@ -119,6 +129,7 @@ export function NowPlaying() {
           )}
         </section>
       </div>
+      {info && <TrackInfo track={base ?? track} onClose={() => setInfo(false)} />}
     </div>
   );
 }

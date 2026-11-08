@@ -11,7 +11,7 @@ import { player, usePlayer } from "../player/player";
 import { useSeek, useSeekBar } from "../player/useSeek";
 import { connect, positionOf, useConnect, useRemote, type Device } from "../player/connect";
 import { Artwork } from "./Artwork";
-import { canFavorite, FavoriteButton } from "./Favorite";
+import { favoriteOf, FavoriteButton } from "./Favorite";
 import { IconButton, Menu, type MenuItem } from "./ui";
 
 export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; onToggleQueue: () => void }) {
@@ -26,6 +26,8 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
   const thumbs = usePlayer((s) => s.thumbs);
   const navigate = useNavigate();
   const base = current?.track ?? item?.track;
+  // The channel or station playing, or the Pandora station this song is from.
+  const favorite = favoriteOf(base);
   // On live radio, the song on now (when the channel says), with the channel underneath.
   const track = base && liveNow ? { ...base, title: liveNow.title || base.title, artist: liveNow.artist || base.title, artworkUrl: liveNow.artworkUrl ?? base.artworkUrl } : base;
   const detail = error ?? (current?.live ? (liveNow ? base?.title : current.description) : current?.description) ?? (buffering ? "Finding the best copy…" : "");
@@ -76,7 +78,7 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
             <IconButton label="Thumbs up" active={thumb === "UP"} onClick={() => player.thumb("UP").catch(errorToast)}><ThumbsUp size={18} /></IconButton>
           </>
         )}
-        {current?.live && canFavorite(base) && <FavoriteButton track={base} size={18} />}
+        {favorite && <FavoriteButton track={favorite} size={18} />}
         <IconButton label="Lyrics" onClick={() => navigate("/now-playing?view=lyrics")} disabled={!track || current?.live}><MicVocal size={18} /></IconButton>
         <IconButton label="Queue" active={queueOpen} onClick={onToggleQueue}><ListMusic size={18} /></IconButton>
         <Devices />

@@ -114,6 +114,9 @@ class PlayerConnection(private val context: Context, private val server: () -> S
     fun next() = controller?.seekToNextMediaItem()
     fun previous() = controller?.seekToPrevious()
     fun seek(ms: Long) = controller?.seekTo(ms)
+
+    /** How much is loaded ahead of where it's playing. */
+    fun bufferedMs(): Long = controller?.totalBufferedDuration?.coerceAtLeast(0) ?: 0
     fun jumpTo(index: Int) = controller?.let { it.seekTo(index, 0); it.play() }
     fun remove(index: Int) = controller?.removeMediaItem(index)
     fun move(from: Int, to: Int) = controller?.moveMediaItem(from, to)

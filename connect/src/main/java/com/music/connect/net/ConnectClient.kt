@@ -72,6 +72,11 @@ class ConnectClient(
     private val server: () -> String,
     private val token: () -> String?,
     private val scope: CoroutineScope,
+    /** "phone", or "speaker" for a speaker this phone stands in for. */
+    private val kind: String = "phone",
+    /** The device's id and name, when it isn't this phone. */
+    private val fixedId: String? = null,
+    private val fixedName: String? = null,
 ) {
     private val http = http.newBuilder().pingInterval(25, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS).build()
     private val _devices = MutableStateFlow<List<ConnectDevice>>(emptyList())
@@ -84,7 +89,7 @@ class ConnectClient(
     private val _commands = MutableSharedFlow<ConnectCommand>(extraBufferCapacity = 16)
     val commands: SharedFlow<ConnectCommand> = _commands
 
-    val me: String by lazy { deviceId() }
+    val me: String by lazy { fixedId ?: deviceId() }
 
     private var socket: WebSocket? = null
     private var users = 0
@@ -165,8 +170,8 @@ class ConnectClient(
         val url = base.newBuilder()
             .addPathSegments("api/connect/ws")
             .addQueryParameter("id", me)
-            .addQueryParameter("name", deviceName())
-            .addQueryParameter("kind", "phone")
+            .addQueryParameter("name", fixedName ?: deviceName())
+            .addQueryParameter("kind", kind)
             .build()
         val request = Request.Builder().url(url).header("Authorization", "Bearer $token").build()
         socket = http.newWebSocket(request, object : WebSocketListener() {
