@@ -30,6 +30,8 @@ data class JfItem(
     @SerialName("ImageTags") val imageTags: Map<String, String> = emptyMap(),
     @SerialName("AlbumPrimaryImageTag") val albumPrimaryImageTag: String? = null,
     @SerialName("MediaSources") val mediaSources: List<JfMediaSource> = emptyList(),
+    @SerialName("ProductionYear") val productionYear: Int? = null,
+    @SerialName("ChildCount") val childCount: Int? = null,
     /** Jellyfin 10.9+: the gain (dB) that brings the track to -18 LUFS. */
     @SerialName("NormalizationGain") val normalizationGain: Float? = null,
 )

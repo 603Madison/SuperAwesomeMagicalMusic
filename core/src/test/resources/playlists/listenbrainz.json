@@ -1,0 +1,36 @@
+{
+ "playlist": {
+  "title": "Claypool Hour",
+  "creator": "mr_monkey",
+  "identifier": "https://listenbrainz.org/playlist/5bb057eb-b38a-4a8d-8218-c5004f052fb2",
+  "track": [
+   {
+    "title": "John the Fisherman",
+    "creator": "Primus",
+    "album": "Frizzle Fry",
+    "duration": 217600,
+    "identifier": [
+     "https://musicbrainz.org/recording/c0c7ae45-1854-432b-8cd1-7cd606cd9d2b"
+    ]
+   },
+   {
+    "title": "Ground Hog\u2019s Day",
+    "creator": "Primus",
+    "album": "Frizzle Fry",
+    "duration": 298360,
+    "identifier": [
+     "https://musicbrainz.org/recording/a48bd40b-0d74-4319-bcc2-190fe4ce0381"
+    ]
+   },
+   {
+    "title": "Pressman",
+    "creator": "Primus",
+    "album": "Suck on This",
+    "duration": 300600,
+    "identifier": [
+     "https://musicbrainz.org/recording/3aa89da7-210a-409a-a5da-7634e27c5d0b"
+    ]
+   }
+  ]
+ }
+}

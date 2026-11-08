@@ -4,6 +4,7 @@ import com.music.player.lyrics.LyricsRepository
 import com.music.player.net.Http
 import com.music.player.quality.StreamQuality
 import com.music.player.settings.JellyfinConfig
+import com.music.player.sources.TrackMatcher
 import com.music.player.sources.jellyfin.JellyfinSource
 import com.music.server.sources.SourceKind
 import com.music.server.ApiError
@@ -37,8 +38,19 @@ data class LyricsView(val lines: List<LyricLineView>, val source: String = "", v
 @Serializable
 data class LyricsRequest(val track: ApiTrack)
 
+/**
+ * A search's results: [top], [songs], [artists] and [albums] across all the person's sources;
+ * [groups] is each source's songs as it found them (for older apps).
+ */
 @Serializable
-data class SearchResponse(val query: String, val groups: List<SearchGroup>)
+data class SearchResponse(
+    val query: String,
+    val groups: List<SearchGroup>,
+    val top: TopView? = null,
+    val songs: List<ApiTrack> = emptyList(),
+    val artists: List<ArtistSummary> = emptyList(),
+    val albums: List<AlbumSummary> = emptyList(),
+)
 
 @Serializable
 data class ResolveRequest(
@@ -74,10 +86,38 @@ fun Route.musicRoutes(services: Services) {
         if (query.isEmpty()) return@get call.respond(SearchResponse(query, emptyList()))
         if (query.length > 200) throw ApiError.badRequest("That search is too long")
         val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, 50) ?: 25
-        val groups = services.catalog.search(user, query, limit).map { group ->
-            group.copy(tracks = group.tracks.map(services.artwork::outgoing))
-        }
-        call.respond(SearchResponse(query, groups))
+        val (groups, results) = services.browser.search(user, query, limit)
+        val views = services.views
+        call.respond(
+            SearchResponse(
+                query = query,
+                groups = groups.map { group -> group.copy(tracks = group.tracks.map(services.artwork::outgoing)) },
+                top = views.top(results.top),
+                songs = results.songs.map(views::track),
+                artists = results.artists.map(views::artist),
+                albums = results.albums.map(views::album),
+            ),
+        )
+    }
+
+    // An artist's page: by the id a search gave, or by name (a song's artist).
+    get("/api/artist") {
+        val user = call.requireUser(services)
+        val params = call.request.queryParameters
+        val key = params["id"]?.let(BrowseKey::decode)
+            ?: params["name"]?.trim()?.takeIf { it.isNotEmpty() && it.length < 300 }?.let { BrowseKey.artist(TrackMatcher.primaryArtist(it)) }
+            ?: throw ApiError.badRequest("Which artist?")
+        call.respond(services.views.artistPage(services.browser.artist(user, key)))
+    }
+
+    // An album: by the id a search gave, or by title and artist (a song's album).
+    get("/api/album") {
+        val user = call.requireUser(services)
+        val params = call.request.queryParameters
+        val key = params["id"]?.let(BrowseKey::decode)
+            ?: params["title"]?.trim()?.takeIf { it.isNotEmpty() && it.length < 300 }?.let { BrowseKey.album(it, params["artist"]?.trim().orEmpty()) }
+            ?: throw ApiError.badRequest("Which album?")
+        call.respond(services.views.albumPage(services.browser.album(user, key)))
     }
 
     post("/api/play/resolve") {

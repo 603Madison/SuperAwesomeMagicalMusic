@@ -12,6 +12,9 @@ import com.music.server.auth.UserStore
 import com.music.server.db.Database
 import com.music.server.db.Schema
 import com.music.server.music.Artwork
+import com.music.server.music.BrowseViews
+import com.music.server.music.Browser
+import com.music.server.playlists.Importer
 import com.music.server.music.Catalog
 import com.music.server.music.LidarrRequests
 import com.music.server.music.LiveProxy
@@ -61,6 +64,9 @@ class Services(
     val playlists = PlaylistStore(db, clock)
     val history = HistoryStore(db)
     val artwork = Artwork(box)
+    val browser = Browser(sources, registry)
+    val importer = Importer(http, sources, registry)
+    val views = BrowseViews(artwork)
     val live = LiveProxy(http, box, clock)
 
     override fun close() {

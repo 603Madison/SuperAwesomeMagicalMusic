@@ -1,6 +1,11 @@
 package com.music.player.sources.jellyfin
 
 import com.music.player.AppInfo
+import com.music.player.browse.AlbumDetail
+import com.music.player.browse.AlbumRef
+import com.music.player.browse.ArtistDetail
+import com.music.player.browse.ArtistRef
+import com.music.player.browse.Browsable
 import com.music.player.model.SourceType
 import com.music.player.model.Track
 import com.music.player.net.AppJson
@@ -29,7 +34,7 @@ class JellyfinSource(
     private val deviceId: suspend () -> String,
     /** The format Jellyfin transcodes to when a bitrate cap applies. */
     private val transcodeCodec: suspend () -> TranscodeCodec = { TranscodeCodec.MP3 },
-) : MusicSource {
+) : MusicSource, Browsable {
     override val type = SourceType.JELLYFIN
 
     override suspend fun isAvailable(): Boolean = config().isConfigured
@@ -64,6 +69,62 @@ class JellyfinSource(
         if (track.source == type) return track
         return lookUp(track)
     }
+
+    override suspend fun searchArtists(query: String, limit: Int): List<ArtistRef> {
+        val (config, deviceId) = requireConfig()
+        return searchVariants(query).flatMap { term ->
+            val url = "${config.serverUrl}/Artists".toHttpUrl().newBuilder()
+                .addQueryParameter("userId", config.userId)
+                .addQueryParameter("searchTerm", term)
+                .addQueryParameter("limit", limit.toString())
+                .addQueryParameter("enableImageTypes", "Primary")
+                .build()
+            fetchItems(url, config, deviceId)
+        }.distinctBy { it.id }.take(limit).map { it.toArtist(config.serverUrl) }
+    }
+
+    override suspend fun searchAlbums(query: String, limit: Int): List<AlbumRef> {
+        val (config, deviceId) = requireConfig()
+        return searchVariants(query).flatMap { term ->
+            val url = albumsUrl(config).addQueryParameter("searchTerm", term).addQueryParameter("limit", limit.toString()).build()
+            fetchItems(url, config, deviceId)
+        }.distinctBy { it.id }.take(limit).map { it.toAlbum(config.serverUrl) }
+    }
+
+    override suspend fun album(ref: AlbumRef): AlbumDetail {
+        val (config, deviceId) = requireConfig()
+        val url = itemsUrl(config)
+            .addQueryParameter("parentId", ref.id)
+            .addQueryParameter("sortBy", "ParentIndexNumber,IndexNumber,SortName")
+            .build()
+        val about = fetchItems(albumsUrl(config).addQueryParameter("ids", ref.id).build(), config, deviceId).firstOrNull()?.toAlbum(config.serverUrl)
+        val tracks = fetchItems(url, config, deviceId).map { it.toTrack(config.serverUrl) }
+        return AlbumDetail(about ?: ref, tracks)
+    }
+
+    override suspend fun artist(ref: ArtistRef): ArtistDetail {
+        val (config, deviceId) = requireConfig()
+        // The artist's own albums; or, for an artist only on others' albums, those.
+        val own = fetchItems(albumsUrl(config).addQueryParameter("albumArtistIds", ref.id).sortedNewestFirst().build(), config, deviceId)
+        val albums = own.ifEmpty { fetchItems(albumsUrl(config).addQueryParameter("artistIds", ref.id).sortedNewestFirst().build(), config, deviceId) }
+        val top = itemsUrl(config)
+            .addQueryParameter("artistIds", ref.id)
+            .addQueryParameter("sortBy", "PlayCount,SortName")
+            .addQueryParameter("sortOrder", "Descending,Ascending")
+            .addQueryParameter("limit", "10")
+            .build()
+        return ArtistDetail(ref, fetchItems(top, config, deviceId).map { it.toTrack(config.serverUrl) }, albums.map { it.toAlbum(config.serverUrl) })
+    }
+
+    private fun HttpUrl.Builder.sortedNewestFirst() = addQueryParameter("sortBy", "ProductionYear,SortName").addQueryParameter("sortOrder", "Descending,Ascending")
+
+    private fun albumsUrl(config: JellyfinConfig): HttpUrl.Builder =
+        "${config.serverUrl}/Items".toHttpUrl().newBuilder()
+            .addQueryParameter("userId", config.userId)
+            .addQueryParameter("includeItemTypes", "MusicAlbum")
+            .addQueryParameter("recursive", "true")
+            .addQueryParameter("fields", "ProductionYear,ChildCount")
+            .addQueryParameter("enableImageTypes", "Primary")
 
     /**
      * Looks for [track] by its title and artist, even when it's a Jellyfin track already (from
@@ -186,6 +247,23 @@ class JellyfinSource(
         if (!config.isConfigured) throw SourceUnavailableException("Jellyfin is not set up")
         return config to deviceId()
     }
+
+    private fun JfItem.toArtist(baseUrl: String) = ArtistRef(
+        source = SourceType.JELLYFIN,
+        id = id,
+        name = name ?: "Unknown artist",
+        artworkUrl = imageTags["Primary"]?.let { "$baseUrl/Items/$id/Images/Primary?maxHeight=512&tag=$it" },
+    )
+
+    private fun JfItem.toAlbum(baseUrl: String) = AlbumRef(
+        source = SourceType.JELLYFIN,
+        id = id,
+        title = name ?: "Unknown album",
+        artist = albumArtist ?: artists.joinToString(", ").ifBlank { "Unknown artist" },
+        year = productionYear,
+        artworkUrl = imageTags["Primary"]?.let { "$baseUrl/Items/$id/Images/Primary?maxHeight=512&tag=$it" },
+        trackCount = childCount,
+    )
 
     private fun JfItem.toTrack(baseUrl: String): Track {
         val primaryTag = imageTags["Primary"]

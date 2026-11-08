@@ -1,5 +1,10 @@
 package com.music.player.sources.youtube
 
+import com.music.player.browse.AlbumDetail
+import com.music.player.browse.AlbumRef
+import com.music.player.browse.ArtistDetail
+import com.music.player.browse.ArtistRef
+import com.music.player.browse.Browsable
 import com.music.player.model.SourceType
 import com.music.player.model.Track
 import com.music.player.quality.StreamQuality
@@ -9,14 +14,20 @@ import com.music.player.sources.SourceStream
 import com.music.player.sources.SourceUnavailableException
 import com.music.player.sources.TrackMatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import org.schabi.newpipe.extractor.Image
+import org.schabi.newpipe.extractor.InfoItem
 import org.schabi.newpipe.extractor.MediaFormat
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
+import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.search.SearchInfo
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
@@ -34,7 +45,7 @@ class YouTubeMusicSource(
     private val http: OkHttpClient,
     /** Whether YouTube Music is turned on. */
     private val enabled: suspend () -> Boolean = { true },
-) : MusicSource {
+) : MusicSource, Browsable {
     override val type = SourceType.YOUTUBE_MUSIC
 
     private val service = ServiceList.YouTube
@@ -44,13 +55,38 @@ class YouTubeMusicSource(
 
     override suspend fun isAvailable(): Boolean = enabled()
 
-    override suspend fun search(query: String, limit: Int): List<Track> = withContext(Dispatchers.IO) {
+    override suspend fun search(query: String, limit: Int): List<Track> =
+        searchFor(query, YoutubeSearchQueryHandlerFactory.MUSIC_SONGS).filterIsInstance<StreamInfoItem>().mapNotNull { it.toTrack() }.take(limit)
+
+    override suspend fun searchArtists(query: String, limit: Int): List<ArtistRef> =
+        searchFor(query, YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS).filterIsInstance<ChannelInfoItem>().map { it.toArtist() }.take(limit)
+
+    override suspend fun searchAlbums(query: String, limit: Int): List<AlbumRef> =
+        searchFor(query, YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS).filterIsInstance<PlaylistInfoItem>().map { it.toAlbum() }.take(limit)
+
+    override suspend fun album(ref: AlbumRef): AlbumDetail {
+        val (info, items) = playlistItems(ref.id, max = 300)
+        val album = ref.copy(
+            title = ref.title.ifBlank { info.name.orEmpty() },
+            artist = ref.artist.ifBlank { TrackMatcher.cleanArtist(info.uploaderName.orEmpty()) },
+            artworkUrl = ref.artworkUrl ?: info.thumbnails.largest(),
+            trackCount = items.size,
+        )
+        // The songs are the album's, with its cover rather than their videos' stills.
+        return AlbumDetail(album, items.mapNotNull { it.toTrack() }.map { it.copy(album = album.title, artworkUrl = album.artworkUrl ?: it.artworkUrl) })
+    }
+
+    /** YouTube Music's artist pages aren't open to NewPipe, so their songs and albums are searched for by name. */
+    override suspend fun artist(ref: ArtistRef): ArtistDetail = coroutineScope {
+        val songs = async { search(ref.name, 40).filter { TrackMatcher.isSameArtist(it.artist, ref.name) } }
+        val albums = async { searchAlbums(ref.name, 40).filter { TrackMatcher.isSameArtist(it.artist, ref.name) } }
+        ArtistDetail(ref, songs.await().take(10), albums.await())
+    }
+
+    private suspend fun searchFor(query: String, filter: String): List<InfoItem> = withContext(Dispatchers.IO) {
         ensureInitialized()
-        val handler = service.searchQHFactory.fromQuery(query, listOf(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS), "")
+        val handler = service.searchQHFactory.fromQuery(query, listOf(filter), "")
         SearchInfo.getInfo(service, handler).relatedItems
-            .filterIsInstance<StreamInfoItem>()
-            .mapNotNull { it.toTrack() }
-            .take(limit)
     }
 
     override suspend fun stream(sourceId: String, quality: StreamQuality): SourceStream = withContext(Dispatchers.IO) {
@@ -76,7 +112,12 @@ class YouTubeMusicSource(
     }
 
     /** The songs of a YouTube or YouTube Music playlist, and its name. */
-    suspend fun playlist(url: String, max: Int = 1_000): Pair<String, List<Track>> = withContext(Dispatchers.IO) {
+    suspend fun playlist(url: String, max: Int = 1_000): Pair<String, List<Track>> {
+        val (info, items) = playlistItems(url, max)
+        return info.name.orEmpty() to items.mapNotNull { it.toTrack() }
+    }
+
+    private suspend fun playlistItems(url: String, max: Int): Pair<PlaylistInfo, List<StreamInfoItem>> = withContext(Dispatchers.IO) {
         ensureInitialized()
         val info = PlaylistInfo.getInfo(service, url)
         val items = info.relatedItems.toMutableList()
@@ -86,7 +127,7 @@ class YouTubeMusicSource(
             items += more.items
             page = more.nextPage
         }
-        info.name.orEmpty() to items.take(max).mapNotNull { it.toTrack() }
+        info to items.take(max)
     }
 
     override suspend fun findMatch(track: Track): Track? {
@@ -108,9 +149,22 @@ class YouTubeMusicSource(
         }
     }
 
+    private fun ChannelInfoItem.toArtist() = ArtistRef(SourceType.YOUTUBE_MUSIC, url, TrackMatcher.cleanArtist(name.orEmpty()), thumbnails.largest())
+
+    private fun PlaylistInfoItem.toAlbum() = AlbumRef(
+        source = SourceType.YOUTUBE_MUSIC,
+        id = url,
+        title = name.orEmpty(),
+        artist = TrackMatcher.cleanArtist(uploaderName.orEmpty()).ifBlank { "Unknown artist" },
+        artworkUrl = thumbnails.largest(),
+        trackCount = streamCount.takeIf { it > 0 }?.toInt(),
+    )
+
+    private fun List<Image>.largest(): String? = maxByOrNull { it.width.coerceAtLeast(0) * it.height.coerceAtLeast(0) }?.url
+
     private fun StreamInfoItem.toTrack(): Track? {
         val id = videoId(url) ?: return null
-        val artwork = thumbnails.maxByOrNull { it.width.coerceAtLeast(0) * it.height.coerceAtLeast(0) }?.url
+        val artwork = thumbnails.largest()
         return Track(
             source = SourceType.YOUTUBE_MUSIC,
             sourceId = id,

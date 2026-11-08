@@ -42,7 +42,7 @@ class PlaylistImportTest {
         server.enqueue(MockResponse().setBody("""<html><script id="__NEXT_DATA__" type="application/json">$data</script></html>"""))
         server.start()
         try {
-            val (name, songs) = SpotifyPlaylists(OkHttpClient(), embedBase = server.url("/embed/playlist/").toString())
+            val (name, songs) = SpotifyPlaylists(OkHttpClient(), embedBase = server.url("/embed/").toString())
                 .read("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
             assertEquals("Road Trip", name)
             assertEquals(listOf("Stick Season", "Here"), songs.map { it.title })

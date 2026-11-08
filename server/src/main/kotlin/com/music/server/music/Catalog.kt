@@ -17,7 +17,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import java.util.concurrent.ConcurrentHashMap
 
@@ -34,8 +33,8 @@ data class SearchGroup(
 data class Resolution(val source: StoredSource, val track: Track, val stream: SourceStream)
 
 /**
- * A person's music across their sources: searching all of them, and picking where a song plays
- * from, by the same rules as the Lite app:
+ * A person's music across their sources: picking where a song plays from, by the same rules as
+ * the Lite app:
  *
  *  1. Libraries (Jellyfin) first: a song from any service is looked for there.
  *  2. Not in any library: Lidarr is asked to get the artist (if set up).
@@ -51,28 +50,6 @@ class Catalog(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val streams = ConcurrentHashMap<String, Pair<Long, SourceStream>>()
-
-    suspend fun search(user: User, query: String, limit: Int = 25): List<SearchGroup> = coroutineScope {
-        val sources = store.activeFor(user).filter { it.kind.isOnDemand }
-        sources.map { source ->
-            async {
-                val music = registry.music(source) ?: return@async null
-                val result = withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
-                    runCatching { music.search(query, limit) }
-                }
-                when {
-                    result == null -> SearchGroup(source.id, source.name, source.kind, emptyList(), "${source.name} took too long to answer")
-                    result.isFailure -> {
-                        val error = result.exceptionOrNull()!!
-                        if (error is CancellationException) throw error
-                        CoreLog.w(TAG, "Search failed on ${source.name}", error)
-                        SearchGroup(source.id, source.name, source.kind, emptyList(), "${source.name}: ${error.message ?: error.javaClass.simpleName}")
-                    }
-                    else -> SearchGroup(source.id, source.name, source.kind, result.getOrThrow().map { ApiTrack.of(it, source.id) })
-                }
-            }
-        }.awaitAll().filterNotNull()
-    }
 
     suspend fun resolve(user: User, wanted: Track, via: String?, quality: StreamQuality, thorough: Boolean): Resolution {
         // Songs heard on SiriusXM are found in the person's sources like any other; live streams aren't.
@@ -157,7 +134,6 @@ class Catalog(
 
     private companion object {
         const val TAG = "Catalog"
-        const val SEARCH_TIMEOUT_MS = 25_000L
 
         /** Streaming services' addresses last a few hours; this is well inside that. */
         const val STREAM_CACHE_MS = 15L * 60 * 1000

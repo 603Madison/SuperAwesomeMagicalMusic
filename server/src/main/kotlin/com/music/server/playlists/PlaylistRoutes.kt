@@ -2,9 +2,6 @@ package com.music.server.playlists
 
 import com.music.player.model.SourceType
 import com.music.player.model.Track
-import com.music.player.playlists.SpotifyPlaylists
-import com.music.player.sources.TrackMatcher
-import com.music.player.sources.youtube.YouTubeMusicSource
 import com.music.server.ApiError
 import com.music.server.Services
 import com.music.server.auth.requireUser
@@ -18,11 +15,6 @@ import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -40,11 +32,12 @@ data class RemoveEntries(val entryIds: List<String>)
 @Serializable
 data class Reorder(val revision: Long, val entryIds: List<String>)
 
+/** A link to a playlist or album elsewhere, or a typed or pasted list of songs ([text], named [name]). */
 @Serializable
-data class ImportRequest(val url: String)
+data class ImportRequest(val url: String = "", val text: String = "", val name: String = "")
 
 @Serializable
-data class ImportResult(val playlist: Playlist, val found: Int, val missing: List<String>)
+data class ImportResult(val playlist: Playlist, val found: Int, val missing: List<String>, val note: String? = null)
 
 @Serializable
 data class HistoryUpload(val listens: List<Listen>)
@@ -76,32 +69,26 @@ fun Route.playlistRoutes(services: Services) {
         }
         post("/import") {
             val user = call.requireUser(services)
-            val url = call.receive<ImportRequest>().url.trim()
-            val (name, songs) = when {
-                SpotifyPlaylists.isSpotify(url) -> SpotifyPlaylists(services.http).read(url).let { (name, listed) ->
-                    name to listed.map { Track(SourceType.YOUTUBE_MUSIC, "", it.title, it.artist, durationMs = it.durationMs) }
+            val request = call.receive<ImportRequest>()
+            val imported = when {
+                request.url.isNotBlank() -> services.importer.fromLink(user, request.url)
+                request.text.isNotBlank() -> {
+                    if (request.text.length > 1_000_000) throw ApiError.badRequest("That list is too long")
+                    services.importer.fromText(user, request.text, request.name)
                 }
-                "youtube.com/" in url || "youtu.be/" in url -> YouTubeMusicSource(services.http).playlist(url)
-                else -> throw ApiError.badRequest("Paste a Spotify or YouTube playlist link")
+                else -> throw ApiError.badRequest("Paste a link, or a list of songs")
             }
-            // Each song is matched in the person's own sources (their library first).
-            val searches = Semaphore(4)
-            val matched = coroutineScope {
-                songs.map { song ->
-                    async {
-                        searches.withPermit {
-                            if (song.sourceId.isNotEmpty()) return@withPermit song to ApiTrack.of(song, null)
-                            val query = TrackMatcher.searchQuery(song)
-                            val found = runCatching { services.catalog.search(user, query, 10) }.getOrDefault(emptyList())
-                            val candidates = found.sortedByDescending { it.kind.isLibrary }.flatMap { it.tracks }
-                            song to candidates.firstOrNull { TrackMatcher.matches(it.toTrack(), song) }
-                        }
-                    }
-                }.awaitAll()
-            }
-            val tracks = matched.mapNotNull { it.second }
-            val playlist = services.playlists.create(user.id, name, "Imported from $url", tracks.take(PlaylistStore.MAX_ENTRIES))
-            call.respond(ImportResult(playlist.out(), tracks.size, matched.filter { it.second == null }.map { "${it.first.artist} – ${it.first.title}" }))
+            if (imported.tracks.isEmpty()) throw ApiError.badRequest("None of its songs could be found in your sources")
+            val tracks = imported.tracks.take(PlaylistStore.MAX_ENTRIES)
+            val playlist = services.playlists.create(user.id, imported.name, imported.origin, tracks)
+            call.respond(
+                ImportResult(
+                    playlist.out(),
+                    tracks.size,
+                    imported.missing.map { if (it.artist.isBlank()) it.title else "${it.artist} – ${it.title}" },
+                    imported.note,
+                ),
+            )
         }
         route("/{id}") {
             get {
