@@ -53,7 +53,7 @@ and favourite stations at the top of Radio.
   <img src="docs/screenshots/app-radio.png" alt="Favourite stations at the top of the app's Radio tab" width="250">
 </p>
 
-The screenshots use a made-up demo library (Velvet Satellites aren't a real band), so the covers
+The screenshots use a made-up demo library (Velvet Satellites aren't a real band, lol), so the covers
 are generated.
 
 ## Features
