@@ -24,7 +24,7 @@ import java.nio.file.Files
 
 /**
  * The real server, in-process, with an in-memory database, a person (maddie / correct horse) and
- * a stand-in Jellyfin holding one song whose file is [audio].
+ * a stand-in Jellyfin holding one artist's album, whose first song's file is [audio].
  */
 class TestServer(val audio: ByteArray = ByteArray(5000) { (it % 251).toByte() }) : AutoCloseable {
     companion object {
@@ -40,15 +40,33 @@ class TestServer(val audio: ByteArray = ByteArray(5000) { (it % 251).toByte() })
         }
     }
 
+    /** A stand-in Jellyfin: the artist Velvet Satellites, their album Low Orbit, and its two songs. */
     val jellyfin = MockWebServer().apply {
+        val media = """[{"Id":"ms","MediaStreams":[{"Type":"Audio","Codec":"flac","BitRate":900000}]}]"""
+        val song = """{"Id":"song1","Name":"Neon Tidepool","Artists":["Velvet Satellites"],"Album":"Low Orbit","AlbumId":"al1","RunTimeTicks":2000000000,"MediaSources":$media}"""
+        val song2 = """{"Id":"song2","Name":"Paper Lanterns","Artists":["Velvet Satellites"],"Album":"Low Orbit","AlbumId":"al1","RunTimeTicks":2140000000,"MediaSources":$media}"""
+        val album = """{"Id":"al1","Name":"Low Orbit","AlbumArtist":"Velvet Satellites","ProductionYear":2024,"ChildCount":8}"""
+        val artist = """{"Id":"ar1","Name":"Velvet Satellites"}"""
         dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse = when {
-                request.path!!.startsWith("/Items") || request.path!!.startsWith("/Artists") -> MockResponse().setBody(
-                    """{"Items":[{"Id":"song1","Name":"Neon Tidepool","Artists":["Velvet Satellites"],"Album":"Low Orbit","RunTimeTicks":2000000000,
-                       "MediaSources":[{"Id":"ms","MediaStreams":[{"Type":"Audio","Codec":"flac","BitRate":900000}]}]}]}""",
-                )
-                request.path!!.startsWith("/Audio/song1/stream") -> MockResponse().setHeader("Content-Type", "audio/flac").setBody(Buffer().write(audio))
-                else -> MockResponse().setResponseCode(404)
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val url = request.requestUrl!!
+                if (url.encodedPath.startsWith("/Audio/song1/stream")) {
+                    return MockResponse().setHeader("Content-Type", "audio/flac").setBody(Buffer().write(audio))
+                }
+                val term = url.queryParameter("searchTerm")?.lowercase()
+                fun named(name: String) = term != null && term.length > 2 && name.lowercase().contains(term)
+                val items = when {
+                    url.encodedPath == "/Artists" -> listOf(artist).filter { named("Velvet Satellites") }
+                    url.queryParameter("includeItemTypes") == "MusicAlbum" -> listOf(album).filter {
+                        url.queryParameter("ids") == "al1" || url.queryParameter("albumArtistIds") == "ar1" || url.queryParameter("artistIds") == "ar1" || named("Low Orbit")
+                    }
+                    url.encodedPath != "/Items" -> return MockResponse().setResponseCode(404)
+                    url.queryParameter("ids") == "ar1" -> listOf(artist)
+                    url.queryParameter("ids") == "song1" -> listOf(song)
+                    url.queryParameter("parentId") == "al1" || url.queryParameter("artistIds") == "ar1" -> listOf(song, song2)
+                    else -> listOf(song).filter { named("Neon Tidepool") }
+                }
+                return MockResponse().setBody("""{"Items":[${items.joinToString(",")}]}""")
             }
         }
         start()
@@ -59,6 +77,9 @@ class TestServer(val audio: ByteArray = ByteArray(5000) { (it % 251).toByte() })
     val base: String
 
     init {
+        // Each Robolectric sandbox has its own class loader, and JDBC only lends a driver to the
+        // loader that registered it: register SQLite's in this one.
+        Class.forName("org.sqlite.JDBC")
         val config = ServerConfig(dataDir = Files.createTempDirectory("e2e").toFile(), adminPassword = "admin-password")
         services = Services(config, Database.inMemory().also(Schema::migrate), SecretBox(Random.bytes(32)), passwords = Passwords(1_000))
         runBlocking {

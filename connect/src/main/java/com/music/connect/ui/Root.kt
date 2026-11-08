@@ -31,6 +31,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -66,6 +67,12 @@ fun MainScaffold() {
     LaunchedEffect(Unit) { c.messages.collect { snackbar.showSnackbar(it) } }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
+    val browse = remember(nav) { Browse(nav) }
+    CompositionLocalProvider(LocalBrowse provides browse) { Shell(nav, route, snackbar) }
+}
+
+@Composable
+private fun Shell(nav: NavHostController, route: String?, snackbar: SnackbarHostState) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
@@ -108,10 +115,24 @@ private fun Routes(nav: NavHostController) {
         composable("playlist/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { back ->
             PlaylistScreen(back.arguments?.getString("id").orEmpty(), onGone = { nav.popBackStack() })
         }
+        composable(
+            "artist?id={id}&name={name}",
+            arguments = listOf(optional("id"), optional("name")),
+        ) { back -> ArtistScreen(back.arguments?.getString("id"), back.arguments?.getString("name")) }
+        composable(
+            "album?id={id}&title={title}&artist={artist}",
+            arguments = listOf(optional("id"), optional("title"), optional("artist")),
+        ) { back -> AlbumScreen(back.arguments?.getString("id"), back.arguments?.getString("title"), back.arguments?.getString("artist")) }
         composable("downloads") { DownloadsScreen() }
         composable("settings") { SettingsScreen() }
         composable("player") { PlayerScreen(onClose = { nav.popBackStack() }) }
     }
+}
+
+private fun optional(name: String) = navArgument(name) {
+    type = NavType.StringType
+    nullable = true
+    defaultValue = null
 }
 
 @Composable

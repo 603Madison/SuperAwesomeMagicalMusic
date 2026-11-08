@@ -120,11 +120,24 @@ class LibraryCallback(
     private suspend fun search(query: String): List<ApiTrack> {
         if (c.network.state.value.isOnline) {
             val found = runCatching { c.api.search(query) }.getOrNull()
-            if (found != null) return found.groups.sortedByDescending { it.kind == "JELLYFIN" }.flatMap { it.tracks }.take(50)
+            if (found != null) return found.allSongs.take(50)
         }
         val words = query.lowercase().split(' ').filter { it.isNotBlank() }
         return c.downloads.all.first().filter { it.done }.map { it.track }
             .filter { t -> words.all { w -> "${t.title} ${t.artist} ${t.album.orEmpty()}".lowercase().contains(w) } }
+    }
+
+    /** An artist's best-known songs, or an album, when the search's top result is one. */
+    private suspend fun spoken(query: String): List<ApiTrack>? {
+        if (!c.network.state.value.isOnline) return null
+        return runCatching {
+            val top = c.api.search(query).top ?: return null
+            when {
+                top.artist != null -> c.api.artist(top.artist.id).topSongs
+                top.album != null -> c.api.album(top.album.id).tracks
+                else -> null
+            }
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
     }
 
     override fun onAddMediaItems(session: MediaSession, controller: MediaSession.ControllerInfo, mediaItems: MutableList<MediaItem>): ListenableFuture<MutableList<MediaItem>> =
@@ -156,8 +169,12 @@ class LibraryCallback(
     private suspend fun expand(item: MediaItem): Pair<List<MediaItem>, Int> {
         val query = item.requestMetadata.searchQuery
         if (item.mediaId.isEmpty() && query != null) {
-            // "Play … on SuperAwesomeMagicalMusic": the best matches (or the downloads, for "play music").
-            val found = if (query.isBlank()) c.downloads.all.first().filter { it.done }.map { it.track }.shuffled() else search(query)
+            // "Play … on SuperAwesomeMagicalMusic": an artist's songs or an album when that's what was
+            // asked for, else the best matching songs (or the downloads, for "play music").
+            val found = when {
+                query.isBlank() -> c.downloads.all.first().filter { it.done }.map { it.track }.shuffled()
+                else -> spoken(query) ?: search(query)
+            }
             return found.map { MediaItems.playable(it, server, ::art) } to 0
         }
         return expand(item.mediaId)

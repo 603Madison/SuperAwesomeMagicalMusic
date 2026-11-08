@@ -67,7 +67,7 @@ class PlaybackTest {
 
     @Test
     fun `a song is resolved through the server as it starts`() {
-        val song = runBlocking { c.api.search("neon").groups.flatMap { it.tracks }.single() }
+        val song = runBlocking { c.api.search("neon").allSongs.single() }
         val player = session().player
         player.setMediaItem(MediaItems.playable(song, server.base) { null })
         player.prepare()

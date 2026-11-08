@@ -8,10 +8,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import com.music.connect.net.ApiTrack
+import com.music.connect.net.ServerApi
 import com.music.connect.net.User
 import com.music.connect.playback.PlayerConnection
 import com.music.connect.ui.LocalPlayer
@@ -21,6 +25,7 @@ import com.music.connect.ui.theme.ConnectTheme
 import com.music.player.model.SourceType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -92,6 +97,43 @@ class ScreensTest {
         compose.onNodeWithText("Settings").performClickSafe()
         compose.waitForIdle()
         save("settings")
+    }
+
+    @Test
+    fun `search, an artist and an album`() {
+        val server = TestServer()
+        try {
+            val app = RuntimeEnvironment.getApplication()
+            val c = app.container
+            runBlocking {
+                val signedIn = ServerApi(OkHttpClient(), { server.base }, { null }).login(server.base, "maddie", "correct horse", "Test phone")
+                c.prefs.signIn(server.base, signedIn.token!!, signedIn.user, "Home music")
+            }
+            val player = PlayerConnection(app) { server.base }
+            compose.setContent {
+                ConnectTheme {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        CompositionLocalProvider(LocalPlayer provides player) { MainScaffold() }
+                    }
+                }
+            }
+            compose.onNode(hasSetTextAction()).performTextInput("velvet satellites")
+            waitForText("Top result")
+            save("search")
+            compose.onAllNodesWithText("Velvet Satellites")[0].performClick()
+            waitForText("Popular")
+            save("artist")
+            compose.onNodeWithText("Low Orbit").performClick()
+            waitForText("2 songs", substring = true)
+            compose.onNodeWithText("Paper Lanterns").assertExists()
+            save("album")
+        } finally {
+            server.close()
+        }
+    }
+
+    private fun waitForText(text: String, substring: Boolean = false) {
+        compose.waitUntil(20_000) { compose.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty() }
     }
 
     private fun androidx.compose.ui.test.SemanticsNodeInteraction.performClickSafe() {

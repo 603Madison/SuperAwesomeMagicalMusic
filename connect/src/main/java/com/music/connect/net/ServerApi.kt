@@ -70,8 +70,48 @@ data class Me(val user: User)
 @Serializable
 data class SearchGroup(val sourceId: String, val sourceName: String, val kind: String, val tracks: List<ApiTrack>, val error: String? = null)
 
+/** An artist, wherever they were found; [id] opens their page. */
 @Serializable
-data class SearchResponse(val query: String, val groups: List<SearchGroup>)
+data class ArtistSummary(val id: String, val name: String, val artworkUrl: String? = null)
+
+/** An album, wherever it was found; [id] opens it, [artistId] its artist. */
+@Serializable
+data class AlbumSummary(
+    val id: String,
+    val title: String,
+    val artist: String,
+    val artistId: String,
+    val year: Int? = null,
+    val artworkUrl: String? = null,
+    val trackCount: Int? = null,
+)
+
+/** The likeliest match: an artist, an album or a song, as [kind] says. */
+@Serializable
+data class TopResult(val kind: String, val artist: ArtistSummary? = null, val album: AlbumSummary? = null, val track: ApiTrack? = null)
+
+/** One set of results across all the person's sources ([groups] is each source's songs, from older servers). */
+@Serializable
+data class SearchResponse(
+    val query: String,
+    val groups: List<SearchGroup> = emptyList(),
+    val top: TopResult? = null,
+    val songs: List<ApiTrack> = emptyList(),
+    val artists: List<ArtistSummary> = emptyList(),
+    val albums: List<AlbumSummary> = emptyList(),
+) {
+    /** The songs found, from any server version. */
+    val allSongs: List<ApiTrack> get() = songs.ifEmpty { groups.sortedByDescending { it.kind == "JELLYFIN" }.flatMap { it.tracks } }
+}
+
+@Serializable
+data class ArtistPage(val artist: ArtistSummary, val topSongs: List<ApiTrack>, val albums: List<AlbumSummary> = emptyList(), val singles: List<AlbumSummary> = emptyList())
+
+@Serializable
+data class AlbumPage(val album: AlbumSummary, val tracks: List<ApiTrack>)
+
+@Serializable
+data class ImportResult(val playlist: Playlist, val found: Int, val missing: List<String> = emptyList(), val note: String? = null)
 
 @Serializable
 data class ResolvedStream(
@@ -176,6 +216,21 @@ class ServerApi(
 
     suspend fun search(query: String): SearchResponse =
         get("${base()}/api/search?q=${enc(query)}&limit=25", SearchResponse.serializer())
+
+    /** An artist's page: by a search's [id], or by [name]. */
+    suspend fun artist(id: String?, name: String? = null): ArtistPage =
+        get("${base()}/api/artist?" + if (id != null) "id=${enc(id)}" else "name=${enc(name.orEmpty())}", ArtistPage.serializer())
+
+    /** An album: by a search's [id], or by [title] and [artist]. */
+    suspend fun album(id: String?, title: String? = null, artist: String? = null): AlbumPage =
+        get("${base()}/api/album?" + if (id != null) "id=${enc(id)}" else "title=${enc(title.orEmpty())}&artist=${enc(artist.orEmpty())}", AlbumPage.serializer())
+
+    /** Brings in a playlist from a link, or from a typed [text] list; finding every song takes a while. */
+    suspend fun importPlaylist(url: String?, text: String?, name: String?): ImportResult = withContext(Dispatchers.IO) {
+        val body = ApiJson.encodeToString(ImportBody.serializer(), ImportBody(url.orEmpty(), text.orEmpty(), name.orEmpty()))
+        val slow = http.newBuilder().readTimeout(10, java.util.concurrent.TimeUnit.MINUTES).callTimeout(10, java.util.concurrent.TimeUnit.MINUTES).build()
+        slow.newCall(request("POST", "${base()}/api/playlists/import", body, true)).execute().use { parse(it, ImportResult.serializer()) }
+    }
 
     suspend fun resolve(track: ApiTrack, kbps: Int, thorough: Boolean): ResolvedStream =
         post(
@@ -297,6 +352,7 @@ class ServerApi(
     @Serializable private data class LyricsBody(val track: ApiTrack)
     @Serializable private data class NewPlaylistBody(val name: String, val tracks: List<ApiTrack>, val id: String)
     @Serializable private data class RenameBody(val name: String)
+    @Serializable private data class ImportBody(val url: String, val text: String, val name: String)
     @Serializable private data class AddBody(val tracks: List<ApiTrack>)
     @Serializable private data class RemoveBody(val entryIds: List<String>)
     @Serializable private data class OrderBody(val revision: Long, val entryIds: List<String>)

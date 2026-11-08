@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.DownloadForOffline
+import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shuffle
@@ -26,9 +27,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -49,72 +52,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.music.connect.data.Library
-import com.music.connect.net.SearchGroup
+import com.music.connect.net.ImportResult
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-
-@Composable
-fun SearchScreen() {
-    val c = appContainer()
-    val player = LocalPlayer.current
-    val online by c.online.collectAsState()
-    val downloaded by c.downloads.doneKeys.collectAsState(initial = emptySet())
-    val playing by player.state.collectAsState()
-    var query by rememberSaveable { mutableStateOf("") }
-    var groups by remember { mutableStateOf<List<SearchGroup>?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(query, online) {
-        val q = query.trim()
-        if (q.isEmpty()) { groups = null; return@LaunchedEffect }
-        delay(450)
-        busy = true
-        error = null
-        groups = if (online) {
-            try {
-                c.api.search(q).groups.sortedByDescending { it.kind == "JELLYFIN" }
-            } catch (e: Exception) {
-                error = e.message
-                null
-            }
-        } else {
-            // Offline: what's downloaded.
-            val words = q.lowercase().split(' ').filter { it.isNotBlank() }
-            val matches = c.downloads.all.first().filter { it.done }.map { it.track }.filter { t -> words.all { "${t.title} ${t.artist} ${t.album.orEmpty()}".lowercase().contains(it) } }
-            listOf(SearchGroup("downloads", "Downloaded", "DOWNLOADS", matches))
-        }
-        busy = false
-    }
-
-    Column(Modifier.fillMaxSize()) {
-        OutlinedTextField(
-            query, { query = it },
-            leadingIcon = { Icon(Icons.Rounded.Search, null) },
-            trailingIcon = { if (busy) CircularProgressIndicator(Modifier.padding(12.dp)) },
-            placeholder = { Text(if (online) "Songs, artists, albums" else "Search your downloads") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(),
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-        )
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
-        LazyColumn(Modifier.fillMaxSize()) {
-            if (groups == null && query.isBlank()) {
-                item { Empty("Search everything at once", "Your library, and every service on your server.", Icons.Rounded.Search) }
-            }
-            groups?.forEach { group ->
-                item(key = "h-${group.sourceId}") { SectionTitle(group.sourceName) }
-                group.error?.let { item { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) } }
-                if (group.tracks.isEmpty() && group.error == null) item { Text("Nothing found here", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp)) }
-                itemsIndexed(group.tracks, key = { i, t -> "${group.sourceId}-$i-${t.key}" }) { i, track ->
-                    TrackRow(track, onClick = { player.play(group.tracks, i) }, current = playing.track?.key == track.key, downloaded = track.key in downloaded)
-                }
-            }
-        }
-    }
-}
 
 @Composable
 fun PlaylistsScreen(onOpen: (String) -> Unit) {
@@ -122,6 +63,7 @@ fun PlaylistsScreen(onOpen: (String) -> Unit) {
     val playlists by c.library.all.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     var creating by remember { mutableStateOf(false) }
+    var importing by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     Scaffold(
         floatingActionButton = {
@@ -129,7 +71,12 @@ fun PlaylistsScreen(onOpen: (String) -> Unit) {
         },
     ) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize()) {
-            if (playlists.isEmpty()) item { Empty("No playlists yet", "Make one here, or on the web player; they're kept on your phone too.", Icons.AutoMirrored.Rounded.QueueMusic) }
+            item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = { importing = true }) { Icon(Icons.Rounded.FileDownload, null); Spacer(Modifier.width(8.dp)); Text("Import a playlist") }
+                }
+            }
+            if (playlists.isEmpty()) item { Empty("No playlists yet", "Make one here or on the web player, or import one from Spotify, Apple Music, Tidal, Deezer and more; they're kept on your phone too.", Icons.AutoMirrored.Rounded.QueueMusic) }
             items(playlists, key = { it.id }) { p ->
                 Row(Modifier.fillMaxWidth().clickable { onOpen(p.id) }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Artwork(p.artwork.firstOrNull(), 56.dp)
@@ -143,6 +90,7 @@ fun PlaylistsScreen(onOpen: (String) -> Unit) {
             }
         }
     }
+    if (importing) ImportDialog(onClose = { importing = false }, onImported = onOpen)
     if (creating) {
         AlertDialog(
             onDismissRequest = { creating = false },
@@ -161,6 +109,100 @@ fun PlaylistsScreen(onOpen: (String) -> Unit) {
             dismissButton = { TextButton(onClick = { creating = false }) { Text("Cancel") } },
         )
     }
+}
+
+/** Brings in a playlist or album from a link (Spotify, Apple Music, Tidal…), or a typed list of songs. */
+@Composable
+private fun ImportDialog(onClose: () -> Unit, onImported: (String) -> Unit) {
+    val c = appContainer()
+    val online by c.online.collectAsState()
+    val scope = rememberCoroutineScope()
+    var fromList by rememberSaveable { mutableStateOf(false) }
+    var url by rememberSaveable { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var report by remember { mutableStateOf<ImportResult?>(null) }
+    val ready = online && !busy && (if (fromList) text.isNotBlank() else url.isNotBlank())
+
+    report?.let { result ->
+        val open = { onClose(); onImported(result.playlist.summary.id) }
+        AlertDialog(
+            onDismissRequest = open,
+            title = { Text("Imported ${result.found} songs") },
+            text = {
+                LazyColumn {
+                    result.note?.let { item { Text("$it.", Modifier.padding(bottom = 8.dp)) } }
+                    if (result.missing.isNotEmpty()) item { Text("These weren't found in your sources:", Modifier.padding(bottom = 4.dp)) }
+                    items(result.missing) { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+            },
+            confirmButton = { TextButton(onClick = open) { Text("Open the playlist") } },
+        )
+        return
+    }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onClose() },
+        title = { Text("Import a playlist") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = !fromList, onClick = { fromList = false }, label = { Text("From a link") })
+                    FilterChip(selected = fromList, onClick = { fromList = true }, label = { Text("From a list") })
+                }
+                if (!fromList) {
+                    OutlinedTextField(url, { url = it }, label = { Text("Playlist or album link") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Text(
+                        "Spotify, Apple Music, Tidal, Deezer, YouTube, ListenBrainz, or Qobuz (with your Qobuz account). Each song is found in your own sources, your library first.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        text, { text = it },
+                        label = { Text("Songs") },
+                        placeholder = { Text("Radiohead - Paranoid Android\nFleetwood Mac - Dreams") },
+                        minLines = 5,
+                        maxLines = 10,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text("One a line, like “Artist - Title”, or a pasted CSV export with title and artist columns.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (!online) Text("Importing needs a connection.", color = MaterialTheme.colorScheme.error)
+                if (busy) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.padding(end = 12.dp))
+                        Text("Finding the songs… this takes a moment for long playlists.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = ready, onClick = {
+                busy = true
+                scope.launch {
+                    try {
+                        val result = if (fromList) c.api.importPlaylist(null, text, name) else c.api.importPlaylist(url.trim(), null, null)
+                        // Brings the new playlist (and any other changes) onto the phone.
+                        runCatching { c.library.sync() }
+                        if (result.missing.isEmpty() && result.note == null) {
+                            c.tell("Imported ${result.found} songs")
+                            onClose()
+                            onImported(result.playlist.summary.id)
+                        } else {
+                            report = result
+                        }
+                    } catch (e: Exception) {
+                        c.tell(e.message ?: "Couldn't import that")
+                    } finally {
+                        busy = false
+                    }
+                }
+            }) { Text("Import") }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onClose) { Text("Cancel") } },
+    )
 }
 
 @Composable

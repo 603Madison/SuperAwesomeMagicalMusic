@@ -18,11 +18,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.SatelliteAlt
@@ -148,6 +150,8 @@ fun TrackMenu(track: ApiTrack, downloaded: Boolean, extraActions: List<Pair<Stri
     val c = appContainer()
     val player = LocalPlayer.current
     val scope = rememberCoroutineScope()
+    val browse = LocalBrowse.current
+    val online by c.online.collectAsState()
     var open by remember { mutableStateOf(false) }
     var addTo by remember { mutableStateOf(false) }
     Box {
@@ -166,6 +170,12 @@ fun TrackMenu(track: ApiTrack, downloaded: Boolean, extraActions: List<Pair<Stri
                         open = false
                         scope.launch { c.downloads.queue(listOf(track)); c.tell("Downloading \"${track.title}\"") }
                     }
+                }
+            }
+            if (browse != null && online && (track.isSong || track.isStationTrack) && track.artist.isNotBlank()) {
+                MenuRow("Go to artist", Icons.Rounded.Person) { open = false; browse.artist(null, name = track.artist) }
+                track.album?.takeIf { it.isNotBlank() }?.let { album ->
+                    MenuRow("Go to album", Icons.Rounded.Album) { open = false; browse.album(null, title = album, artist = track.artist) }
                 }
             }
             extraActions.forEach { (label, action) -> MenuRow(label, null) { open = false; action() } }

@@ -10,6 +10,7 @@ import com.music.connect.net.ApiTrack
 import com.music.connect.net.ServerApi
 import com.music.connect.net.SignIn
 import com.music.player.model.SourceType
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -69,7 +70,7 @@ class EndToEndTest {
     fun `password sign-in, search and streaming`() = runBlocking {
         signInWithPassword()
         assertEquals("maddie", api.me().user.username)
-        val found = api.search("neon").groups.flatMap { it.tracks }
+        val found = api.search("neon").allSongs
         assertEquals("Neon Tidepool", found.single().title)
         val resolved = api.resolve(found.single(), 0, thorough = true)
         val bytes = http.newCall(Request.Builder().url(api.absolute(resolved.streamUrl)).header("Authorization", "Bearer $token").build())
@@ -79,6 +80,32 @@ class EndToEndTest {
         val interceptor = ServerApi.authInterceptor({ base }, { token })
         val withAuth = OkHttpClient.Builder().addInterceptor(interceptor).build()
         assertEquals(200, withAuth.newCall(Request.Builder().url(api.absolute(resolved.streamUrl)).build()).execute().use { it.code })
+    }
+
+    @Test
+    fun `an artist's name finds them, and their page and album open`() = runBlocking {
+        signInWithPassword()
+        val found = api.search("velvet satellites")
+        assertEquals("artist", found.top?.kind)
+        val artist = api.artist(found.top!!.artist!!.id)
+        assertEquals("Velvet Satellites", artist.artist.name)
+        assertEquals(listOf("Low Orbit"), artist.albums.map { it.title })
+        val album = api.album(artist.albums.single().id)
+        assertEquals(listOf("Neon Tidepool", "Paper Lanterns"), album.tracks.map { it.title })
+        // From a song's menu: by name.
+        assertEquals("Velvet Satellites", api.artist(null, name = "Velvet Satellites").artist.name)
+        assertEquals(2, api.album(null, title = "Low Orbit", artist = "Velvet Satellites").tracks.size)
+    }
+
+    @Test
+    fun `a typed list is imported as a playlist`() = runBlocking {
+        signInWithPassword()
+        val result = api.importPlaylist(null, "Velvet Satellites - Neon Tidepool\nNobody - Nothing", "Typed")
+        assertEquals(1, result.found)
+        assertEquals(listOf("Nobody – Nothing"), result.missing)
+        val library = Library(db, api)
+        library.sync()
+        assertEquals("Typed", library.all.first().single().name)
     }
 
     @Test
@@ -105,7 +132,7 @@ class EndToEndTest {
     fun `playlist changes made offline reach the server in order`() = runBlocking {
         signInWithPassword()
         val library = Library(db, api)
-        val song = api.search("neon").groups.flatMap { it.tracks }.single()
+        val song = api.search("neon").allSongs.single()
         val other = ApiTrack(SourceType.YOUTUBE_MUSIC, "abc", "Paper Lanterns", "Velvet Satellites")
 
         // All of this happens with no server calls ("offline").
@@ -137,7 +164,7 @@ class EndToEndTest {
         signInWithPassword()
         val prefs = Prefs(context)
         val downloads = Downloads(context, db, api, http.newBuilder().addInterceptor(ServerApi.authInterceptor({ base }, { token })).build(), prefs)
-        val song = api.search("neon").groups.flatMap { it.tracks }.single()
+        val song = api.search("neon").allSongs.single()
         downloads.queue(listOf(song))
         assertTrue(downloads.runQueue())
         val file: File = downloads.fileFor(song)!!
