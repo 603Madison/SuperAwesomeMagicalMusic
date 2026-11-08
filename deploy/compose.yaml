@@ -1,0 +1,25 @@
+# SuperAwesomeMagicalMusic server: `docker compose up -d` (or `podman compose up -d`).
+# Everything it keeps (accounts, playlists, saved sign-ins, its encryption key) is in ./data.
+services:
+  superawesomemagicalmusic:
+    image: ghcr.io/603madison/superawesomemagicalmusic:latest
+    container_name: superawesomemagicalmusic
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # On Podman with SELinux, add :Z (./data:/data:Z).
+      - ./data:/data
+    environment:
+      # The address people use, needed for single sign-on behind a reverse proxy.
+      # SAMM_PUBLIC_URL: https://music.example.com
+      # SAMM_TRUST_PROXY: "true"
+      # The break-glass admin's first password (otherwise one is generated and logged once).
+      # SAMM_ADMIN_PASSWORD: change-me-please
+      # Single sign-on, if you'd rather set it here than on the admin page:
+      # SAMM_OIDC_ISSUER: https://auth.example.com/application/o/superawesomemagicalmusic/
+      # SAMM_OIDC_CLIENT_ID: ...
+      # SAMM_OIDC_CLIENT_SECRET: ...
+      # SAMM_OIDC_USER_GROUP: music-users
+      # SAMM_OIDC_ADMIN_GROUP: music-admins
+      TZ: America/New_York

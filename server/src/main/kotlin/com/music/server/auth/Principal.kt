@@ -76,11 +76,13 @@ fun ApplicationCall.clearedSessionCookie() = Cookie(
 )
 
 /**
- * Slows down password guessing: after [maxFailures] wrong passwords for an account, or from one
- * address, within [windowMs], more attempts are refused until the window passes.
+ * Slows down password guessing: after [maxFailures] wrong passwords for an account, or
+ * [maxFailuresPerAddress] from one address (a reverse proxy can make everyone one address),
+ * within [windowMs], more attempts are refused until the window passes.
  */
 class LoginThrottle(
     private val maxFailures: Int = 10,
+    private val maxFailuresPerAddress: Int = 50,
     private val windowMs: Long = 15L * 60 * 1000,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
@@ -88,7 +90,7 @@ class LoginThrottle(
 
     fun check(vararg keys: String) {
         val now = clock()
-        if (keys.any { key -> recent(key, now) >= maxFailures }) {
+        if (keys.any { key -> recent(key, now) >= if (key.startsWith("ip:")) maxFailuresPerAddress else maxFailures }) {
             throw ApiError.tooMany("Too many wrong passwords. Try again in a few minutes.")
         }
     }

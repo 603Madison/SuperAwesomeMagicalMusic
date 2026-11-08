@@ -13,11 +13,15 @@ This repository holds:
 
 - **SuperAwesomeMagicalMusic Lite** (`app/`): the standalone Android app described below. It talks
   to every service itself; no server needed.
+- **The server** (`server/`, with the **web player** in `web/`): your own streaming service in
+  Docker or Podman. Accounts (local, or single sign-on such as Authentik), sources shared by the
+  admins or added by each person, playlists and history per person, and a web player for the
+  computer. See [server/README.md](server/README.md):
+  `docker run -p 8080:8080 -v samm-data:/data ghcr.io/603madison/superawesomemagicalmusic`.
 - **core** (`core/`): the music services (Jellyfin, YouTube Music, Qobuz, SiriusXM, radio, Lidarr,
-  lyrics, scrobbling) as plain Kotlin, shared with the server.
-- Coming next: a **server** you run in Docker or Podman, with accounts (local, or OIDC sign-in such
-  as Authentik), sources shared by an admin or added per user, a **web player**, and an Android
-  app that signs in to it.
+  lyrics, scrobbling) as plain Kotlin, shared by the app and the server.
+- Coming next: SiriusXM, Pandora stations and radio on the server, and an Android app that signs
+  in to it (and keeps working offline and over satellite).
 
 Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Android 8.0+ (API 26).
 

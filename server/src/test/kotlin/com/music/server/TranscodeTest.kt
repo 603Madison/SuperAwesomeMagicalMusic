@@ -35,7 +35,7 @@ class TranscodeTest {
     fun `a lossless song is converted down to the cap`() {
         assumeTrue("ffmpeg isn't installed", ffmpegAvailable())
         val flac = File.createTempFile("tone", ".flac").apply { deleteOnExit() }
-        val made = ProcessBuilder("ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=8", "-c:a", "flac", flac.path)
+        val made = ProcessBuilder("ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=60", "-c:a", "flac", flac.path)
             .start().waitFor()
         assertEquals(0, made)
 
@@ -89,14 +89,15 @@ class TranscodeTest {
                 assertEquals("audio/ogg", response.header("Content-Type"))
                 val bytes = response.body!!.bytes()
                 assertEquals("OggS", String(bytes.copyOfRange(0, 4)))
-                // 8 seconds at 64 kbps is about 64 KB; the FLAC was several times that.
-                assertTrue("${bytes.size} bytes", bytes.size in 20_000..120_000)
+                // 60 seconds at 64 kbps is about 480 KB; the FLAC was several times that.
+                assertTrue("${bytes.size} bytes", bytes.size in 200_000..800_000)
                 assertTrue(bytes.size < flac.length())
             }
-            // Starting partway gives a shorter song.
-            http.newCall(Request.Builder().url("http://127.0.0.1:$port$streamUrl&start=6").header("Authorization", "Bearer $token").build()).execute().use { response ->
+            // Starting partway gives the rest of the song, even though Jellyfin's stream can't
+            // jump ahead (ffmpeg reads through to the start point).
+            http.newCall(Request.Builder().url("http://127.0.0.1:$port$streamUrl&start=40").header("Authorization", "Bearer $token").build()).execute().use { response ->
                 val bytes = response.body!!.bytes()
-                assertTrue("${bytes.size} bytes", bytes.size in 5_000..40_000)
+                assertTrue("${bytes.size} bytes", bytes.size in 80_000..300_000)
             }
         } finally {
             server.stop(100, 1_000)

@@ -1,6 +1,11 @@
 package com.music.server.music
 
+import com.music.player.lyrics.LyricsRepository
+import com.music.player.net.Http
 import com.music.player.quality.StreamQuality
+import com.music.player.settings.JellyfinConfig
+import com.music.player.sources.jellyfin.JellyfinSource
+import com.music.server.sources.SourceKind
 import com.music.server.ApiError
 import com.music.server.Services
 import com.music.server.auth.requireUser
@@ -20,6 +25,15 @@ import kotlinx.serialization.Serializable
 import okhttp3.Request
 import java.io.IOException
 import java.net.InetAddress
+
+@Serializable
+data class LyricLineView(val timeMs: Long? = null, val text: String)
+
+@Serializable
+data class LyricsView(val lines: List<LyricLineView>, val source: String = "", val synced: Boolean = false)
+
+@Serializable
+data class LyricsRequest(val track: ApiTrack)
 
 @Serializable
 data class SearchResponse(val query: String, val groups: List<SearchGroup>)
@@ -143,6 +157,30 @@ fun Route.musicRoutes(services: Services) {
         call.response.header(HttpHeaders.CacheControl, "public, max-age=604800, immutable")
         call.response.header("Content-Security-Policy", "default-src 'none'; sandbox")
         call.respondBytes(bytes, ContentType.parse(type))
+    }
+
+    // Lyrics for the song playing: from its Jellyfin library if it has them, else LRCLIB.
+    val lyricsByLibrary = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, LyricsRepository>>()
+    post("/api/lyrics") {
+        val user = call.requireUser(services)
+        val track = services.artwork.incoming(call.receive<LyricsRequest>().track)
+        val library = track.via?.let { services.sources.accessible(user, it) }?.takeIf { it.kind == SourceKind.JELLYFIN }
+        val key = library?.id ?: ""
+        val repository = lyricsByLibrary[key]?.takeIf { it.first == (library?.updatedAt ?: 0) }?.second
+            ?: LyricsRepository(
+                services.http,
+                library?.let { services.registry.jellyfin(it) } ?: JellyfinSource(services.http, config = { JellyfinConfig() }, deviceId = { "samm-server" }),
+                Http.USER_AGENT,
+            ).also { lyricsByLibrary[key] = (library?.updatedAt ?: 0L) to it }
+        val found = try {
+            repository.find(track.toTrack())
+        } catch (e: IOException) {
+            null
+        }
+        call.respond(
+            found?.let { lyrics -> LyricsView(lyrics.lines.map { LyricLineView(it.timeMs, it.text) }, lyrics.source, lyrics.synced) }
+                ?: LyricsView(emptyList()),
+        )
     }
 
     get("/api/lidarr/requests") {

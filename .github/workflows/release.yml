@@ -1,7 +1,8 @@
 name: Release APK
 
 # Builds the signed APK and publishes it as a GitHub release, with notes from
-# release-notes/<version>.md. Start it from the Actions tab ("Run workflow") with the version,
+# release-notes/<version>.md, then lists it in the F-Droid repo and publishes the server's
+# container image to ghcr.io. Start it from the Actions tab ("Run workflow") with the version,
 # or push a v* tag. The release's tag is created on the built commit if it doesn't exist yet.
 on:
   push:
@@ -68,8 +69,8 @@ jobs:
           fi
           echo "RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
-      - name: Unit tests
-        run: ./gradlew --no-daemon testDebugUnitTest
+      - name: Unit tests (app and server)
+        run: ./gradlew --no-daemon testDebugUnitTest :server:test
 
       - name: Build signed release APK
         env:
@@ -101,3 +102,55 @@ jobs:
       contents: write
       pages: write
       id-token: write
+
+  # The server and web player, for amd64 and arm64 (a Raspberry Pi), at
+  # ghcr.io/<owner>/<repository>:<version> and :latest.
+  image:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      TAG: ${{ inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+
+      - name: Image name and tags
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          VERSION="${TAG#v}"
+          {
+            echo "TAGS<<EOF"
+            echo "$IMAGE:$VERSION"
+            echo "$IMAGE:${VERSION%.*}"
+            echo "$IMAGE:latest"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.TAGS }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ env.TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Say where it is
+        run: echo "::notice::Published $IMAGE (${TAG#v} and latest)"

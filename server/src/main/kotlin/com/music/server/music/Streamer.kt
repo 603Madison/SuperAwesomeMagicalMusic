@@ -169,8 +169,17 @@ class Streamer(
         try {
             val command = buildList {
                 addAll(listOf(ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin"))
-                if (start > 0) addAll(listOf("-ss", "%.3f".format(java.util.Locale.ROOT, start)))
-                addAll(listOf("-i", "${selfUrl()}/internal/relay/$id"))
+                val seek = if (start > 0) listOf("-ss", "%.3f".format(java.util.Locale.ROOT, start)) else emptyList()
+                if (stream.supportsRangeRequests) {
+                    // Jumps straight to the start point with a byte range.
+                    addAll(seek)
+                    addAll(listOf("-i", "${selfUrl()}/internal/relay/$id"))
+                } else {
+                    // A source that can't jump ahead is decoded through to the start point (given
+                    // after the input); before it, ffmpeg tries byte ranges and loses the stream.
+                    addAll(listOf("-seekable", "0", "-i", "${selfUrl()}/internal/relay/$id"))
+                    addAll(seek)
+                }
                 addAll(listOf("-map", "0:a:0", "-vn", "-sn", "-dn", "-map_metadata", "-1", "-ac", "2"))
                 addAll(format.args(kbps))
                 add("pipe:1")
