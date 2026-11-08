@@ -1,0 +1,269 @@
+package com.music.connect.playback
+
+import android.app.PendingIntent
+import android.content.Intent
+import android.net.Uri
+import android.os.SystemClock
+import android.util.Log
+import androidx.annotation.OptIn
+import androidx.core.net.toUri
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.DefaultMediaNotificationProvider
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaSession
+import com.music.connect.Container
+import com.music.connect.LiveNow
+import com.music.connect.MainActivity
+import com.music.connect.R
+import com.music.connect.container
+import com.music.connect.net.ApiTrack
+import com.music.player.quality.NetworkClass
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
+
+/** A song's stream as chosen when it started: kept, so seeking doesn't ask the server again. */
+data class StreamResolution(val url: String, val description: String, val gainDb: Float?)
+
+@OptIn(UnstableApi::class)
+class PlaybackService : MediaLibraryService() {
+    private lateinit var c: Container
+    private lateinit var player: ExoPlayer
+    private lateinit var session: MediaLibrarySession
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val loudness = LoudnessProcessor()
+    private val resolutions = ConcurrentHashMap<String, StreamResolution>()
+    private lateinit var queueStore: QueueStore
+
+    // Listening, for history.
+    private var listening: ApiTrack? = null
+    private var listenedMs = 0L
+    private var playingSince = 0L
+    private var startedAt = 0L
+
+    private var livePoll: Job? = null
+    private var stationRefill: Job? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        c = container
+        queueStore = QueueStore(filesDir)
+        val upstream = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(c.http))
+        val dataSources = ResolvingDataSource.Factory(upstream) { spec -> resolve(spec) }
+        val renderers = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: android.content.Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
+                DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(loudness)).build()
+        }
+        player = ExoPlayer.Builder(this, renderers)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSources))
+            // On satellite the link comes and goes: load well ahead while it's there.
+            .setLoadControl(BufferControl(bufferAheadMs = { if (c.network.state.value.networkClass == NetworkClass.SATELLITE) 10 * 60_000L else 2 * 60_000L }))
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
+            .setHandleAudioBecomingNoisy(true)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
+            .build()
+        player.addListener(listener)
+        loudness.enabled = c.settings.value.levelling
+        scope.launch { c.settings.collect { loudness.enabled = it.levelling } }
+
+        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        session = MediaLibrarySession.Builder(this, player, LibraryCallback(c, queueStore, scope))
+            .setSessionActivity(open)
+            .build()
+        setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_notification) })
+    }
+
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (!player.playWhenReady || player.mediaItemCount == 0) stopSelf()
+    }
+
+    override fun onDestroy() {
+        endListen()
+        queueStore.save(player)
+        scope.cancel()
+        session.release()
+        player.release()
+        super.onDestroy()
+    }
+
+    /**
+     * Where a song plays from, chosen as it starts: the download if there is one, else the server's
+     * pick at the bitrate for the network in use now. Live radio's address passes through.
+     */
+    private fun resolve(spec: DataSpec): DataSpec {
+        val track = MediaItems.trackOf(spec.uri) ?: return spec
+        val file = runBlocking { c.downloads.fileFor(track) }
+        if (file != null) {
+            describe(track, "Downloaded")
+            return spec.withUri(Uri.fromFile(file))
+        }
+        val network = c.network.state.value
+        if (!network.isOnline) throw IOException("\"${track.title}\" isn't downloaded, and there's no connection")
+        val settings = c.settings.value
+        val kbps = settings.kbpsFor(network.networkClass, network.savingData)
+        val key = "${track.key}|$kbps"
+        val chosen = resolutions[key] ?: runBlocking {
+            // Comparing every service costs round trips: only where the link is quick.
+            val resolved = c.api.resolve(track, kbps, thorough = network.networkClass == NetworkClass.WIFI)
+            StreamResolution(c.api.absolute(resolved.streamUrl), resolved.description, resolved.gainDb)
+        }.also { resolutions[key] = it }
+        describe(track, chosen.description)
+        gains[track.key] = chosen.gainDb
+        if (player.currentMediaItem?.let(MediaItems::track)?.key == track.key) loudness.knownGainDb = chosen.gainDb
+        return spec.withUri(chosen.url.toUri())
+    }
+
+    private val gains = ConcurrentHashMap<String, Float?>()
+
+    private fun describe(track: ApiTrack, description: String) {
+        c.playingDescription.value = c.playingDescription.value + (track.key to description)
+    }
+
+    private val listener = object : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            endListen()
+            val track = mediaItem?.let(MediaItems::track) ?: return
+            listening = track
+            startedAt = System.currentTimeMillis()
+            listenedMs = 0
+            if (player.isPlaying) playingSince = SystemClock.elapsedRealtime()
+            loudness.knownGainDb = gains[track.key]
+            c.liveNow.value = null
+            watchLive(track)
+            if (track.isStationTrack) refillStation(track)
+            queueStore.save(player)
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) {
+                playingSince = SystemClock.elapsedRealtime()
+            } else if (playingSince > 0) {
+                listenedMs += SystemClock.elapsedRealtime() - playingSince
+                playingSince = 0
+                queueStore.save(player)
+            }
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            val track = player.currentMediaItem?.let(MediaItems::track)
+            Log.w(TAG, "Couldn't play ${track?.title}", error)
+            val cause = generateSequence(error as Throwable) { it.cause }.firstOrNull { it is IOException }
+            c.tell(cause?.message?.takeIf { it.isNotBlank() } ?: "Couldn't play \"${track?.title ?: "this"}\"")
+            // Skip what can't be played, as the Lite app does.
+            if (player.hasNextMediaItem()) {
+                player.seekToNextMediaItem()
+                player.prepare()
+                player.play()
+            }
+        }
+    }
+
+    /** History: half the song (or four minutes), and at least 30 seconds, counts as a listen. */
+    private fun endListen() {
+        val track = listening ?: return
+        if (playingSince > 0) listenedMs += SystemClock.elapsedRealtime() - playingSince
+        playingSince = if (player.isPlaying) SystemClock.elapsedRealtime() else 0
+        val length = track.durationMs ?: 0
+        val needed = maxOf(30_000L, minOf(if (length > 0) length / 2 else 30_000L, 240_000L))
+        if (listenedMs >= needed) c.recordListen(track, listenedMs, startedAt)
+        if (track.isStationTrack && track.via != null) {
+            val (stationId, trackId) = MediaItems.split(track.sourceId.removePrefix("stationtrack:"))
+            val elapsed = listenedMs
+            c.scope.launch { runCatching { c.api.stationProgress(track.via, stationId, trackId, elapsed, false) } }
+        }
+        listening = null
+        listenedMs = 0
+    }
+
+    /** What's on a live channel or station, for the app and the notification. */
+    private fun watchLive(track: ApiTrack) {
+        livePoll?.cancel()
+        if (!track.isLive && !track.isStationTrack) return
+        val via = track.via ?: return
+        if (track.isStationTrack) {
+            val (stationId, trackId) = MediaItems.split(track.sourceId.removePrefix("stationtrack:"))
+            c.scope.launch { runCatching { c.api.stationProgress(via, stationId, trackId, 0, true) } }
+            return
+        }
+        livePoll = scope.launch {
+            while (isActive) {
+                val now = withContext(Dispatchers.IO) {
+                    runCatching {
+                        if (track.isChannel) {
+                            val (type, id) = MediaItems.split(track.sourceId.removePrefix("channel:"))
+                            // Where playback is in the stream, as a time (the live edge is ahead of what's heard).
+                            val behindMs = (player.currentLiveOffset.takeIf { it != C.TIME_UNSET } ?: 0L)
+                            c.api.channelNow(via, type, id, System.currentTimeMillis() - behindMs)?.let { LiveNow(it.title, it.artist, it.artworkUrl, it.song) }
+                        } else {
+                            c.api.radioNow(via, track.sourceId.removePrefix("hls:")).title?.let { title ->
+                                val at = title.indexOf(" - ")
+                                if (at > 0) LiveNow(title.substring(at + 3).trim(), title.substring(0, at).trim(), null, null) else LiveNow(title, "", null, null)
+                            }
+                        }
+                    }.getOrNull()
+                }
+                if (player.currentMediaItem?.let(MediaItems::track)?.key != track.key) break
+                if (now != c.liveNow.value) {
+                    c.liveNow.value = now
+                    showLive(track, now)
+                }
+                delay(if (track.isChannel) 15_000 else 20_000)
+            }
+        }
+    }
+
+    /** Puts what's on into the notification (and the car's screen) without interrupting the stream. */
+    private fun showLive(track: ApiTrack, now: LiveNow?) {
+        val index = player.currentMediaItemIndex
+        val item = player.currentMediaItem ?: return
+        val server = c.settings.value.server
+        val shown = if (now == null) track else track.copy(title = now.title, artist = now.artist.ifBlank { track.title }, album = track.title, artworkUrl = now.artworkUrl ?: track.artworkUrl)
+        runCatching {
+            player.replaceMediaItem(index, item.buildUpon().setMediaMetadata(MediaItems.metadata(shown, { MediaItems.artworkUri(server, it, 512) })).build())
+        }
+    }
+
+    /** Near the end of a Pandora station's queue, asks for more of it. */
+    private fun refillStation(track: ApiTrack) {
+        if (player.mediaItemCount - player.currentMediaItemIndex > 3 || stationRefill?.isActive == true) return
+        val last = (player.mediaItemCount - 1).takeIf { it >= 0 }?.let { player.getMediaItemAt(it) }?.let(MediaItems::track) ?: return
+        if (!last.isStationTrack || last.via == null) return
+        val (stationId, _) = MediaItems.split(last.sourceId.removePrefix("stationtrack:"))
+        stationRefill = scope.launch {
+            val more = withContext(Dispatchers.IO) { runCatching { c.api.station(last.via, null, stationId, last.album, true) }.getOrNull() }
+            val server = c.settings.value.server
+            more?.tracks?.map { MediaItems.playable(it, server) { url -> MediaItems.artworkUri(server, url, 512) } }
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { player.addMediaItems(it) }
+        }
+    }
+
+    private companion object {
+        const val TAG = "PlaybackService"
+    }
+}

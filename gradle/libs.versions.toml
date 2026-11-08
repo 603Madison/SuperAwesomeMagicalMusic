@@ -21,6 +21,7 @@ desugar = "2.1.5"
 junit = "4.13.2"
 robolectric = "4.16.1"
 androidxMedia = "1.7.1"
+browser = "1.8.0"
 # Server
 ktor = "3.3.3"
 sqliteJdbc = "3.50.3.0"
@@ -66,6 +67,7 @@ okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 # The media browser Android Auto uses, to test the library the way the car connects to it.
 androidx-media = { module = "androidx.media:media", version.ref = "androidxMedia" }
+androidx-browser = { module = "androidx.browser:browser", version.ref = "browser" }
 compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 

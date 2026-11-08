@@ -1,6 +1,8 @@
 # F-Droid repository
 
-The app has its own F-Droid repository, published to GitHub Pages:
+Both apps, SuperAwesomeMagicalMusic (for the server, `com.music.connect`) and SuperAwesomeMagicalMusic
+Lite (standalone, `com.music.player`), are in the project's own F-Droid repository, published to
+GitHub Pages:
 
 - Address: `https://603madison.github.io/SuperAwesomeMagicalMusic/repo`
 - Fingerprint: `ED2C0523BC9120F63952EAE882FA4C0FBD3153967130C0A4ADF1AF98D07B5283`
@@ -15,9 +17,10 @@ release is updated by F-Droid too.
 from the Actions tab. It:
 
 1. downloads the newest releases' APKs (`build-repo.sh`),
-2. builds F-Droid's store listing from `fastlane/metadata/android/en-US` (name, descriptions,
-   icon, screenshots) and `app-metadata.yml` (licence, links, anti-features), turning each
-   release's notes into its "What's new" (`changelog.py`),
+2. builds each app's store listing from its fastlane metadata (`fastlane/metadata/android/en-US`
+   for Lite, `connect/fastlane/metadata/android/en-US` for the server app: name, descriptions,
+   icon, screenshots) and `app-metadata.yml` / `app-metadata-connect.yml` (licence, links,
+   anti-features), turning each release's notes into its "What's new" (`changelog.py`),
 3. runs `fdroid update`, which signs the index with the app's signing key (the
    `RELEASE_KEYSTORE_*` secrets), and
 4. publishes it to GitHub Pages: deployed directly when Settings › Pages › Source is "GitHub

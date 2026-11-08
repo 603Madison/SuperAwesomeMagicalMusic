@@ -20,8 +20,11 @@ This repository holds:
   `docker run -p 8080:8080 -v samm-data:/data ghcr.io/603madison/superawesomemagicalmusic`.
 - **core** (`core/`): the music services (Jellyfin, YouTube Music, Qobuz, SiriusXM, radio, Lidarr,
   lyrics, scrobbling) as plain Kotlin, shared by the app and the server.
-- Coming next: an Android app that signs in to the server (and keeps working offline and over
-  satellite).
+- **SuperAwesomeMagicalMusic** (`connect/`): the Android app for the server. Enter the server's
+  address and sign in (single sign-on through the browser, or a password); your library, radio and
+  playlists are there. Playlists are kept on the phone and changes made offline sync when you're
+  back; songs and whole playlists download for offline listening; quality is set separately for
+  Wi-Fi, mobile data and satellite; Android Auto, voice search and lyrics. Installs alongside Lite.
 
 Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Android 8.0+ (API 26).
 

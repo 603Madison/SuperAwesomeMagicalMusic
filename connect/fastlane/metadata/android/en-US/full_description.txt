@@ -1,0 +1,20 @@
+<p>The app for the <b>SuperAwesomeMagicalMusic server</b>: your own music streaming service, run in your homelab with Docker or Podman. Enter your server's address, sign in (with Authentik or any single sign-on, or a password), and your music, radio and playlists are all there.</p>
+
+<p><b>Everything your server has</b></p>
+<ul>
+<li>Search your Jellyfin library and every service your server has: Qobuz, YouTube Music and more. Songs play from your library when it has them, else the best copy that fits your quality setting.</li>
+<li>SiriusXM channels (with what's on now) and Pandora artist stations with thumbs, through your own SiriusXM account on the server.</li>
+<li>Tens of thousands of local and internet radio stations.</li>
+<li>Your playlists, shared with the web player, with lyrics, a sleep timer and volume levelling.</li>
+</ul>
+
+<p><b>Made for bad connections</b></p>
+<ul>
+<li>Offline: playlists are kept on your phone; changes made offline go to the server when you're back.</li>
+<li>Downloads: single songs, or whole playlists kept offline and topped up as songs are added (on Wi-Fi by default), resumed where they stopped.</li>
+<li>Satellite (T-Satellite and other direct-to-cell services): separate quality settings for Wi-Fi, mobile data and satellite; on satellite the player loads ten minutes ahead and pictures are kept small.</li>
+</ul>
+
+<p>Works in Android Auto (playlists, downloads, radio and search) and with headsets and the system's media controls.</p>
+
+<p>Needs a SuperAwesomeMagicalMusic server. For an app that works on its own with no server, see SuperAwesomeMagicalMusic Lite.</p>

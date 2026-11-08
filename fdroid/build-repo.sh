@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds this project's F-Droid repo in fdroid/repo from the newest GitHub releases.
+# Builds this project's F-Droid repo in fdroid/repo from the newest GitHub releases: both apps,
+# SuperAwesomeMagicalMusic Lite (com.music.player) and SuperAwesomeMagicalMusic (com.music.connect).
 #
 #   fdroid/build-repo.sh [releases]     (default: the 5 newest)
 #
@@ -11,8 +12,17 @@ set -euo pipefail
 releases="${1:-5}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 fdroid_dir="$root/fdroid"
-app_id="com.music.player"
 cd "$fdroid_dir"
+
+# Each app: its store listing (fastlane metadata) and its F-Droid metadata.
+declare -A listing=(
+  [com.music.player]="$root/fastlane/metadata/android/en-US"
+  [com.music.connect]="$root/connect/fastlane/metadata/android/en-US"
+)
+declare -A app_metadata=(
+  [com.music.player]="app-metadata.yml"
+  [com.music.connect]="app-metadata-connect.yml"
+)
 
 # Addresses follow the GitHub repository's name (GITHUB_REPOSITORY in Actions), so renaming the
 # repository moves them along with it.
@@ -40,30 +50,38 @@ else
 fi
 ls repo/*.apk >/dev/null 2>&1 || { echo "No APKs to publish" >&2; exit 1; }
 
-# Store listing: the fastlane metadata, plus each version's release notes, condensed, as its
-# changelog; the newest version is the one F-Droid suggests.
-localized="metadata/$app_id/en-US"
-rm -rf "metadata/$app_id"
-mkdir -p "$localized/changelogs"
-cp -r "$root/fastlane/metadata/android/en-US/." "$localized/"
-newest_code=0
-newest_name=""
-for apk in repo/*.apk; do
-  badging="$("$aapt2" dump badging "$apk")"
-  badging="${badging%%$'\n'*}"
-  code="$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" <<<"$badging")"
-  name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$badging")"
-  [ -n "$code" ] || continue
-  if [ "$code" -gt "$newest_code" ]; then newest_code="$code"; newest_name="$name"; fi
-  notes="$root/release-notes/v$name.md"
-  [ -f "$notes" ] && python3 "$fdroid_dir/changelog.py" "$notes" "$name" > "$localized/changelogs/$code.txt"
+# Store listings: the fastlane metadata, plus each version's release notes, condensed, as its
+# changelog; the newest version is the one F-Droid suggests. An app with no APK yet is left out.
+for app_id in "${!listing[@]}"; do
+  localized="metadata/$app_id/en-US"
+  rm -rf "metadata/$app_id" "metadata/$app_id.yml"
+  mkdir -p "$localized/changelogs"
+  cp -r "${listing[$app_id]}/." "$localized/"
+  newest_code=0
+  newest_name=""
+  for apk in repo/*.apk; do
+    badging="$("$aapt2" dump badging "$apk")"
+    badging="${badging%%$'\n'*}"
+    package="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<<"$badging")"
+    [ "$package" = "$app_id" ] || continue
+    code="$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" <<<"$badging")"
+    name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$badging")"
+    [ -n "$code" ] || continue
+    if [ "$code" -gt "$newest_code" ]; then newest_code="$code"; newest_name="$name"; fi
+    notes="$root/release-notes/v$name.md"
+    [ -f "$notes" ] && python3 "$fdroid_dir/changelog.py" "$notes" "$name" > "$localized/changelogs/$code.txt"
+  done
+  if [ "$newest_code" -eq 0 ]; then
+    rm -rf "metadata/$app_id"
+    continue
+  fi
+  {
+    fill "${app_metadata[$app_id]}"
+    echo
+    echo "CurrentVersion: $newest_name"
+    echo "CurrentVersionCode: $newest_code"
+  } > "metadata/$app_id.yml"
 done
-{
-  fill app-metadata.yml
-  echo
-  echo "CurrentVersion: $newest_name"
-  echo "CurrentVersionCode: $newest_code"
-} > "metadata/$app_id.yml"
 
 # The repo's own icon (fdroid copies it into repo/icons), and the private config's permissions.
 cp "$root/fastlane/metadata/android/en-US/images/icon.png" icon.png

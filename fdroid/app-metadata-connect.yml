@@ -1,0 +1,18 @@
+# F-Droid metadata for SuperAwesomeMagicalMusic (the app that signs in to your server) in this
+# repository's own F-Droid repo (see fdroid/README.md). build-repo.sh copies it to
+# metadata/com.music.connect.yml, adding the current version. Name, descriptions, screenshots and
+# changelogs come from connect/fastlane/metadata/android.
+License: GPL-3.0-only
+Categories:
+  - Multimedia
+AuthorName: 603Madison
+WebSite: @SOURCE_URL@
+SourceCode: @SOURCE_URL@
+IssueTracker: @SOURCE_URL@/issues
+Changelog: @SOURCE_URL@/releases
+
+AntiFeatures:
+  NonFreeNet:
+    en-US: Plays SiriusXM, YouTube Music and Qobuz (through your own server) where they're set up.
+
+AutoName: SuperAwesomeMagicalMusic

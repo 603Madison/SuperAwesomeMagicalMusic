@@ -69,16 +69,17 @@ jobs:
           fi
           echo "RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
-      - name: Unit tests (app and server)
+      - name: Unit tests (both apps and the server)
         run: ./gradlew --no-daemon testDebugUnitTest :server:test
 
-      - name: Build signed release APK
+      - name: Build signed release APKs
         env:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD || vars.RELEASE_KEYSTORE_PASSWORD }}
         run: |
           ./gradlew --no-daemon assembleRelease
           cp app/build/outputs/apk/release/app-release.apk "SuperAwesomeMagicalMusic-Lite-$TAG.apk"
-          sha256sum "SuperAwesomeMagicalMusic-Lite-$TAG.apk"
+          cp connect/build/outputs/apk/release/connect-release.apk "SuperAwesomeMagicalMusic-$TAG.apk"
+          sha256sum SuperAwesomeMagicalMusic-*.apk
 
       - name: Publish GitHub release
         env:
@@ -87,10 +88,11 @@ jobs:
           # Notes come from the latest branch so older releases can be (re)published too.
           git fetch --depth=1 origin "${{ github.sha }}"
           git show "${{ github.sha }}:release-notes/$TAG.md" > notes.md 2>/dev/null || echo "SuperAwesomeMagicalMusic $TAG" > notes.md
+          apks=("SuperAwesomeMagicalMusic-$TAG.apk" "SuperAwesomeMagicalMusic-Lite-$TAG.apk")
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "SuperAwesomeMagicalMusic-Lite-$TAG.apk" --clobber
+            gh release upload "$TAG" "${apks[@]}" --clobber
           else
-            gh release create "$TAG" "SuperAwesomeMagicalMusic-Lite-$TAG.apk" --target "$COMMIT" --title "SuperAwesomeMagicalMusic $TAG" --notes-file notes.md
+            gh release create "$TAG" "${apks[@]}" --target "$COMMIT" --title "SuperAwesomeMagicalMusic $TAG" --notes-file notes.md
           fi
 
   # Lists the new release in the project's F-Droid repo.

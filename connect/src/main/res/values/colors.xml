@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="background">#FF121016</color>
+    <!-- Rose, to tell it apart from Lite's violet on the home screen. -->
+    <color name="launcher_background">#FFB0306A</color>
+</resources>

@@ -8,17 +8,20 @@ when the request doesn't mention one:
 1. Bump `versionCode` (+1) and `versionName` in `app/build.gradle.kts`. Android won't install an
    update whose `versionCode` isn't higher than the installed one. That `versionName` is the whole
    project's version: the server and its container image use it too.
-2. Run `./gradlew testDebugUnitTest lintDebug assembleRelease :server:test`; all must pass. When
+2. Run `./gradlew testDebugUnitTest lintDebug assembleRelease :server:test`; all must pass (it covers
+   both apps; `connect`'s tests run the real server in-process). When
    `web/` changed, also `cd web && npm ci && npm run build` (it type-checks the web player).
 3. Write the release notes to `release-notes/vX.Y.Z.md`, then commit and push. Start the
    **Release APK** workflow (`.github/workflows/release.yml`, workflow_dispatch) on the branch
    with `version: vX.Y.Z`. It runs the tests, builds the signed APK, creates the tag and publishes
-   the GitHub release with `SuperAwesomeMagicalMusic-Lite-vX.Y.Z.apk` attached, then (its `fdroid`
+   the GitHub release with both apps attached (`SuperAwesomeMagicalMusic-vX.Y.Z.apk`, the app that
+   signs in to the server, from `connect/`; `SuperAwesomeMagicalMusic-Lite-vX.Y.Z.apk`, from `app/`), then (its `fdroid`
    job) republishes the F-Droid repo on GitHub Pages (see `fdroid/README.md`) and (its `image`
    job) pushes the server's container image to `ghcr.io/603madison/superawesomemagicalmusic`.
    Check that all three jobs succeed. (Claude sessions can't push tags; pushing a `v*` tag also triggers the workflow.)
-4. Copy `app/build/outputs/apk/release/app-release.apk` to `SuperAwesomeMagicalMusic-Lite-vX.Y.Z.apk` in the scratchpad
-   and send it to the owner in chat.
+4. Copy `connect/build/outputs/apk/release/connect-release.apk` to `SuperAwesomeMagicalMusic-vX.Y.Z.apk` and
+   `app/build/outputs/apk/release/app-release.apk` to `SuperAwesomeMagicalMusic-Lite-vX.Y.Z.apk` in the
+   scratchpad and send them to the owner in chat.
 
 ## Signing
 
