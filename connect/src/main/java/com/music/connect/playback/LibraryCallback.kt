@@ -69,6 +69,10 @@ class LibraryCallback(
             }
             parentId == DOWNLOADS -> c.downloads.all.first().filter { it.done }.mapIndexed { i, d -> browseItem("$IN_DOWNLOADS$i", d.track) }
             parentId == RADIO -> radioFolders()
+            parentId == FAVORITES -> online {
+                c.refreshFavorites()
+                c.favorites.value.map { browseItem(MediaItems.id(it), it) }
+            }
             parentId.startsWith(SXM) -> online { c.api.channels(parentId.removePrefix(SXM)).filter { !it.locked }.map { browseItem(MediaItems.id(it.track), it.track) } }
             parentId.startsWith(LOCAL_RADIO) -> online {
                 val country = java.util.Locale.getDefault().country.ifBlank { null }
@@ -81,7 +85,9 @@ class LibraryCallback(
     }
 
     private suspend fun radioFolders(): List<MediaItem> = online {
-        c.api.sources().filter { it.enabled && !it.hidden }.mapNotNull { source ->
+        c.refreshFavorites()
+        val favorites = if (c.favorites.value.isNotEmpty()) listOf(folder(FAVORITES, "Favourites", "Your channels and stations")) else emptyList()
+        favorites + c.api.sources().filter { it.enabled && !it.hidden }.mapNotNull { source ->
             when (source.kind) {
                 "SIRIUSXM" -> folder("$SXM${source.id}", source.name, "Channels")
                 "RADIO" -> folder("$LOCAL_RADIO${source.id}", "Popular radio", "Stations near you")
@@ -218,6 +224,7 @@ class LibraryCallback(
         const val DOWNLOADS = "downloads"
         const val IN_DOWNLOADS = "indl:"
         const val RADIO = "radio"
+        const val FAVORITES = "favorites"
         private const val SXM = "sxm:"
         private const val LOCAL_RADIO = "localradio:"
     }

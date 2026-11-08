@@ -181,6 +181,40 @@ class ScreensTest {
         }
     }
 
+    @Test
+    fun `favourite stations made on the web, on the Radio tab`() {
+        val server = TestServer()
+        try {
+            val app = RuntimeEnvironment.getApplication()
+            val c = app.container
+            val maddie = runBlocking { server.services.users.byUsername("maddie")!! }
+            runBlocking {
+                val radio = "radio"
+                listOf("KEXP" to "Seattle", "WFMU" to "Jersey City", "Radio Paradise" to "California").forEachIndexed { i, (name, place) ->
+                    server.services.liveFavorites.set(maddie.id, com.music.server.music.ApiTrack(SourceType.RADIO, "station-$i", name, place, via = radio), true)
+                }
+                val signedIn = ServerApi(OkHttpClient(), { server.base }, { null }).login(server.base, "maddie", "correct horse", "Test phone")
+                c.prefs.signIn(server.base, signedIn.token!!, signedIn.user, "Home music")
+                c.settings.first { it.token == signedIn.token }
+            }
+            val player = PlayerConnection(app) { server.base }
+            compose.setContent {
+                ConnectTheme {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        CompositionLocalProvider(LocalPlayer provides player) { MainScaffold() }
+                    }
+                }
+            }
+            compose.onNodeWithText("Radio").performClick()
+            waitForText("Favourites")
+            compose.onNodeWithText("Radio Paradise").assertExists()
+            compose.onNodeWithText("KEXP").assertExists()
+            save("radio-favourites")
+        } finally {
+            server.close()
+        }
+    }
+
     private fun app() = RuntimeEnvironment.getApplication()
 
     /** Draws the window with the one above it (a sheet or dialog) on top. */

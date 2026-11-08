@@ -28,6 +28,10 @@ import androidx.compose.ui.unit.sp
 val SitePurple: Color
     @Composable get() = if (isSystemInDarkTheme()) Color(0xFFCFBDFF) else Color(0xFF5B3FD1)
 
+/** The web player's rose (its --accent): the favourite heart, alike everywhere. */
+val SiteRose: Color
+    @Composable get() = if (isSystemInDarkTheme()) Color(0xFFFFB1C8) else Color(0xFF8E3F5C)
+
 /** For content on [SitePurple]. */
 val OnSitePurple: Color
     @Composable get() = if (isSystemInDarkTheme()) Color(0xFF341A86) else Color.White

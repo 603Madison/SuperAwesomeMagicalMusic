@@ -1,5 +1,7 @@
 package com.music.player.ui.playlists
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -19,6 +21,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -46,16 +49,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.player.downloads.RefreshResult
+import com.music.player.playlists.PlaylistCsv
 import com.music.player.ui.LocalAppContainer
 import com.music.player.ui.LocalTrackActions
 import com.music.player.ui.components.MenuItem
 import com.music.player.ui.components.TextInputDialog
 import com.music.player.ui.components.TrackRow
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +79,19 @@ fun PlaylistDetailScreen(playlistId: String, onBack: () -> Unit) {
     var confirmDelete by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    // A CSV file (Exportify's columns), saved wherever the person picks.
+    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(PlaylistCsv.MIME)) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val rows = tracks.map { PlaylistCsv.Row(it.title, it.artist, it.album, it.durationMs, it.isrc) }
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(PlaylistCsv.write(rows).toByteArray()) } ?: error("Couldn't open the file")
+                }
+            }.onSuccess { actions.message("Exported ${rows.size} songs") }.onFailure { actions.message("Couldn't export: ${it.message}") }
+        }
+    }
 
     // Leave the screen if the playlist disappears (deleted here or by a sync).
     LaunchedEffect(playlist) {
@@ -126,6 +146,10 @@ fun PlaylistDetailScreen(playlistId: String, onBack: () -> Unit) {
                             )
                             MenuItem("Rename", Icons.Default.Edit) { menuOpen = false; renaming = true }
                             MenuItem("Download all now", Icons.Default.Download) { menuOpen = false; actions.download(tracks) }
+                            MenuItem("Export as CSV", Icons.Default.FileDownload) {
+                                menuOpen = false
+                                export.launch(PlaylistCsv.fileName(playlist?.name ?: "Playlist"))
+                            }
                             MenuItem("Delete playlist", Icons.Default.Delete) { menuOpen = false; confirmDelete = true }
                         }
                     }

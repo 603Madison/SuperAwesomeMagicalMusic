@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, Download, ListMusic, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, FileDown, ListMusic, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { longDuration, plural } from "../lib/format";
 import { session, useSession } from "../lib/session";
@@ -154,6 +154,9 @@ export function PlaylistDetail() {
           <PlayButtons tracks={tracks}>
             <Button variant="ghost" onClick={() => { player.addToQueue(tracks); toast("Added to the queue"); }} disabled={!tracks.length}>Add to queue</Button>
             <Button variant="ghost" onClick={() => setRenaming(true)}><Pencil size={16} /> Rename</Button>
+            <a className="btn btn-ghost" href={`/api/playlists/${encodeURIComponent(id)}/export.csv`} download title="Download as a CSV file (Exportify's columns), for a spreadsheet or another service">
+              <FileDown size={16} /> Export CSV
+            </a>
             <Button variant="ghost" onClick={() => setConfirmDelete(true)}><Trash2 size={16} /> Delete</Button>
           </PlayButtons>
         </div>

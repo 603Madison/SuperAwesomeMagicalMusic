@@ -180,6 +180,18 @@ class LibraryTest {
         val list = client.get("/api/playlists").json().jsonArray
         assertEquals("3", list[0].jsonObject.str("count"))
         assertEquals("3000", list[0].jsonObject.str("durationMs"))
+
+        // Exported as a CSV file, in order, which reads back as the same songs.
+        val export = client.get("/api/playlists/$id/export.csv")
+        assertEquals(HttpStatusCode.OK, export.status)
+        assertTrue(export.headers["Content-Type"]!!.startsWith("text/csv"))
+        assertEquals("attachment; filename=\"Mix.csv\"; filename*=UTF-8''Mix.csv", export.headers["Content-Disposition"])
+        val songs = com.music.player.playlists.PlaylistReaders.parseText(export.bodyAsText())
+        assertEquals(listOf("Song 2", "Song 1", "Song 3"), songs.map { it.title })
+        assertEquals(1000L, songs[0].durationMs)
+        // Only for the playlist's owner.
+        assertEquals(HttpStatusCode.Unauthorized, createClient { }.get("/api/playlists/$id/export.csv").status)
+        assertEquals("attachment; filename=\"Caf_ mix.csv\"; filename*=UTF-8''Caf%C3%A9%20mix.csv", com.music.server.playlists.attachment("Café mix.csv"))
     }
 
     @Test

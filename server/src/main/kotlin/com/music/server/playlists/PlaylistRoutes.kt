@@ -2,11 +2,16 @@ package com.music.server.playlists
 
 import com.music.player.model.SourceType
 import com.music.player.model.Track
+import com.music.player.playlists.PlaylistCsv
 import com.music.server.ApiError
 import com.music.server.Services
 import com.music.server.auth.requireUser
 import com.music.server.music.ApiTrack
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.server.request.receive
+import io.ktor.server.response.header
+import io.ktor.server.response.respondText
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
@@ -95,6 +100,15 @@ fun Route.playlistRoutes(services: Services) {
                 val user = call.requireUser(services)
                 call.respond(services.playlists.get(user.id, call.parameters["id"].orEmpty()).out())
             }
+            // The playlist as a CSV file (Exportify's columns, which the import reads back).
+            get("/export.csv") {
+                val user = call.requireUser(services)
+                val playlist = services.playlists.get(user.id, call.parameters["id"].orEmpty())
+                val csv = PlaylistCsv.write(playlist.entries.map { PlaylistCsv.Row(it.track.title, it.track.artist, it.track.album, it.track.durationMs, it.track.isrc) })
+                call.response.header(HttpHeaders.ContentDisposition, attachment(PlaylistCsv.fileName(playlist.summary.name)))
+                call.response.header(HttpHeaders.CacheControl, "no-store")
+                call.respondText(csv, ContentType.parse("text/csv; charset=utf-8"))
+            }
             patch {
                 val user = call.requireUser(services)
                 val change = call.receive<PlaylistChange>()
@@ -146,3 +160,10 @@ fun Route.playlistRoutes(services: Services) {
 }
 
 private fun PlaylistSummary.out(services: Services) = copy(artwork = artwork.mapNotNull { services.artwork.wrap(it) })
+
+/** A download's Content-Disposition: the name as it is, with a plain-ASCII one for old browsers. */
+internal fun attachment(fileName: String): String {
+    val ascii = fileName.map { if (it.code in 32..126 && it != '"' && it != '\\') it else '_' }.joinToString("")
+    val encoded = java.net.URLEncoder.encode(fileName, Charsets.UTF_8).replace("+", "%20")
+    return "attachment; filename=\"$ascii\"; filename*=UTF-8''$encoded"
+}

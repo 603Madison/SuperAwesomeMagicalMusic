@@ -1,5 +1,11 @@
 package com.music.connect.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import com.music.player.playlists.PlaylistCsv
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -239,6 +245,19 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
     val scope = rememberCoroutineScope()
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    // Saved wherever the person picks (Downloads, Drive…), from the playlist as kept on the phone.
+    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(PlaylistCsv.MIME)) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val rows = entries.map { PlaylistCsv.Row(it.track.title, it.track.artist, it.track.album, it.track.durationMs, it.track.isrc) }
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(PlaylistCsv.write(rows).toByteArray()) } ?: error("Couldn't open the file")
+                }
+            }.onSuccess { c.tell("Exported ${rows.size} songs") }.onFailure { c.tell("Couldn't export: ${it.message}") }
+        }
+    }
     val playlist = info ?: run {
         Empty("This playlist isn't here", "It may have been deleted on another device.")
         return
@@ -269,6 +288,7 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
                 }
                 Row {
                     TextButton(onClick = { renaming = true }) { Text("Rename") }
+                    TextButton(onClick = { export.launch(PlaylistCsv.fileName(playlist.name)) }, enabled = entries.isNotEmpty()) { Text("Export CSV") }
                     TextButton(onClick = { deleting = true }) { Text("Delete") }
                 }
             }

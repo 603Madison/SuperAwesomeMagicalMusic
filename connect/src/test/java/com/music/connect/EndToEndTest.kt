@@ -124,6 +124,22 @@ class EndToEndTest {
     }
 
     @Test
+    fun `favourite stations made on the web reach the phone, and the phone's reach the web`() = runBlocking {
+        signInWithPassword()
+        assertTrue(api.liveFavorites().isEmpty())
+        // Favourited in the web player: straight on the server.
+        val maddie = services.users.byUsername("maddie")!!
+        val radio = api.search("neon").allSongs.single().via!!
+        services.liveFavorites.set(maddie.id, com.music.server.music.ApiTrack(SourceType.RADIO, "station-1", "WFMU", "Jersey City", via = radio), true)
+        assertEquals(listOf("WFMU"), api.liveFavorites().map { it.title })
+        // Favourited on the phone: newest first, for the web player too.
+        val channel = ApiTrack(SourceType.RADIO, "station-2", "KEXP", "Seattle", via = radio)
+        assertEquals(listOf("KEXP", "WFMU"), api.setLiveFavorite(channel, true).map { it.title })
+        assertEquals(listOf("KEXP", "WFMU"), services.liveFavorites.list(maddie.id).map { it.title })
+        assertEquals(listOf("WFMU"), api.setLiveFavorite(channel, false).map { it.title })
+    }
+
+    @Test
     fun `the browser sign-in's code works only with this app's secret`() = runBlocking {
         // What the web page does once signed in: ask for a code for this app's challenge.
         val cookies = mutableMapOf<String, String>()

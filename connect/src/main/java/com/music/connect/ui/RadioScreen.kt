@@ -1,6 +1,20 @@
 package com.music.connect.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.HeartBroken
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.platform.testTag
+import com.music.connect.ui.theme.SiteRose
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -63,7 +77,11 @@ fun RadioScreen() {
     }
     val sxm = usable.firstOrNull { it.kind == "SIRIUSXM" }
     val radio = usable.firstOrNull { it.kind == "RADIO" }
+    val favorites by c.favorites.collectAsState()
+    // Favourites made on the web player show up here when the tab opens.
+    LaunchedEffect(Unit) { c.refreshFavorites() }
     Column(Modifier.fillMaxSize()) {
+        if (favorites.isNotEmpty()) Favorites(favorites)
         PrimaryTabRow(selectedTabIndex = tab) {
             listOf("SiriusXM", "Pandora", "Local radio").forEachIndexed { i, label -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(label) }) }
         }
@@ -75,11 +93,62 @@ fun RadioScreen() {
     }
 }
 
+/** The person's favourite channels and stations (from here or the web player): one tap to play. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun Favorites(favorites: List<ApiTrack>) {
+    val c = appContainer()
+    val player = LocalPlayer.current
+    val playing by player.state.collectAsState()
+    var menuFor by remember { mutableStateOf<String?>(null) }
+    SectionTitle("Favourites")
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.padding(bottom = 12.dp).testTag("favorites"),
+    ) {
+        items(favorites, key = { it.key }) { track ->
+            val current = playing.track?.key == track.key
+            Box {
+                Column(
+                    Modifier.width(88.dp).combinedClickable(
+                        onClick = { player.play(listOf(track)) },
+                        onLongClick = { menuFor = track.key },
+                        onLongClickLabel = "More",
+                    ),
+                ) {
+                    Artwork(track.artworkUrl, 88.dp, corner = 14.dp)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        track.title,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                DropdownMenu(expanded = menuFor == track.key, onDismissRequest = { menuFor = null }) {
+                    DropdownMenuItem(
+                        text = { Text("Remove from favourites") },
+                        leadingIcon = { Icon(Icons.Rounded.HeartBroken, null) },
+                        onClick = {
+                            menuFor = null
+                            c.setFavorite(track, false)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun Channels(source: SourceView) {
     val c = appContainer()
     val player = LocalPlayer.current
     val playing by player.state.collectAsState()
+    val favorites by c.favorites.collectAsState()
+    val favoriteKeys = remember(favorites) { favorites.map { it.key }.toSet() }
     var channels by remember(source.id) { mutableStateOf<List<ChannelView>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableStateOf("") }
@@ -107,6 +176,7 @@ private fun Channels(source: SourceView) {
                         Text(channel.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (playing.track?.key == channel.track.key) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                         Text(channel.number?.let { "Ch $it" }.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    if (channel.track.key in favoriteKeys) Icon(Icons.Rounded.Favorite, "Favourite", tint = SiteRose, modifier = Modifier.size(18.dp))
                 }
             }
         }

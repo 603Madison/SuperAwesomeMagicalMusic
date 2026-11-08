@@ -64,6 +64,30 @@ class Container(val context: Context) {
     /** This phone among the person's devices (see ConnectClient). */
     val devices = ConnectClient(context, http, { settings.value.server }, { settings.value.token }, scope)
 
+    /** The person's favourite channels and stations, shared with the web player (see [refreshFavorites]). */
+    val favorites = MutableStateFlow<List<ApiTrack>>(emptyList())
+
+    /** Fetches the favourites again (when online and signed in). */
+    suspend fun refreshFavorites() {
+        if (!settings.value.signedIn || !online.value) return
+        runCatching { api.liveFavorites() }.onSuccess { favorites.value = it }.onFailure { Log.i(TAG, "Couldn't fetch favourites: ${it.message}") }
+    }
+
+    /** Makes [track] a favourite or not: shown at once, and kept on the server (put back if that fails). */
+    fun setFavorite(track: ApiTrack, favorite: Boolean) {
+        val before = favorites.value
+        val others = before.filter { it.key != track.key }
+        favorites.value = if (favorite) listOf(track) + others else others
+        scope.launch {
+            runCatching { api.setLiveFavorite(track, favorite) }
+                .onSuccess { favorites.value = it }
+                .onFailure {
+                    favorites.value = before
+                    tell("Couldn't change your favourites: ${it.message}")
+                }
+        }
+    }
+
     /** What's playing came from where, at what quality (filled in by the playback service). */
     val playingDescription = MutableStateFlow<Map<String, String>>(emptyMap())
 
@@ -89,13 +113,18 @@ class Container(val context: Context) {
         SyncWorker.schedulePeriodic(context)
         // Signed in or out, or another server: this phone's place among the devices follows.
         scope.launch {
-            settings.map { it.server to it.token }.distinctUntilChanged().drop(1).collect { devices.restart() }
+            settings.map { it.server to it.token }.distinctUntilChanged().drop(1).collect {
+                devices.restart()
+                favorites.value = emptyList()
+                refreshFavorites()
+            }
         }
         // Back online: send what waited (playlist changes, listens) and fetch queued downloads.
         scope.launch {
             online.collect { isOnline ->
                 if (isOnline) devices.retry()
                 if (isOnline && settings.value.signedIn) {
+                    refreshFavorites()
                     SyncWorker.enqueue(context)
                     DownloadWorker.enqueue(context, settings.value.downloadOnWifiOnly)
                 }

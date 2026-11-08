@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -56,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.music.connect.net.LyricsView
+import com.music.connect.ui.theme.SiteRose
 import com.music.connect.playback.MediaItems
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -69,6 +72,7 @@ fun PlayerScreen(onClose: () -> Unit) {
     val live by c.liveNow.collectAsState()
     val descriptions by c.playingDescription.collectAsState()
     val downloaded by c.downloads.doneKeys.collectAsState(initial = emptySet())
+    val favorites by c.favorites.collectAsState()
     val scope = rememberCoroutineScope()
     var tab by remember { mutableIntStateOf(0) }
     var addTo by remember { mutableStateOf(false) }
@@ -87,6 +91,19 @@ fun PlayerScreen(onClose: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.Rounded.KeyboardArrowDown, "Close") }
                 Spacer(Modifier.weight(1f))
+                if (track.isLive) {
+                    val favorite = favorites.any { it.key == track.key }
+                    IconButton(onClick = {
+                        c.setFavorite(track, !favorite)
+                        c.tell(if (favorite) "Removed ${track.title} from your favourites" else "${track.title} is in your favourites, on the Radio tab")
+                    }) {
+                        Icon(
+                            if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                            if (favorite) "Remove ${track.title} from favourites" else "Add ${track.title} to favourites",
+                            tint = if (favorite) SiteRose else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 if (nowSong != null) IconButton(onClick = { addTo = true }) { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, "Add to playlist") }
                 DevicesButton()
                 SleepTimerButton()

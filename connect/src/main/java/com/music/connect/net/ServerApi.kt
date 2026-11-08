@@ -303,6 +303,13 @@ class ServerApi(
     suspend fun radioNearby(src: String, lat: Double, lon: Double): List<ApiTrack> =
         get("${base()}/api/live/radio/${enc(src)}/nearby?lat=$lat&lon=$lon", ListSerializer(ApiTrack.serializer()))
 
+    /** The person's favourite channels and stations (shared with the web player), newest first. */
+    suspend fun liveFavorites(): List<ApiTrack> = get("${base()}/api/live/favorites", ListSerializer(ApiTrack.serializer()))
+
+    /** Adds or removes a favourite; the list as it is now. */
+    suspend fun setLiveFavorite(track: ApiTrack, favorite: Boolean): List<ApiTrack> =
+        send("PUT", "${base()}/api/live/favorites", ApiJson.encodeToString(FavoriteChange.serializer(), FavoriteChange(track, favorite)), ListSerializer(ApiTrack.serializer()))
+
     suspend fun radioNow(src: String, id: String): RadioNow = get("${base()}/api/live/radio/${enc(src)}/station/${enc(id)}/now", RadioNow.serializer())
 
     /** The full address of a server path (artwork and stream paths come back relative). */
@@ -348,6 +355,7 @@ class ServerApi(
 
     @Serializable private data class LoginBody(val username: String, val password: String, val app: Boolean, val deviceName: String)
     @Serializable private data class TokenBody(val code: String, val verifier: String, val deviceName: String)
+    @Serializable private data class FavoriteChange(val track: ApiTrack, val favorite: Boolean)
     @Serializable private data class ResolveBody(val track: ApiTrack, val kbps: Int, val codecs: List<String>, val thorough: Boolean)
     @Serializable private data class LyricsBody(val track: ApiTrack)
     @Serializable private data class NewPlaylistBody(val name: String, val tracks: List<ApiTrack>, val id: String)

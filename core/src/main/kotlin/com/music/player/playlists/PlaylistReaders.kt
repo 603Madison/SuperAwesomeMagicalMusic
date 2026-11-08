@@ -230,7 +230,7 @@ class PlaylistReaders(
          * "Artist - Title" (or "Title by Artist", or just a title).
          */
         fun parseText(text: String): List<ListedSong> {
-            val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            val lines = text.removePrefix("\uFEFF").lines().map { it.trim() }.filter { it.isNotEmpty() }
             if (lines.isEmpty()) return emptyList()
             table(lines)?.let { return it }
             return lines.mapNotNull(::parseLine).take(MAX_SONGS)
@@ -273,7 +273,7 @@ class PlaylistReaders(
             val duration = header.indexOfFirst { it.contains("duration") || it == "length" || it == "time" }
             return lines.drop(1).mapNotNull { line ->
                 val cells = splitRow(line, separator)
-                fun cell(i: Int) = cells.getOrNull(i)?.trim()?.takeIf { i >= 0 && it.isNotEmpty() }
+                fun cell(i: Int) = cells.getOrNull(i)?.trim()?.let(PlaylistCsv::unguard)?.takeIf { i >= 0 && it.isNotEmpty() }
                 val songTitle = cell(title) ?: return@mapNotNull null
                 // Exportify separates several artists with commas inside the cell.
                 val artists = cell(artist).orEmpty()
