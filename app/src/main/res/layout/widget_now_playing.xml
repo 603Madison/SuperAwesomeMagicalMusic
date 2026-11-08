@@ -30,9 +30,9 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="1"
+            android:fontFamily="@font/lexend_semibold"
             android:textColor="#FFFFFFFF"
-            android:textSize="15sp"
-            android:textStyle="bold" />
+            android:textSize="15sp" />
 
         <TextView
             android:id="@+id/widget_artist"
@@ -40,6 +40,7 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="1"
+            android:fontFamily="@font/lexend_regular"
             android:textColor="#B3FFFFFF"
             android:textSize="13sp" />
     </LinearLayout>

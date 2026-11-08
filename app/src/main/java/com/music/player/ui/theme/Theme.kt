@@ -13,7 +13,11 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import com.music.player.R
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -77,8 +81,36 @@ private val AppShapes = Shapes(
     extraLarge = RoundedCornerShape(32.dp),
 )
 
-/** The system font, with bolder, tighter headings so titles stand out from details. */
+/** Lexend (SIL Open Font License, see licenses/Lexend-OFL.txt), built for easy reading. */
+val Lexend = FontFamily(
+    Font(R.font.lexend_regular, FontWeight.Normal),
+    Font(R.font.lexend_medium, FontWeight.Medium),
+    Font(R.font.lexend_semibold, FontWeight.SemiBold),
+    Font(R.font.lexend_bold, FontWeight.Bold),
+)
+
+private fun TextStyle.lexend() = copy(fontFamily = Lexend)
+
+/** Lexend throughout, with bolder, tighter headings so titles stand out from details. */
 private val AppTypography = Typography().run {
+    Typography(
+        displayLarge = displayLarge.lexend(),
+        displayMedium = displayMedium.lexend(),
+        displaySmall = displaySmall.lexend(),
+        headlineLarge = headlineLarge.lexend(),
+        headlineMedium = headlineMedium.lexend(),
+        headlineSmall = headlineSmall.lexend(),
+        titleLarge = titleLarge.lexend(),
+        titleMedium = titleMedium.lexend(),
+        titleSmall = titleSmall.lexend(),
+        bodyLarge = bodyLarge.lexend(),
+        bodyMedium = bodyMedium.lexend(),
+        bodySmall = bodySmall.lexend(),
+        labelLarge = labelLarge.lexend(),
+        labelMedium = labelMedium.lexend(),
+        labelSmall = labelSmall.lexend(),
+    )
+}.run {
     copy(
         displaySmall = displaySmall.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
         headlineMedium = headlineMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp),
