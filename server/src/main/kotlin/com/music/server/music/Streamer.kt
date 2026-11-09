@@ -99,14 +99,16 @@ class Streamer(
      * Fetches the start of [stream] the way a player would and says what happened: how the
      * service answered, how long it took and how fast the audio came (Settings' stream test).
      */
-    suspend fun probe(stream: SourceStream): List<String> = withContext(Dispatchers.IO) {
+    suspend fun probe(stream: SourceStream, maxBytes: Long = PROBE_BYTES, maxMs: Long = PROBE_MS): List<String> = withContext(Dispatchers.IO) {
         val lines = mutableListOf<String>()
         val host = stream.url.toHttpUrlOrNull()?.host ?: "?"
         val started = System.nanoTime()
         fun ms() = (System.nanoTime() - started) / 1_000_000
         val quick = http.newBuilder().readTimeout(PROBE_TIMEOUT_S, TimeUnit.SECONDS).callTimeout(PROBE_TIMEOUT_S * 2, TimeUnit.SECONDS).build()
         try {
-            open(stream, if (stream.supportsRangeRequests) "bytes=0-${PROBE_BYTES - 1}" else null, quick).use { response ->
+            // Asked for the way a browser asks for a song (from the start, open-ended), then read
+            // for a while: a fast start that slows to a trickle shows here.
+            open(stream, if (stream.supportsRangeRequests) "bytes=0-" else null, quick).use { response ->
                 val answered = ms()
                 lines += "$host answered HTTP ${response.code} in $answered ms" +
                     listOfNotNull(
@@ -121,7 +123,7 @@ class Streamer(
                 val source = body.source()
                 val sink = okio.Buffer()
                 var read = 0L
-                while (read < PROBE_BYTES) {
+                while (read < maxBytes && ms() - answered < maxMs) {
                     val n = source.read(sink, 16_384)
                     if (n < 0) break
                     read += n
@@ -137,7 +139,11 @@ class Streamer(
     }
 
     private suspend fun passThrough(call: ApplicationCall, stream: SourceStream, refresh: (suspend () -> SourceStream)?) {
-        val range = call.request.header(HttpHeaders.Range)
+        val asked = call.request.header(HttpHeaders.Range)
+        // YouTube's servers trickle out audio asked for without a range. Browsers always send one
+        // (and YouTube plays in the web player); the phone's player doesn't for a song's start,
+        // so the whole song is asked for as a range, and sent on as a plain answer.
+        val range = asked ?: "bytes=0-".takeIf { wantsRange(stream) }
         var current = stream
         val started = System.nanoTime()
         var response = open(current, range)
@@ -169,14 +175,16 @@ class Streamer(
                 ?.takeIf { it.startsWith("audio/") || it.startsWith("video/") || it == "application/ogg" }
                 ?.let { runCatching { ContentType.parse(it) }.getOrNull() }
                 ?: contentTypeFor(current.fileExtension)
+            // A range the player didn't ask for (see above): the whole song, as a plain answer.
+            val whole = asked == null && upstream.code == 206
             call.response.header(HttpHeaders.AcceptRanges, if (current.supportsRangeRequests) "bytes" else "none")
-            upstream.header(HttpHeaders.ContentRange)?.let { call.response.header(HttpHeaders.ContentRange, it) }
+            if (!whole) upstream.header(HttpHeaders.ContentRange)?.let { call.response.header(HttpHeaders.ContentRange, it) }
             call.response.header(HttpHeaders.CacheControl, "private, max-age=3600")
             // The body may be written after this returns, so the writer closes the source when done.
             handedOff = true
             call.respondOutputStream(
                 contentType = contentType,
-                status = HttpStatusCode.fromValue(upstream.code),
+                status = if (whole) HttpStatusCode.OK else HttpStatusCode.fromValue(upstream.code),
                 contentLength = body.contentLength().takeIf { it >= 0 },
             ) {
                 try {
@@ -274,12 +282,16 @@ class Streamer(
 
     private fun hostOf(stream: SourceStream): String = stream.url.toHttpUrlOrNull()?.host ?: "The source"
 
+    private fun wantsRange(stream: SourceStream): Boolean =
+        stream.supportsRangeRequests && stream.url.toHttpUrlOrNull()?.host?.endsWith(".googlevideo.com") == true
+
     companion object {
         private const val TAG = "Streamer"
         private const val BUFFER = 64 * 1024
         private const val QUEUE_WAIT_MS = 15_000L
         private const val SLOW_MS = 8_000L
-        private const val PROBE_BYTES = 256 * 1024
+        private const val PROBE_BYTES = 1024 * 1024L
+        private const val PROBE_MS = 10_000L
         private const val PROBE_TIMEOUT_S = 20L
         private const val CAP_SLACK_KBPS = 8
         private const val LOSSLESS_KBPS = 1_000

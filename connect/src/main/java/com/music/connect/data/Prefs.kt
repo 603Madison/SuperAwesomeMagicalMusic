@@ -43,10 +43,11 @@ data class Settings(
     /** Speakers' addresses typed in, for networks where they can't be found by themselves. */
     val speakerAddresses: List<String> = emptyList(),
     /**
-     * YouTube Music songs are fetched by the phone itself, over its own connection (YouTube turns
-     * servers away more and more); the server's copy is the fallback.
+     * YouTube Music songs are fetched by the phone itself, over its own connection, for a server
+     * YouTube turns away; the server's copy is the fallback. Off by default: through the server
+     * is quicker to start.
      */
-    val youtubeOnPhone: Boolean = true,
+    val youtubeOnPhone: Boolean = false,
 ) {
     val signedIn: Boolean get() = server.isNotEmpty() && token != null
 
@@ -111,7 +112,7 @@ class Prefs(private val context: Context) {
         levelling = prefs[LEVELLING] ?: true,
         speakers = prefs[SPEAKERS] ?: true,
         speakerAddresses = prefs[SPEAKER_ADDRESSES].orEmpty().lines().map { it.trim() }.filter { it.isNotEmpty() },
-        youtubeOnPhone = prefs[YOUTUBE_ON_PHONE] ?: true,
+        youtubeOnPhone = prefs[YOUTUBE_ON_PHONE] ?: false,
     )
 
     private companion object {
@@ -123,11 +124,14 @@ class Prefs(private val context: Context) {
         val KBPS_CELLULAR = intPreferencesKey("kbps_cellular")
         val KBPS_SATELLITE = intPreferencesKey("kbps_satellite")
         val KBPS_DOWNLOAD = intPreferencesKey("kbps_download")
-        val KBPS_DATA_SAVER = intPreferencesKey("kbps_data_saver")
+        // Every setting is saved whenever one changes, so 1.19's default (128 kbps) was saved
+        // for anyone who changed anything: a new key leaves it behind. (Likewise 1.20.0's
+        // "youtube_on_phone", on by default then.)
+        val KBPS_DATA_SAVER = intPreferencesKey("kbps_data_saver_choice")
         val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("download_wifi_only")
         val LEVELLING = booleanPreferencesKey("levelling")
         val SPEAKERS = booleanPreferencesKey("speakers")
         val SPEAKER_ADDRESSES = stringPreferencesKey("speaker_addresses")
-        val YOUTUBE_ON_PHONE = booleanPreferencesKey("youtube_on_phone")
+        val YOUTUBE_ON_PHONE = booleanPreferencesKey("youtube_direct")
     }
 }

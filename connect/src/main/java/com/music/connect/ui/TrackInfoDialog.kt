@@ -73,6 +73,7 @@ fun TrackInfoDialog(track: ApiTrack, onDismiss: () -> Unit) {
                             live?.let { now -> Info("On now", listOf(now.title, now.artist).filter { it.isNotBlank() }.joinToString(" · ")) }
                             Info("Stream", if (track.isChannel) "SiriusXM's live stream, through your server" else "The station's stream, through your server")
                         }
+                        if (facts[track.key] == null && !track.isLive) Info("Copy", "Being picked by your server…")
                         facts[track.key]?.let { fact ->
                             Info("Copy", fact.description)
                             if (!fact.downloaded && !track.isLive) Info("Fetched by", if (fact.byPhone) "This phone, straight from YouTube" else "Your server")

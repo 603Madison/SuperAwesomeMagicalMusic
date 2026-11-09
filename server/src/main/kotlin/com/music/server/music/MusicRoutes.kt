@@ -6,6 +6,7 @@ import com.music.player.quality.StreamQuality
 import com.music.player.settings.JellyfinConfig
 import com.music.player.sources.TrackMatcher
 import com.music.player.sources.jellyfin.JellyfinSource
+import com.music.player.sources.youtube.YouTubeMusicSource
 import com.music.server.sources.SourceKind
 import com.music.server.ApiError
 import com.music.server.Services
@@ -186,6 +187,16 @@ fun Route.musicRoutes(services: Services) {
         if (stream != null) {
             lines += "Found it in ${(System.nanoTime() - started) / 1_000_000} ms: ${stream.description}"
             lines += services.streamer.probe(stream)
+            // YouTube offers a handful of copies; one can trickle while another flies.
+            val youtube = services.registry.music(source) as? YouTubeMusicSource
+            if (youtube != null) {
+                val others = runCatching { youtube.allStreams(id) }.getOrElse { emptyList() }.filter { it.description != stream.description }
+                for (other in others) {
+                    lines += ""
+                    lines += "Also offered: ${other.description}"
+                    lines += services.streamer.probe(other, maxBytes = 512 * 1024L, maxMs = 6_000L)
+                }
+            }
         }
         call.response.header(HttpHeaders.CacheControl, "no-store")
         call.respondText(lines.joinToString("\n", postfix = "\n"), ContentType.Text.Plain)

@@ -90,26 +90,35 @@ class YouTubeMusicSource(
     }
 
     override suspend fun stream(sourceId: String, quality: StreamQuality): SourceStream = withContext(Dispatchers.IO) {
-        ensureInitialized()
-        val info = StreamInfo.getInfo(service, watchUrl(sourceId))
-        val candidates = info.audioStreams.filter {
-            it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP && it.kbps() > 0
-        }
+        val candidates = audioOf(sourceId)
         // Prefer Opus over AAC when both sit at the chosen bitrate: it sounds better per bit.
         val choice = TierSelector.choose(candidates.sortedBy { if (it.format.isOpus()) 1 else 0 }, quality) { it.kbps() }
             ?: throw SourceUnavailableException("YouTube Music has no playable audio for this song")
-        val stream = choice.tier
-        val format = stream.format
-        SourceStream(
-            url = stream.content,
-            headers = playbackHeaders(stream.content),
-            description = "${if (format.isOpus()) "Opus" else "AAC"} ${stream.kbps()} kbps",
-            withinCap = choice.withinCap,
-            fileExtension = format?.suffix ?: "m4a",
-            kbps = stream.kbps(),
-            codec = if (format.isOpus()) "opus" else "aac",
-        )
+        choice.tier.toSourceStream(choice.withinCap)
     }
+
+    /** Every copy of the song YouTube offers, best first (the server's stream test tries each). */
+    suspend fun allStreams(sourceId: String): List<SourceStream> = withContext(Dispatchers.IO) {
+        audioOf(sourceId).sortedByDescending { it.kbps() }.map { it.toSourceStream(withinCap = true) }
+    }
+
+    private fun audioOf(sourceId: String): List<AudioStream> {
+        ensureInitialized()
+        val info = StreamInfo.getInfo(service, watchUrl(sourceId))
+        return info.audioStreams.filter {
+            it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP && it.kbps() > 0
+        }
+    }
+
+    private fun AudioStream.toSourceStream(withinCap: Boolean): SourceStream = SourceStream(
+        url = content,
+        headers = playbackHeaders(content),
+        description = "${if (format.isOpus()) "Opus" else "AAC"} ${kbps()} kbps",
+        withinCap = withinCap,
+        fileExtension = format?.suffix ?: "m4a",
+        kbps = kbps(),
+        codec = if (format.isOpus()) "opus" else "aac",
+    )
 
     /** The songs of a YouTube or YouTube Music playlist, and its name. */
     suspend fun playlist(url: String, max: Int = 1_000): Pair<String, List<Track>> {
