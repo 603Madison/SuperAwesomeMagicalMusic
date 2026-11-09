@@ -76,7 +76,13 @@ fun TrackInfoDialog(track: ApiTrack, onDismiss: () -> Unit) {
                         facts[track.key]?.let { fact ->
                             Info("Copy", fact.description)
                             fact.kbps?.let { Info("Bitrate", "$it kbps" + if (fact.transcoded) " (converted on your server)" else "") }
-                            fact.capKbps?.let { cap -> Info("Quality cap", "${if (cap == 0) "Original" else "$cap kbps"} (picked on ${network.networkClass.label})") }
+                            fact.capKbps?.let { cap ->
+                                val why = when {
+                                    fact.dataSaver -> "Android's Data Saver is on (see Settings › Quality)"
+                                    else -> "picked on ${fact.network ?: network.networkClass.label}"
+                                }
+                                Info("Quality cap", "${if (cap == 0) "Original" else "$cap kbps"} ($why)")
+                            }
                         }
                         audio?.takeIf { it.key == null || it.key == track.key }?.let { decoded ->
                             codecOf(decoded)?.let { Info("Codec", it) }

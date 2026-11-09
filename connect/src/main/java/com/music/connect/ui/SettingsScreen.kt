@@ -62,6 +62,14 @@ fun SettingsScreen() {
             QualityChoice("On Wi-Fi", settings.kbpsWifi, network.networkClass == NetworkClass.WIFI) { k -> update { it.copy(kbpsWifi = k) } }
             QualityChoice("On mobile data", settings.kbpsCellular, network.networkClass == NetworkClass.CELLULAR) { k -> update { it.copy(kbpsCellular = k) } }
             QualityChoice("On satellite", settings.kbpsSatellite, network.networkClass == NetworkClass.SATELLITE) { k -> update { it.copy(kbpsSatellite = k) } }
+            QualityChoice("With Data Saver on", settings.kbpsDataSaver, network.savingData) { k -> update { it.copy(kbpsDataSaver = k) } }
+            if (network.savingData && settings.kbpsDataSaver != 0) {
+                Text(
+                    "Android's Data Saver is on, so songs are kept to ${settings.kbpsDataSaver} kbps at most, whatever's chosen above. Choose Original for “With Data Saver on” to use your choices anyway.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             Text(
                 "Songs above the cap are converted down on your server, or a smaller copy is picked. On satellite the player also loads ten minutes ahead.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -30,6 +30,8 @@ data class Settings(
     val kbpsSatellite: Int = 64,
     /** The quality songs are downloaded at. */
     val kbpsDownload: Int = 0,
+    /** The most to stream while Android's Data Saver is on (0: no lower than the network's own choice). */
+    val kbpsDataSaver: Int = DATA_SAVER_KBPS,
     /** Downloads wait for Wi-Fi (or another unmetered network). */
     val downloadOnWifiOnly: Boolean = true,
     val levelling: Boolean = true,
@@ -47,8 +49,12 @@ data class Settings(
             NetworkClass.CELLULAR -> kbpsCellular
             else -> kbpsWifi
         }
-        return if (savingData) (if (cap == 0) DATA_SAVER_KBPS else minOf(cap, DATA_SAVER_KBPS)) else cap
+        if (!savingData || kbpsDataSaver == 0) return cap
+        return if (cap == 0) kbpsDataSaver else minOf(cap, kbpsDataSaver)
     }
+
+    /** Whether Data Saver is what's holding [network]'s quality down right now. */
+    fun dataSaverLowers(network: NetworkClass, savingData: Boolean): Boolean = kbpsFor(network, savingData) != kbpsFor(network, false)
 
     companion object {
         const val DATA_SAVER_KBPS = 128
@@ -78,6 +84,7 @@ class Prefs(private val context: Context) {
         prefs[KBPS_CELLULAR] = next.kbpsCellular
         prefs[KBPS_SATELLITE] = next.kbpsSatellite
         prefs[KBPS_DOWNLOAD] = next.kbpsDownload
+        prefs[KBPS_DATA_SAVER] = next.kbpsDataSaver
         prefs[DOWNLOAD_WIFI_ONLY] = next.downloadOnWifiOnly
         prefs[LEVELLING] = next.levelling
         prefs[SPEAKERS] = next.speakers
@@ -94,6 +101,7 @@ class Prefs(private val context: Context) {
         kbpsCellular = prefs[KBPS_CELLULAR] ?: 320,
         kbpsSatellite = prefs[KBPS_SATELLITE] ?: 64,
         kbpsDownload = prefs[KBPS_DOWNLOAD] ?: 0,
+        kbpsDataSaver = prefs[KBPS_DATA_SAVER] ?: Settings.DATA_SAVER_KBPS,
         downloadOnWifiOnly = prefs[DOWNLOAD_WIFI_ONLY] ?: true,
         levelling = prefs[LEVELLING] ?: true,
         speakers = prefs[SPEAKERS] ?: true,
@@ -109,6 +117,7 @@ class Prefs(private val context: Context) {
         val KBPS_CELLULAR = intPreferencesKey("kbps_cellular")
         val KBPS_SATELLITE = intPreferencesKey("kbps_satellite")
         val KBPS_DOWNLOAD = intPreferencesKey("kbps_download")
+        val KBPS_DATA_SAVER = intPreferencesKey("kbps_data_saver")
         val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("download_wifi_only")
         val LEVELLING = booleanPreferencesKey("levelling")
         val SPEAKERS = booleanPreferencesKey("speakers")

@@ -63,6 +63,8 @@ data class StreamResolution(
     /** The stream's own bitrate, as the server knows it. */
     val streamKbps: Int? = null,
     val transcoded: Boolean = false,
+    /** The kind of network it was picked on. */
+    val network: NetworkClass? = null,
 )
 
 /** Where a song being played comes from, for its details (see TrackInfoDialog). */
@@ -74,6 +76,9 @@ data class StreamFacts(
     val transcoded: Boolean = false,
     val gainDb: Float? = null,
     val downloaded: Boolean = false,
+    /** The network it was picked on, and whether Data Saver was holding the quality down. */
+    val network: String? = null,
+    val dataSaver: Boolean = false,
 )
 
 /** The audio the player is decoding, as it says. */
@@ -267,14 +272,22 @@ class PlaybackService : MediaLibraryService() {
         // A song keeps the stream it started with while it plays (seeking reopens it, and another
         // bitrate's bytes wouldn't fit); one fetched ahead is chosen again if the network changed.
         val pinned = resolutions[track.key]?.takeIf {
-            it.kbps == kbps || track.key == currentKey || System.currentTimeMillis() - it.atMs < PIN_MS
+            // Kept a while through a network flapping back and forth; a new quality setting applies at once.
+            it.kbps == kbps || track.key == currentKey || (it.network != network.networkClass && System.currentTimeMillis() - it.atMs < PIN_MS)
         }
         val chosen = pinned ?: runBlocking {
             // Comparing every service costs round trips: only where the link is quick.
             val resolved = c.api.resolve(track, kbps, thorough = network.networkClass == NetworkClass.WIFI)
-            StreamResolution(c.api.absolute(resolved.streamUrl), resolved.description, resolved.gainDb, kbps, System.currentTimeMillis(), resolved.kbps, resolved.transcoded)
+            StreamResolution(c.api.absolute(resolved.streamUrl), resolved.description, resolved.gainDb, kbps, System.currentTimeMillis(), resolved.kbps, resolved.transcoded, network.networkClass)
         }.also { resolutions[track.key] = it }
-        describe(track, StreamFacts(chosen.description, chosen.streamKbps, chosen.kbps, chosen.transcoded, chosen.gainDb))
+        describe(
+            track,
+            StreamFacts(
+                chosen.description, chosen.streamKbps, chosen.kbps, chosen.transcoded, chosen.gainDb,
+                network = network.networkClass.label,
+                dataSaver = chosen.kbps == kbps && settings.dataSaverLowers(network.networkClass, network.savingData),
+            ),
+        )
         // (ConcurrentHashMap holds no nulls: most songs have no known gain.)
         chosen.gainDb?.let { gains[track.key] = it } ?: gains.remove(track.key)
         // This runs on the loader's thread, where the player can't be touched: compare with the
