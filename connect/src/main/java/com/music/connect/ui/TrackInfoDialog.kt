@@ -79,11 +79,7 @@ fun TrackInfoDialog(track: ApiTrack, onDismiss: () -> Unit) {
                             if (!fact.downloaded && !track.isLive) Info("Fetched by", if (fact.byPhone) "This phone, straight from YouTube (your server couldn't play it)" else "Your server")
                             fact.kbps?.let { Info("Bitrate", "$it kbps" + if (fact.transcoded) " (converted on your server)" else "") }
                             fact.capKbps?.let { cap ->
-                                val why = when {
-                                    fact.dataSaver -> "Android restricts this app's mobile data, so “With Data Saver on” applies (Settings › Quality)"
-                                    else -> "picked on ${fact.network ?: network.networkClass.label}"
-                                }
-                                Info("Quality cap", "${if (cap == 0) "Original" else "$cap kbps"} ($why)")
+                                Info("Quality cap", "${if (cap == 0) "Original" else "$cap kbps"} (your choice for ${(fact.network ?: network.networkClass.label).lowercase()})")
                             }
                         }
                         audio?.takeIf { it.key == null || it.key == track.key }?.let { decoded ->

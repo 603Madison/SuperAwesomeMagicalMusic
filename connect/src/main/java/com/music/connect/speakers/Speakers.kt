@@ -144,7 +144,7 @@ class Speakers(
         return SpeakerSession(
             MusicCastSpeaker(info, http), hub, api, relay,
             server = { settings.value.server },
-            kbps = { settings.value.kbpsFor(NetworkClass.WIFI, savingData = false) },
+            kbps = { settings.value.kbpsFor(NetworkClass.WIFI) },
             scope = scope,
         )
     }

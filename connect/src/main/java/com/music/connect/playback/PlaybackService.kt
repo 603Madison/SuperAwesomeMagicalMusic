@@ -85,9 +85,8 @@ data class StreamFacts(
     val transcoded: Boolean = false,
     val gainDb: Float? = null,
     val downloaded: Boolean = false,
-    /** The network it was picked on, and whether Data Saver was holding the quality down. */
+    /** The network it was picked on. */
     val network: String? = null,
-    val dataSaver: Boolean = false,
     /** Fetched by the phone straight from the service, not through the server. */
     val byPhone: Boolean = false,
 )
@@ -277,10 +276,10 @@ class PlaybackService : MediaLibraryService() {
             describe(track, StreamFacts("Downloaded copy", downloaded = true))
             return spec.withUri(Uri.fromFile(file))
         }
-        val network = c.network.current()
+        val network = c.network.state.value
         if (!network.isOnline) throw IOException("\"${track.title}\" isn't downloaded, and there's no connection")
         val settings = c.settings.value
-        val kbps = settings.kbpsFor(network.networkClass, network.savingData)
+        val kbps = settings.kbpsFor(network.networkClass)
         // A song keeps the stream it started with while it plays (seeking reopens it, and another
         // bitrate's bytes wouldn't fit); one fetched ahead is chosen again if the network changed.
         val now = System.currentTimeMillis()
@@ -297,7 +296,6 @@ class PlaybackService : MediaLibraryService() {
             StreamFacts(
                 chosen.description, chosen.streamKbps, chosen.kbps, chosen.transcoded, chosen.gainDb,
                 network = network.networkClass.label,
-                dataSaver = chosen.kbps == kbps && settings.dataSaverLowers(network.networkClass, network.savingData),
                 byPhone = chosen.byPhone,
             ),
         )

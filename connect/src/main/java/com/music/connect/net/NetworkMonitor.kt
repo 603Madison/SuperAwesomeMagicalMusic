@@ -1,10 +1,7 @@
 package com.music.connect.net
 
 import android.annotation.SuppressLint
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -14,7 +11,6 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.ext.SdkExtensions
 import android.util.Log
-import androidx.core.content.ContextCompat
 import com.music.player.quality.NetworkClass
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,16 +21,8 @@ data class NetworkState(
     /** The network lacks NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED (e.g. T-Satellite data). */
     val bandwidthConstrained: Boolean = false,
     val metered: Boolean = false,
-    /**
-     * Android's Data Saver is on, whether or not this app is exempted from it (an exemption only
-     * lets background data through; the bitrate still follows the Data Saver setting).
-     */
-    val dataSaver: Boolean = false,
 ) {
     val isOnline: Boolean get() = networkClass != NetworkClass.NONE
-
-    /** Data Saver governs this connection: like Android's own Data Saver, metered networks only. */
-    val savingData: Boolean get() = dataSaver && metered && isOnline
 
     companion object {
         val OFFLINE = NetworkState(NetworkClass.NONE)
@@ -64,19 +52,7 @@ class NetworkMonitor(private val context: Context) {
         started = true
         connectivityManager.activeNetwork
             ?.let { connectivityManager.getNetworkCapabilities(it) }
-            ?.let { _state.value = classify(it).copy(dataSaver = dataSaverOn()) }
-
-        // Data Saver can be switched on or off without the network changing.
-        ContextCompat.registerReceiver(
-            context,
-            object : BroadcastReceiver() {
-                override fun onReceive(context: Context, intent: Intent) {
-                    _state.value = _state.value.copy(dataSaver = dataSaverOn())
-                }
-            },
-            IntentFilter(ConnectivityManager.ACTION_RESTRICT_BACKGROUND_CHANGED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
+            ?.let { _state.value = classify(it) }
 
         val thread = HandlerThread("SatelliteNetworkMonitor").apply { start() }
         val handler = Handler(thread.looper)
@@ -85,7 +61,7 @@ class NetworkMonitor(private val context: Context) {
 
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 current = network
-                _state.value = classify(capabilities).copy(dataSaver = dataSaverOn())
+                _state.value = classify(capabilities)
             }
 
             override fun onLost(network: Network) {
@@ -107,19 +83,6 @@ class NetworkMonitor(private val context: Context) {
             connectivityManager.registerDefaultNetworkCallback(callback, handler)
         }
     }
-
-    /** The state now, with Data Saver asked afresh (its broadcast only reaches an app in front). */
-    fun current(): NetworkState = _state.value.copy(dataSaver = dataSaverOn()).also { _state.value = it }
-
-    /**
-     * Whether Android restricts this app's mobile data. That's Data Saver ("whitelisted" means it's
-     * on with this app exempted, which still counts), but Android also says so when this app's own
-     * "Background data" is off, with Data Saver off. So it only lowers quality when the person
-     * picked a quality for it (Settings › Quality › With Data Saver on, Original by default).
-     */
-    fun dataSaverOn(): Boolean = runCatching {
-        connectivityManager.restrictBackgroundStatus != ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLED
-    }.getOrDefault(false)
 
     // The satellite constants are hard-coded so they also work on releases that predate them.
     @SuppressLint("WrongConstant")

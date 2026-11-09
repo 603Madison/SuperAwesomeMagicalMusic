@@ -9,7 +9,6 @@ import com.music.connect.playback.MediaItems
 import com.music.player.model.SourceType
 import com.music.player.quality.NetworkClass
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,25 +20,11 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class UnitsTest {
     @Test
-    fun `the bitrate follows the network, and Data Saver keeps it low`() {
-        // By default Data Saver doesn't change the choice; a cap for it is chosen in Settings.
-        assertEquals(320, Settings(kbpsCellular = 320).kbpsFor(NetworkClass.CELLULAR, savingData = true))
-        val settings = Settings(kbpsWifi = 0, kbpsCellular = 320, kbpsSatellite = 64, kbpsDataSaver = 128)
-        assertEquals(0, settings.kbpsFor(NetworkClass.WIFI, savingData = false))
-        assertEquals(320, settings.kbpsFor(NetworkClass.CELLULAR, savingData = false))
-        assertEquals(64, settings.kbpsFor(NetworkClass.SATELLITE, savingData = false))
-        assertEquals(128, settings.kbpsFor(NetworkClass.CELLULAR, savingData = true))
-        assertEquals(64, settings.kbpsFor(NetworkClass.SATELLITE, savingData = true))
-        assertTrue(settings.dataSaverLowers(NetworkClass.CELLULAR, savingData = true))
-        assertFalse(settings.dataSaverLowers(NetworkClass.SATELLITE, savingData = true))
-
-        // "Original" with Data Saver on: the network's own choice stands, Original included.
-        val unlimited = Settings(kbpsWifi = 0, kbpsCellular = 0, kbpsDataSaver = 0)
-        assertEquals(0, unlimited.kbpsFor(NetworkClass.CELLULAR, savingData = true))
-        assertFalse(unlimited.dataSaverLowers(NetworkClass.CELLULAR, savingData = true))
-        // A Data Saver choice of its own.
-        assertEquals(192, Settings(kbpsCellular = 0, kbpsDataSaver = 192).kbpsFor(NetworkClass.CELLULAR, savingData = true))
-        assertEquals(128, Settings(kbpsCellular = 128, kbpsDataSaver = 192).kbpsFor(NetworkClass.CELLULAR, savingData = true))
+    fun `the bitrate follows the network`() {
+        val settings = Settings(kbpsWifi = 0, kbpsCellular = 320, kbpsSatellite = 64)
+        assertEquals(0, settings.kbpsFor(NetworkClass.WIFI))
+        assertEquals(320, settings.kbpsFor(NetworkClass.CELLULAR))
+        assertEquals(64, settings.kbpsFor(NetworkClass.SATELLITE))
     }
 
     @Test

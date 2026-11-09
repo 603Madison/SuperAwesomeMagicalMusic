@@ -93,7 +93,7 @@ class PlaybackTest {
         assertTrue(trace, player.playerError == null || player.playerError!!.errorCodeName.contains("DECOD"))
         // At the cap for the network the phone is on (Robolectric's is mobile data: 320 kbps).
         val network = c.network.state.value
-        val kbps = c.settings.value.kbpsFor(network.networkClass, network.savingData)
+        val kbps = c.settings.value.kbpsFor(network.networkClass)
         assertEquals(if (kbps == 0) "FLAC (original file)" else "MP3 $kbps kbps (transcoded)", c.playingDescription.value[song.key])
     }
 

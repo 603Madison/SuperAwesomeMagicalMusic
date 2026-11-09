@@ -30,11 +30,6 @@ data class Settings(
     val kbpsSatellite: Int = 64,
     /** The quality songs are downloaded at. */
     val kbpsDownload: Int = 0,
-    /**
-     * The most to stream while Android restricts this app's mobile data (Data Saver). 0, the
-     * default: the network's own choice stands.
-     */
-    val kbpsDataSaver: Int = 0,
     /** Downloads wait for Wi-Fi (or another unmetered network). */
     val downloadOnWifiOnly: Boolean = true,
     val levelling: Boolean = true,
@@ -45,19 +40,16 @@ data class Settings(
 ) {
     val signedIn: Boolean get() = server.isNotEmpty() && token != null
 
-    /** The cap for [network] (0 is no cap), and no more than [kbpsDataSaver] while Data Saver is on. */
-    fun kbpsFor(network: NetworkClass, savingData: Boolean): Int {
-        val cap = when (network) {
-            NetworkClass.SATELLITE -> kbpsSatellite
-            NetworkClass.CELLULAR -> kbpsCellular
-            else -> kbpsWifi
-        }
-        if (!savingData || kbpsDataSaver == 0) return cap
-        return if (cap == 0) kbpsDataSaver else minOf(cap, kbpsDataSaver)
+    /**
+     * The cap for [network] (0 is no cap). Android's Data Saver isn't followed: Android can't tell
+     * an app whether Data Saver is on (it gives the same answer when the app's own "Background
+     * data" is off), and the choice for mobile data covers it.
+     */
+    fun kbpsFor(network: NetworkClass): Int = when (network) {
+        NetworkClass.SATELLITE -> kbpsSatellite
+        NetworkClass.CELLULAR -> kbpsCellular
+        else -> kbpsWifi
     }
-
-    /** Whether Data Saver is what's holding [network]'s quality down right now. */
-    fun dataSaverLowers(network: NetworkClass, savingData: Boolean): Boolean = kbpsFor(network, savingData) != kbpsFor(network, false)
 }
 
 class Prefs(private val context: Context) {
@@ -83,7 +75,6 @@ class Prefs(private val context: Context) {
         prefs[KBPS_CELLULAR] = next.kbpsCellular
         prefs[KBPS_SATELLITE] = next.kbpsSatellite
         prefs[KBPS_DOWNLOAD] = next.kbpsDownload
-        prefs[KBPS_DATA_SAVER] = next.kbpsDataSaver
         prefs[DOWNLOAD_WIFI_ONLY] = next.downloadOnWifiOnly
         prefs[LEVELLING] = next.levelling
         prefs[SPEAKERS] = next.speakers
@@ -100,7 +91,6 @@ class Prefs(private val context: Context) {
         kbpsCellular = prefs[KBPS_CELLULAR] ?: 320,
         kbpsSatellite = prefs[KBPS_SATELLITE] ?: 64,
         kbpsDownload = prefs[KBPS_DOWNLOAD] ?: 0,
-        kbpsDataSaver = prefs[KBPS_DATA_SAVER] ?: 0,
         downloadOnWifiOnly = prefs[DOWNLOAD_WIFI_ONLY] ?: true,
         levelling = prefs[LEVELLING] ?: true,
         speakers = prefs[SPEAKERS] ?: true,
@@ -116,9 +106,6 @@ class Prefs(private val context: Context) {
         val KBPS_CELLULAR = intPreferencesKey("kbps_cellular")
         val KBPS_SATELLITE = intPreferencesKey("kbps_satellite")
         val KBPS_DOWNLOAD = intPreferencesKey("kbps_download")
-        // Every setting is saved whenever one changes, so 1.19's default (128 kbps) was saved
-        // for anyone who changed anything: a new key leaves it behind.
-        val KBPS_DATA_SAVER = intPreferencesKey("kbps_data_saver_choice")
         val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("download_wifi_only")
         val LEVELLING = booleanPreferencesKey("levelling")
         val SPEAKERS = booleanPreferencesKey("speakers")
