@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { api, ApiError, art } from "../lib/api";
-import { trackKey } from "../lib/format";
+import { isMissing, trackKey } from "../lib/format";
 import type { ResolvedStream, Track } from "../lib/types";
 import { Leveller } from "./leveller";
 import { asSong, liveStreamOf, splitRadioTitle, splitTwo } from "./live";
@@ -480,9 +480,12 @@ export const player = {
   },
 
   playTracks(tracks: Track[], start = 0) {
-    if (!tracks.length) return;
-    set({ queue: tracks.map(itemOf) });
-    void load(Math.min(start, tracks.length - 1), true);
+    // Songs a playlist names that weren't found are left out.
+    const from = tracks[Math.min(start, tracks.length - 1)];
+    const playable = tracks.filter((t) => !isMissing(t));
+    if (!playable.length) return;
+    set({ queue: playable.map(itemOf) });
+    void load(Math.max(0, from ? playable.indexOf(from) : 0), true);
   },
 
   playShuffled(tracks: Track[]) {
@@ -490,14 +493,18 @@ export const player = {
   },
 
   /** Puts [tracks] right after the playing song. */
-  playNext(tracks: Track[]) {
+  playNext(all: Track[]) {
+    const tracks = all.filter((t) => !isMissing(t));
+    if (!tracks.length) return;
     const { queue, index } = state();
     if (index < 0) return player.playTracks(tracks);
     set({ queue: [...queue.slice(0, index + 1), ...tracks.map(itemOf), ...queue.slice(index + 1)] });
     prefetchNext();
   },
 
-  addToQueue(tracks: Track[]) {
+  addToQueue(all: Track[]) {
+    const tracks = all.filter((t) => !isMissing(t));
+    if (!tracks.length) return;
     const { queue, index } = state();
     set({ queue: [...queue, ...tracks.map(itemOf)] });
     if (index < 0) void load(0, true);

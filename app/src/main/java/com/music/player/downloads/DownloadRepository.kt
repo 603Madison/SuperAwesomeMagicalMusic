@@ -36,7 +36,7 @@ class DownloadRepository(
      */
     suspend fun enqueue(tracks: List<Track>, auto: Boolean = false) {
         val constraints = constraints()
-        for (track in tracks.distinctBy { it.key }) {
+        for (track in tracks.distinctBy { it.key }.filter { !it.isMissing }) {
             val existing = dao.get(track.key)
             if (existing?.status == DownloadStatus.COMPLETED && existing.filePath?.let { File(it).exists() } == true) {
                 if (!auto && existing.autoDownloaded) dao.upsert(existing.copy(autoDownloaded = false))

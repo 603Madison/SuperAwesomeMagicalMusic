@@ -29,6 +29,8 @@ private fun serve(config: ServerConfig) {
     val log = LoggerFactory.getLogger("samm")
     val services = Services.open(config)
     runBlocking { services.bootstrap() }
+    // Songs imported playlists named that weren't found are looked for again every few hours.
+    services.missingFinder.start()
     log.info("SuperAwesomeMagicalMusic server {} listening on {}:{}, data in {}", Services.version, config.host, config.port, config.dataDir)
     val server = embeddedServer(Netty, port = config.port, host = config.host) { module(services) }
     Runtime.getRuntime().addShutdownHook(

@@ -57,6 +57,9 @@ data class ApiTrack(
 
     /** Can be downloaded and kept in playlists (live radio and station tracks can't). */
     val isSong: Boolean get() = !isLive && !isStationTrack
+
+    /** A song a playlist names that wasn't found in any source: shown greyed out, never played. */
+    val isMissing: Boolean get() = sourceId.startsWith("missing:")
 }
 
 @Serializable
@@ -123,6 +126,9 @@ data class ArtistPage(val artist: ArtistSummary, val topSongs: List<ApiTrack>, v
 
 @Serializable
 data class AlbumPage(val album: AlbumSummary, val tracks: List<ApiTrack>)
+
+@Serializable
+data class FoundAgain(val playlist: Playlist, val found: Int, val stillMissing: Int)
 
 @Serializable
 data class ImportResult(val playlist: Playlist, val found: Int, val missing: List<String> = emptyList(), val note: String? = null)
@@ -318,6 +324,16 @@ class ServerApi(
     suspend fun radioNearby(src: String, lat: Double, lon: Double): List<ApiTrack> =
         get("${base()}/api/live/radio/${enc(src)}/nearby?lat=$lat&lon=$lon", ListSerializer(ApiTrack.serializer()))
 
+    /** Notes that a playlist started playing (the web player's sidebar lists them by it). */
+    suspend fun playlistPlayed(id: String) = post("${base()}/api/playlists/${enc(id)}/played", "{}", Unit.serializer())
+
+    /** Looks again for a playlist's songs that weren't found; those found now take their places. */
+    suspend fun findMissing(id: String): FoundAgain = post("${base()}/api/playlists/${enc(id)}/find-missing", "{}", FoundAgain.serializer())
+
+    /** Notes that a channel, station or Pandora station started playing (for "Your radio"). */
+    suspend fun livePlayed(track: ApiTrack) =
+        post("${base()}/api/live/played", ApiJson.encodeToString(LivePlayedBody.serializer(), LivePlayedBody(track)), Unit.serializer())
+
     /** The person's favourite channels and stations (shared with the web player), newest first. */
     suspend fun liveFavorites(): List<ApiTrack> = get("${base()}/api/live/favorites", ListSerializer(ApiTrack.serializer()))
 
@@ -371,6 +387,7 @@ class ServerApi(
     @Serializable private data class LoginBody(val username: String, val password: String, val app: Boolean, val deviceName: String)
     @Serializable private data class TokenBody(val code: String, val verifier: String, val deviceName: String)
     @Serializable private data class FavoriteChange(val track: ApiTrack, val favorite: Boolean)
+    @Serializable private data class LivePlayedBody(val track: ApiTrack)
     @Serializable private data class ResolveBody(val track: ApiTrack, val kbps: Int, val codecs: List<String>, val thorough: Boolean)
     @Serializable private data class LyricsBody(val track: ApiTrack)
     @Serializable private data class NewPlaylistBody(val name: String, val tracks: List<ApiTrack>, val id: String)

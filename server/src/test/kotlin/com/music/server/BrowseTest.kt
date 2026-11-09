@@ -24,6 +24,10 @@ class BrowseTest {
     private val song2 = """{"Id":"s2","Name":"Airbag","Artists":["Radiohead"],"Album":"OK Computer","AlbumId":"al1","RunTimeTicks":2870000000}"""
     private val album = """{"Id":"al1","Name":"OK Computer","AlbumArtist":"Radiohead","ProductionYear":1997,"ChildCount":12,"ImageTags":{"Primary":"t"}}"""
 
+    /** A song that turns up in the library later (Lidarr got it, say). */
+    @Volatile private var arrived = false
+    private val late = """{"Id":"s9","Name":"Nothing At All","Artists":["Nobody"],"Album":"Later","AlbumId":"al9","RunTimeTicks":2000000000}"""
+
     /** A pretend Jellyfin holding one album by one artist. */
     private val jellyfin = MockWebServer().apply {
         dispatcher = object : Dispatcher() {
@@ -40,6 +44,7 @@ class BrowseTest {
                     url.queryParameter("parentId") == "al1" -> listOf(song2, song)
                     url.queryParameter("artistIds") == "ar1" -> listOf(song, song2)
                     term != null && term.length > 3 && "paranoid android".contains(term) -> listOf(song)
+                    arrived && term != null && term.length > 3 && "nothing at all".contains(term) -> listOf(late)
                     else -> emptyList()
                 }
                 return MockResponse().setBody("""{"Items":[${items.joinToString(",")}]}""")
@@ -135,6 +140,35 @@ class BrowseTest {
         assertEquals(listOf("Nobody – Nothing At All"), result["missing"]!!.jsonArray.map { it.jsonPrimitive().content })
         val playlist = result["playlist"]!!.jsonObject
         assertEquals("Typed", playlist["summary"]!!.jsonObject.str("name"))
+        // The song not found is in the playlist anyway, in its place, as a stand-in.
+        fun titles(p: kotlinx.serialization.json.JsonObject) = p["entries"]!!.jsonArray.map { it.jsonObject["track"]!!.jsonObject.str("title") }
+        fun ids(p: kotlinx.serialization.json.JsonObject) = p["entries"]!!.jsonArray.map { it.jsonObject["track"]!!.jsonObject.str("sourceId") }
+        assertEquals(listOf("Paranoid Android", "Nothing At All"), titles(playlist))
+        assertTrue(ids(playlist)[1].startsWith("missing:"))
+        assertEquals("1", playlist["summary"]!!.jsonObject.str("missing"))
+        val id = playlist["summary"]!!.jsonObject.str("id")
+
+        // Looked for again while it's still nowhere: still missing.
+        val notYet = user.post("/api/playlists/$id/find-missing") { csrf() }.obj()
+        assertEquals("0", notYet.str("found"))
+        assertEquals("1", notYet.str("stillMissing"))
+        val other = user.post("/api/playlists/import") { csrf(); json("""{"text":"Nobody - Nothing At All","name":"Later"}""") }.obj()
+        val otherId = other["playlist"]!!.jsonObject["summary"]!!.jsonObject.str("id")
+
+        // It turns up in the library: the button finds it, in the same place…
+        arrived = true
+        val again = user.post("/api/playlists/$id/find-missing") { csrf() }.obj()
+        assertEquals("1", again.str("found"))
+        assertEquals(listOf("s1", "s9"), ids(again["playlist"]!!.jsonObject))
+        assertEquals("0", again["playlist"]!!.jsonObject["summary"]!!.jsonObject.str("missing"))
+        // …and so does the search every few hours, for the other playlist.
+        assertEquals(1, services.missingFinder.lookAgain())
+        assertEquals(listOf("s9"), ids(user.get("/api/playlists/$otherId").obj()))
+
+        // Played: the sidebar lists playlists by when they were played.
+        assertEquals(null, user.get("/api/playlists").json().jsonArray.first { it.jsonObject.str("id") == id }.jsonObject["playedAt"]?.takeUnless { it is kotlinx.serialization.json.JsonNull })
+        user.post("/api/playlists/$id/played") { csrf() }
+        assertTrue(user.get("/api/playlists").json().jsonArray.first { it.jsonObject.str("id") == id }.jsonObject.str("playedAt").toLong() > 0)
 
         val bad = user.post("/api/playlists/import") { csrf(); json("""{"url":"https://example.com/playlist/1"}""") }
         assertEquals(HttpStatusCode.BadRequest, bad.status)

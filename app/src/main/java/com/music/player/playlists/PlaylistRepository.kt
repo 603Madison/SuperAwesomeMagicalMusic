@@ -95,6 +95,11 @@ class PlaylistRepository(
         }
     }
 
+    /** Puts songs found since in place of the stand-ins they were missing as ([found]: stand-in id to song). */
+    suspend fun replaceMissing(id: String, found: Map<String, Track>) = edit(id) { current ->
+        current.map { track -> if (track.isMissing) found[track.sourceId] ?: track else track }
+    }
+
     private suspend fun edit(id: String, transform: (List<Track>) -> List<Track>) {
         val playlist = dao.get(id) ?: return
         val current = dao.entries(id).map { it.track }

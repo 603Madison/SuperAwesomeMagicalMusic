@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.DownloadForOffline
 import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shuffle
@@ -151,6 +152,28 @@ private fun ImportDialog(onClose: () -> Unit, onImported: (String) -> Unit) {
     var name by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf<ImportResult?>(null) }
+    var fileName by rememberSaveable { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    // A CSV or text file from the phone (Downloads, Drive…): its songs fill the list, its name the name.
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val label = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    }
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes(MAX_IMPORT_FILE + 1) } ?: error("Couldn't open the file")
+                    if (bytes.size > MAX_IMPORT_FILE) error("That file is too big (1 MB at most)")
+                    label to String(bytes, Charsets.UTF_8)
+                }
+            }.onSuccess { (label, content) ->
+                text = content
+                fileName = label ?: "the file"
+                if (name.isBlank()) label?.let { name = it.substringBeforeLast('.').replace('_', ' ').trim() }
+            }.onFailure { c.tell(it.message ?: "Couldn't read the file") }
+        }
+    }
     val ready = online && !busy && (if (fromList) text.isNotBlank() else url.isNotBlank())
 
     report?.let { result ->
@@ -161,7 +184,7 @@ private fun ImportDialog(onClose: () -> Unit, onImported: (String) -> Unit) {
             text = {
                 LazyColumn {
                     result.note?.let { item { Text("$it.", Modifier.padding(bottom = 8.dp)) } }
-                    if (result.missing.isNotEmpty()) item { Text("These weren't found in your sources:", Modifier.padding(bottom = 4.dp)) }
+                    if (result.missing.isNotEmpty()) item { Text("These weren't found in your sources. They're in the playlist anyway, greyed out, and are looked for again every few hours:", Modifier.padding(bottom = 4.dp)) }
                     items(result.missing) { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             },
@@ -195,7 +218,12 @@ private fun ImportDialog(onClose: () -> Unit, onImported: (String) -> Unit) {
                         maxLines = 10,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Text("One a line, like “Artist - Title”, or a pasted CSV export with title and artist columns (for Qobuz and other services, export one with TuneMyMusic or Soundiiz).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedButton(onClick = { pickFile.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/octet-stream")) }) {
+                        Icon(Icons.Rounded.FileOpen, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(fileName?.let { "From $it" } ?: "Choose a file (CSV or text)")
+                    }
+                    Text("One a line, like “Artist - Title”, or a CSV export with title and artist columns: choose the file, or paste it (for Qobuz and other services, export one with TuneMyMusic or Soundiiz). Songs that aren't found go in greyed out, and are looked for again now and then.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (!online) Text("Importing needs a connection.", color = MaterialTheme.colorScheme.error)
                 if (busy) {
@@ -262,8 +290,13 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
         Empty("This playlist isn't here", "It may have been deleted on another device.")
         return
     }
-    // Offline, only downloaded songs can play.
-    val playable = entries.map { it.track }.filter { online || it.key in downloaded }
+    // Offline, only downloaded songs can play; songs that weren't found never do.
+    val playable = entries.map { it.track }.filter { !it.isMissing && (online || it.key in downloaded) }
+    val missing = entries.count { it.track.isMissing }
+    var finding by remember { mutableStateOf(false) }
+    fun played() {
+        scope.launch { runCatching { c.api.playlistPlayed(id) } }
+    }
 
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -271,8 +304,8 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
                 Text(playlist.name, style = MaterialTheme.typography.headlineMedium)
                 Text("${entries.size} songs" + if (!online) " · ${playable.size} downloaded" else "", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { player.play(playable) }, enabled = playable.isNotEmpty()) { Icon(Icons.Rounded.PlayArrow, null); Text("Play") }
-                    FilledTonalButton(onClick = { player.playShuffled(playable) }, enabled = playable.size > 1) { Icon(Icons.Rounded.Shuffle, null); Text("Shuffle") }
+                    Button(onClick = { player.play(playable); played() }, enabled = playable.isNotEmpty()) { Icon(Icons.Rounded.PlayArrow, null); Text("Play") }
+                    FilledTonalButton(onClick = { player.playShuffled(playable); played() }, enabled = playable.size > 1) { Icon(Icons.Rounded.Shuffle, null); Text("Shuffle") }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -286,6 +319,28 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
                         }
                     })
                 }
+                if (missing > 0) {
+                    Text(
+                        if (missing == 1) "1 song wasn't found in your sources: it's greyed out and skipped, and looked for again every few hours." else "$missing songs weren't found in your sources: they're greyed out and skipped, and looked for again every few hours.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(
+                        enabled = online && !finding,
+                        onClick = {
+                            finding = true
+                            scope.launch {
+                                runCatching { c.api.findMissing(id) }
+                                    .onSuccess { found ->
+                                        c.library.sync()
+                                        c.tell(if (found.found > 0) "Found ${found.found}" + (if (found.stillMissing > 0) "; ${found.stillMissing} still missing" else "") else "Still not found anywhere")
+                                    }
+                                    .onFailure { c.tell(it.message ?: "Couldn't look for them") }
+                                finding = false
+                            }
+                        },
+                    ) { Text(if (finding) "Looking…" else "Look for them again") }
+                }
                 Row {
                     TextButton(onClick = { renaming = true }) { Text("Rename") }
                     TextButton(onClick = { export.launch(PlaylistCsv.fileName(playlist.name)) }, enabled = entries.isNotEmpty()) { Text("Export CSV") }
@@ -295,12 +350,18 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
         }
         if (entries.isEmpty()) item { Empty("This playlist is empty", "Add songs from search with their ⋮ menu.") }
         itemsIndexed(entries, key = { _, e -> e.entryId }) { i, entry ->
-            val available = online || entry.track.key in downloaded
+            val available = !entry.track.isMissing && (online || entry.track.key in downloaded)
             TrackRow(
                 entry.track,
                 onClick = {
-                    if (available) player.play(playable, playable.indexOfFirst { it.key == entry.track.key }.coerceAtLeast(0))
-                    else c.tell("Offline, and this song isn't downloaded")
+                    when {
+                        entry.track.isMissing -> c.tell("Not found in your sources yet; it's looked for again every few hours")
+                        available -> {
+                            player.play(playable, playable.indexOfFirst { it.key == entry.track.key }.coerceAtLeast(0))
+                            played()
+                        }
+                        else -> c.tell("Offline, and this song isn't downloaded")
+                    }
                 },
                 current = playing.track?.key == entry.track.key,
                 downloaded = entry.track.key in downloaded,
@@ -381,4 +442,18 @@ fun DownloadsScreen() {
             TrackRow(d.track, onClick = { player.play(done.map { it.track }, i) }, current = playing.track?.key == d.track.key, downloaded = true)
         }
     }
+}
+
+private const val MAX_IMPORT_FILE = 1_000_000
+
+/** Reads up to [limit] bytes. */
+private fun java.io.InputStream.readBytes(limit: Int): ByteArray {
+    val out = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(16 * 1024)
+    while (out.size() < limit) {
+        val read = read(buffer, 0, minOf(buffer.size, limit - out.size()))
+        if (read < 0) break
+        out.write(buffer, 0, read)
+    }
+    return out.toByteArray()
 }

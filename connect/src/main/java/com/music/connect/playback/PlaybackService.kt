@@ -187,6 +187,16 @@ class PlaybackService : MediaLibraryService() {
         )
     }
 
+    private var notedLive: String? = null
+
+    /** A channel, station or Pandora station started: noted on the server for "Your radio". */
+    private fun noteLivePlayed(track: ApiTrack) {
+        val station = c.favoriteOf(track) ?: return
+        if (station.key == notedLive) return
+        notedLive = station.key
+        c.scope.launch { runCatching { c.api.livePlayed(station) } }
+    }
+
     private val audio by lazy { getSystemService(AudioManager::class.java) }
 
     /** The phone's media volume (what its volume buttons change), 0 to 1. */
@@ -298,6 +308,7 @@ class PlaybackService : MediaLibraryService() {
             if (player.isPlaying) playingSince = SystemClock.elapsedRealtime()
             loudness.knownGainDb = gains[track.key]
             c.liveNow.value = null
+            noteLivePlayed(track)
             watchLive(track)
             if (track.isStationTrack) refillStation(track)
             queueStore.save(player)

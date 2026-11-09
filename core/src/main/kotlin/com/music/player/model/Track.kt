@@ -44,8 +44,26 @@ data class Track(
     /** A track of a Pandora artist station on SiriusXM; its stream link only lasts a while. */
     val isSiriusXmStationTrack: Boolean get() = source == SourceType.SIRIUSXM && sourceId.startsWith(STATION_TRACK_PREFIX)
 
+    /**
+     * A song an imported playlist named that wasn't found in any source: kept in its place (shown
+     * greyed out, not played) and looked for again now and then.
+     */
+    val isMissing: Boolean get() = sourceId.startsWith(MISSING_PREFIX)
+
     companion object {
         const val CHANNEL_PREFIX = "channel:"
         const val STATION_TRACK_PREFIX = "stationtrack:"
+        const val MISSING_PREFIX = "missing:"
+
+        /** A stand-in for a song that wasn't found (its own id, so the same song can be in twice). */
+        fun missing(title: String, artist: String, album: String? = null, durationMs: Long? = null, isrc: String? = null): Track = Track(
+            source = SourceType.JELLYFIN,
+            sourceId = MISSING_PREFIX + java.util.UUID.randomUUID().toString().replace("-", "").take(16),
+            title = title,
+            artist = artist,
+            album = album,
+            durationMs = durationMs,
+            isrc = isrc,
+        )
     }
 }

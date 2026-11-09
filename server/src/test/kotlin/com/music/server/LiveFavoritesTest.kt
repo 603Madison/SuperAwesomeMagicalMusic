@@ -50,6 +50,14 @@ class LiveFavoritesTest {
         assertEquals(HttpStatusCode.BadRequest, stationSong.status)
         maddie.put("/api/live/favorites") { csrf(); json("""{"track":$pandora,"favorite":false}""") }
 
+        // The top ones, for the sidebar: favourites played lately first, then others played lately.
+        val other = """{"source":"RADIO","sourceId":"st2","title":"WFMU","artist":"Jersey City","via":"$radio"}"""
+        maddie.post("/api/live/played") { csrf(); json("""{"track":$other}""") }
+        maddie.post("/api/live/played") { csrf(); json("""{"track":$station}""") }
+        assertEquals(listOf("Lake FM", "WFMU"), maddie.get("/api/live/top?limit=4").json().jsonArray.map { it.jsonObject.str("title") })
+        assertEquals(listOf("Lake FM"), maddie.get("/api/live/top?limit=1").json().jsonArray.map { it.jsonObject.str("title") })
+        assertEquals(HttpStatusCode.BadRequest, maddie.post("/api/live/played") { csrf(); json("""{"track":{"source":"JELLYFIN","sourceId":"s1","title":"A song","artist":"Someone","via":"$radio"}}""") }.status)
+
         val removed = maddie.put("/api/live/favorites") { csrf(); json("""{"track":$station,"favorite":false}""") }.json().jsonArray
         assertTrue(removed.isEmpty())
         assertTrue(maddie.get("/api/live/favorites").json().jsonArray.isEmpty())

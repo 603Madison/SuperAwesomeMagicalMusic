@@ -73,6 +73,7 @@ class Services(
     val liveFavorites = LiveFavorites(db, clock)
     val connect = com.music.server.connect.ConnectHub(clock)
     val songArt = SongArt(sources, registry, scope, clock)
+    val missingFinder = com.music.server.playlists.MissingFinder(playlists, users, importer, scope)
 
     override fun close() {
         scope.cancel()

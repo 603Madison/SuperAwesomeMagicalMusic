@@ -162,7 +162,10 @@ class OfflinePlaylists(
 /** Runs [OfflinePlaylists.sync] after playlist changes and periodically. */
 class OfflinePlaylistWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        (applicationContext as MusicApp).container.offlinePlaylists.sync()
+        val container = (applicationContext as MusicApp).container
+        // Songs imported playlists named that weren't found: looked for again, in case they've turned up.
+        runCatching { container.playlistImporter.findMissing() }
+        container.offlinePlaylists.sync()
         return Result.success()
     }
 

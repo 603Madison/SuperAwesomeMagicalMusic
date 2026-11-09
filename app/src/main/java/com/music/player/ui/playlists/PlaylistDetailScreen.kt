@@ -37,6 +37,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -79,6 +80,7 @@ fun PlaylistDetailScreen(playlistId: String, onBack: () -> Unit) {
     var confirmDelete by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
+    var finding by remember { mutableStateOf(false) }
     val context = LocalContext.current
     // A CSV file (Exportify's columns), saved wherever the person picks.
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(PlaylistCsv.MIME)) { uri ->
@@ -163,7 +165,7 @@ fun PlaylistDetailScreen(playlistId: String, onBack: () -> Unit) {
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Button(onClick = { actions.play(tracks) }, enabled = tracks.isNotEmpty()) {
+                    Button(onClick = { actions.play(tracks) }, enabled = tracks.any { !it.isMissing }) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
                         Text(" Play")
                     }
@@ -171,6 +173,28 @@ fun PlaylistDetailScreen(playlistId: String, onBack: () -> Unit) {
                         Icon(Icons.Default.Shuffle, contentDescription = null)
                         Text(" Shuffle")
                     }
+                }
+                val missing = tracks.count { it.isMissing }
+                if (missing > 0) {
+                    Text(
+                        if (missing == 1) "1 song wasn't found: it's greyed out and skipped, and looked for again every 12 hours." else "$missing songs weren't found: they're greyed out and skipped, and looked for again every 12 hours.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(
+                        enabled = !finding,
+                        onClick = {
+                            finding = true
+                            scope.launch {
+                                runCatching { container.playlistImporter.findMissing(playlistId) }
+                                    .onSuccess { (found, still) ->
+                                        actions.message(if (found > 0) "Found $found" + (if (still > 0) "; $still still missing" else "") else "Still not found anywhere")
+                                    }
+                                    .onFailure { actions.message("Couldn't look: ${it.message}") }
+                                finding = false
+                            }
+                        },
+                    ) { Text(if (finding) "Looking…" else "Look for them again") }
                 }
                 val downloadedCount = tracks.count { it.key in downloaded }
                 Text(
@@ -184,7 +208,7 @@ fun PlaylistDetailScreen(playlistId: String, onBack: () -> Unit) {
             itemsIndexed(tracks, key = { index, track -> "$index-${track.key}" }) { index, track ->
                 TrackRow(
                     track = track,
-                    onClick = { actions.play(tracks, index) },
+                    onClick = { if (track.isMissing) actions.message("Not found yet; it's looked for again every 12 hours") else actions.play(tracks, index) },
                     downloaded = track.key in downloaded,
                     highlighted = current.current?.key == track.key,
                 ) { dismiss ->

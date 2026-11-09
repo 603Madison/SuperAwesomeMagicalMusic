@@ -119,6 +119,10 @@ export const api = {
   radioNearby: (src: string, lat: number, lon: number) => get<Track[]>(`/api/live/radio/${q(src)}/nearby?lat=${lat}&lon=${lon}`),
   channelRecent: (src: string, type: string, id: string, at: number) =>
     get<NowView[]>(`/api/live/sxm/${q(src)}/recent?type=${q(type)}&id=${q(id)}&at=${Math.round(at)}`),
+  playlistPlayed: (id: string) => post<{ ok: boolean }>(`/api/playlists/${q(id)}/played`, {}),
+  findMissing: (id: string) => post<{ playlist: Playlist; found: number; stillMissing: number }>(`/api/playlists/${q(id)}/find-missing`, {}),
+  livePlayed: (track: Track) => post<{ ok: boolean }>("/api/live/played", { track }),
+  liveTop: (limit = 4) => get<Track[]>(`/api/live/top?limit=${limit}`),
   liveFavorites: () => get<Track[]>("/api/live/favorites"),
   setLiveFavorite: (track: Track, favorite: boolean) => put<Track[]>("/api/live/favorites", { track, favorite }),
   radioNow: (src: string, id: string) => get<{ title?: string }>(`/api/live/radio/${q(src)}/station/${q(id)}/now`),

@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { History as HistoryIcon, ListMusic, Radio as RadioIcon, Search as SearchIcon, Settings as SettingsIcon, Shield, Disc3 } from "lucide-react";
-import { session, useSession } from "./lib/session";
+import { liveKey, session, useSession } from "./lib/session";
+import { favoriteOf, playFavorite } from "./components/Favorite";
 import { usePlayer } from "./player/player";
 import { connect } from "./player/connect";
 import { PlayerBar, useKeyboardShortcuts } from "./components/PlayerBar";
 import { Queue } from "./components/Queue";
 import { Spinner, Toasts } from "./components/ui";
-import { Mosaic } from "./components/Artwork";
+import { Artwork, Mosaic } from "./components/Artwork";
 import { Login } from "./pages/Login";
 import { ConnectApp } from "./pages/ConnectApp";
 import { Search } from "./pages/Search";
@@ -45,6 +46,10 @@ function Root() {
 function Shell() {
   const user = useSession((s) => s.user)!;
   const playlists = useSession((s) => s.playlists);
+  const stations = useSession((s) => s.topStations);
+  // The ones played most recently (on any device) first, then the rest by name.
+  const recent = [...playlists].sort((a, b) => (b.playedAt ?? 0) - (a.playedAt ?? 0) || a.name.localeCompare(b.name));
+  const playingStation = usePlayer((s) => { const f = favoriteOf(s.queue[s.index]?.track); return f ? liveKey(f) : null; });
   const [queueOpen, setQueueOpen] = useState(false);
   const hasTrack = usePlayer((s) => s.index >= 0);
   const location = useLocation();
@@ -55,6 +60,16 @@ function Shell() {
     return () => connect.stop();
   }, []);
   useEffect(() => { if (location.pathname === "/now-playing") setQueueOpen(false); }, [location.pathname]);
+  // A channel, station or Pandora station that starts playing is noted for "Your radio".
+  const playingNow = usePlayer((s) => s.playing);
+  const noted = useRef<string | null>(null);
+  useEffect(() => {
+    if (!playingStation || !playingNow || noted.current === playingStation) return;
+    noted.current = playingStation;
+    const { queue, index } = usePlayer.getState();
+    const station = favoriteOf(queue[index]?.track);
+    if (station) session.livePlayed(station);
+  }, [playingStation, playingNow]);
 
   return (
     <div className={`shell ${queueOpen ? "with-queue" : ""} ${hasTrack ? "" : "no-track"}`}>
@@ -70,10 +85,21 @@ function Shell() {
         <NavLink to="/history" className="nav-link"><HistoryIcon size={20} /> <span>History</span></NavLink>
         <NavLink to="/settings" className="nav-link"><SettingsIcon size={20} /> <span>Settings</span></NavLink>
         {user.role === "ADMIN" && <NavLink to="/admin" className="nav-link"><Shield size={20} /> <span>Admin</span></NavLink>}
+        {stations.length > 0 && (
+          <div className="sidebar-playlists sidebar-stations">
+            <h3>Your radio</h3>
+            {stations.map((s) => (
+              <button key={liveKey(s)} className={`nav-playlist ${playingStation === liveKey(s) ? "active" : ""}`} onClick={() => void playFavorite(s)} title={`Play ${s.title}`}>
+                <Artwork url={s.artworkUrl} size={32} />
+                <span>{s.title}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {playlists.length > 0 && (
           <div className="sidebar-playlists">
             <h3>Your playlists</h3>
-            {playlists.map((p) => (
+            {recent.map((p) => (
               <NavLink key={p.id} to={`/playlists/${p.id}`} className="nav-playlist">
                 <Mosaic urls={p.artwork} size={32} />
                 <span>{p.name}</span>

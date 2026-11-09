@@ -116,10 +116,13 @@ class PlayerController(private val context: Context, private val scope: Coroutin
         controller = null
     }
 
-    fun play(tracks: List<Track>, startIndex: Int = 0, shuffle: Boolean = false) = withController {
+    fun play(all: List<Track>, startIndex: Int = 0, shuffle: Boolean = false) = withController {
+        // Songs a playlist names that weren't found are left out.
+        val from = all.getOrNull(startIndex)
+        val tracks = all.filter { track -> !track.isMissing }
         if (tracks.isEmpty()) return@withController
         it.shuffleModeEnabled = shuffle
-        val start = if (shuffle) tracks.indices.random() else startIndex.coerceIn(tracks.indices)
+        val start = if (shuffle) tracks.indices.random() else tracks.indexOf(from).coerceAtLeast(0)
         it.setMediaItems(tracks.map(Track::toMediaItem), start, 0L)
         it.prepare()
         it.play()
@@ -137,11 +140,14 @@ class PlayerController(private val context: Context, private val scope: Coroutin
     }
 
     fun playNext(track: Track) = withController {
+        if (track.isMissing) return@withController
         if (it.mediaItemCount == 0) return@withController play(listOf(track))
         it.addMediaItem(it.currentMediaItemIndex + 1, track.toMediaItem())
     }
 
-    fun addToQueue(tracks: List<Track>) = withController {
+    fun addToQueue(all: List<Track>) = withController {
+        val tracks = all.filter { track -> !track.isMissing }
+        if (tracks.isEmpty()) return@withController
         if (it.mediaItemCount == 0) return@withController play(tracks)
         it.addMediaItems(tracks.map(Track::toMediaItem))
     }

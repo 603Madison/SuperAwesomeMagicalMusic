@@ -1,5 +1,6 @@
 package com.music.server.playlists
 
+import com.music.player.model.Track
 import com.music.player.playlists.ImportMatcher
 import com.music.player.playlists.ListedSong
 import com.music.player.playlists.PlaylistReaders
@@ -19,8 +20,13 @@ import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
 import java.io.IOException
 
-/** A playlist brought in from elsewhere: its songs as found in the person's sources, and those that weren't. */
-data class Imported(val name: String, val origin: String, val tracks: List<ApiTrack>, val missing: List<ListedSong>, val note: String?)
+/**
+ * A playlist brought in from elsewhere: its songs as found in the person's sources, in order, with
+ * stand-ins (see Track.isMissing) for those that weren't, which are also listed in [missing].
+ */
+data class Imported(val name: String, val origin: String, val tracks: List<ApiTrack>, val missing: List<ListedSong>, val note: String?) {
+    val found: Int get() = tracks.count { !it.toTrack().isMissing }
+}
 
 /**
  * Brings in playlists (and albums) from other services, or a typed list of songs. Songs from
@@ -48,8 +54,8 @@ class Importer(
                 else -> {
                     val read = readers.read(url)
                     if (read.songs.isEmpty()) throw ApiError.badRequest("That playlist looks empty")
-                    val (found, missing) = find(user, read.songs)
-                    Imported(read.name, origin, found, missing, read.note)
+                    val matched = find(user, read.songs)
+                    Imported(read.name, origin, matched.map { (song, found) -> found ?: standIn(song) }, matched.filter { it.second == null }.map { it.first }, read.note)
                 }
             }
         } catch (e: IOException) {
@@ -60,15 +66,25 @@ class Importer(
     suspend fun fromText(user: User, text: String, name: String): Imported {
         val songs = PlaylistReaders.parseText(text)
         if (songs.isEmpty()) throw ApiError.badRequest("There are no songs in that list")
-        val (found, missing) = find(user, songs)
-        return Imported(name.trim().ifBlank { "Imported playlist" }, "Imported from a list", found, missing, null)
+        val matched = find(user, songs)
+        return Imported(
+            name.trim().ifBlank { "Imported playlist" },
+            "Imported from a list",
+            matched.map { (song, found) -> found ?: standIn(song) },
+            matched.filter { it.second == null }.map { it.first },
+            null,
+        )
     }
+
+    /** Looks again for songs that weren't found ([missing] stand-ins): each as found now, or null. */
+    suspend fun findAgain(user: User, missing: List<ApiTrack>): List<ApiTrack?> =
+        find(user, missing.map { ListedSong(it.title, it.artist, it.durationMs, it.album, it.isrc) }).map { it.second }
 
     /**
      * Each song looked for in the person's sources, a few at a time: in their libraries the way a
      * song is found to play (by title, then among the artist's songs), then on each service.
      */
-    private suspend fun find(user: User, songs: List<ListedSong>): Pair<List<ApiTrack>, List<ListedSong>> = coroutineScope {
+    private suspend fun find(user: User, songs: List<ListedSong>): List<Pair<ListedSong, ApiTrack?>> = coroutineScope {
         val sources = store.activeFor(user).filter { it.kind.isOnDemand }.sortedByDescending { it.kind.isLibrary }
             .mapNotNull { source -> registry.music(source)?.let { source to it } }
         val searches = Semaphore(SEARCHES_AT_ONCE)
@@ -88,10 +104,14 @@ class Importer(
                 }
             }
         }.awaitAll()
-        matched.mapNotNull { it.second } to matched.filter { it.second == null }.map { it.first }
+        matched
     }
 
-    private companion object {
-        const val SEARCHES_AT_ONCE = 4
+    companion object {
+        private const val SEARCHES_AT_ONCE = 4
+
+        /** A song that wasn't found, kept in the playlist in its place. */
+        fun standIn(song: ListedSong): ApiTrack =
+            ApiTrack.of(Track.missing(song.title.ifBlank { song.line.orEmpty() }, song.artist, song.album, song.durationMs, song.isrc), null)
     }
 }

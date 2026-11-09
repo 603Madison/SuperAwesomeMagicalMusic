@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, Download, FileDown, ListMusic, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, FileDown, FileUp, ListMusic, Pencil, Plus, Search as SearchIcon, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
-import { longDuration, plural } from "../lib/format";
+import { isMissing, longDuration, plural } from "../lib/format";
 import { session, useSession } from "../lib/session";
 import type { Playlist } from "../lib/types";
 import { Mosaic } from "../components/Artwork";
@@ -49,6 +49,7 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
   const [name, setName] = useState("");
+  const [fileName, setFileName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<{ id: string; missing: string[]; note?: string } | null>(null);
   const ready = mode === "link" ? !!url.trim() : !!text.trim();
@@ -78,7 +79,10 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
         {report.note && <p className="notice">{report.note}.</p>}
         {report.missing.length > 0 && (
           <>
-            <p>These {plural(report.missing.length, "song")} weren't found in your sources:</p>
+            <p>
+              These {plural(report.missing.length, "song")} weren't found in your sources. They're in the playlist
+              anyway, greyed out, and are looked for again every few hours (or with “Look for them again”):
+            </p>
             <ul className="plain-list">{report.missing.map((m, i) => <li key={i}>{m}</li>)}</ul>
           </>
         )}
@@ -108,9 +112,28 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
             <Field label="Name">
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Imported playlist" maxLength={200} />
             </Field>
-            <Field label="Songs" help="One a line, like “Artist - Title”; or paste a CSV export (from Exportify, TuneMyMusic, Soundiiz…) with title and artist columns. For Qobuz and other services, export the playlist with TuneMyMusic or Soundiiz.">
+            <Field label="Songs" help="One a line, like “Artist - Title”; or a CSV export (from Exportify, TuneMyMusic, Soundiiz…) with title and artist columns: choose the file, or paste it. For Qobuz and other services, export the playlist with TuneMyMusic or Soundiiz.">
               <textarea autoFocus rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder={"Radiohead - Paranoid Android\nFleetwood Mac - Dreams"} />
             </Field>
+            <label className="btn btn-tonal file-pick">
+              <FileUp size={16} /> {fileName ? `From ${fileName}` : "Choose a file (CSV or text)"}
+              <input
+                type="file"
+                accept=".csv,.tsv,.txt,.m3u,.m3u8,text/csv,text/plain,text/tab-separated-values"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  if (file.size > 1_000_000) { errorToast(new Error("That file is too big (1 MB at most)")); return; }
+                  void file.text().then((content) => {
+                    setText(content);
+                    setFileName(file.name);
+                    // The file's name names the playlist, unless one was typed.
+                    if (!name.trim()) setName(file.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").trim());
+                  }, errorToast);
+                }}
+              />
+            </label>
           </>
         )}
       </form>
@@ -125,13 +148,26 @@ export function PlaylistDetail() {
   const { data, error, loading, setData } = useLoad(() => api.playlist(id), [id]);
   const [renaming, setRenaming] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [finding, setFinding] = useState(false);
 
   if (loading && !data) return <div className="center-pad"><Spinner /></div>;
   if (error || !data) return <Empty title="Couldn't open this playlist">{error}</Empty>;
   const { summary, entries } = data;
   const tracks = entries.map((e) => e.track);
+  const missing = tracks.filter(isMissing).length;
 
   const apply = (next: Playlist) => { setData(next); void session.refreshPlaylists(); };
+  const findAgain = async () => {
+    setFinding(true);
+    try {
+      const result = await api.findMissing(id);
+      apply(result.playlist);
+      toast(result.found ? `Found ${plural(result.found, "song")}${result.stillMissing ? `; ${result.stillMissing} still missing` : ""}` : "Still not found anywhere");
+    } catch (e) {
+      errorToast(e);
+    }
+    setFinding(false);
+  };
   const remove = async (entryId: string) => {
     try { apply(await api.removeFromPlaylist(id, [entryId])); } catch (e) { errorToast(e); }
   };
@@ -151,7 +187,7 @@ export function PlaylistDetail() {
           <h1>{summary.name}</h1>
           {summary.description && <p className="muted">{summary.description}</p>}
           <p className="muted">{plural(summary.count, "song")}{summary.durationMs ? ` · ${longDuration(summary.durationMs)}` : ""}</p>
-          <PlayButtons tracks={tracks}>
+          <PlayButtons tracks={tracks} onPlay={() => session.playlistPlayed(id)}>
             <Button variant="ghost" onClick={() => { player.addToQueue(tracks); toast("Added to the queue"); }} disabled={!tracks.length}>Add to queue</Button>
             <Button variant="ghost" onClick={() => setRenaming(true)}><Pencil size={16} /> Rename</Button>
             <a className="btn btn-ghost" href={`/api/playlists/${encodeURIComponent(id)}/export.csv`} download title="Download as a CSV file (Exportify's columns), for a spreadsheet or another service">
@@ -162,7 +198,18 @@ export function PlaylistDetail() {
         </div>
       </div>
       {!entries.length && <Empty title="This playlist is empty">Add songs from search with their ••• menu.</Empty>}
+      {missing > 0 && (
+        <div className="missing-note">
+          <p>
+            {missing === 1
+              ? "1 song wasn't found in your sources: it's greyed out and skipped. It's looked for again every few hours, in case it's turned up (Lidarr may be getting it)."
+              : `${missing} songs weren't found in your sources: they're greyed out and skipped. They're looked for again every few hours, in case they've turned up (Lidarr may be getting them).`}
+          </p>
+          <Button variant="tonal" busy={finding} onClick={() => void findAgain()}><SearchIcon size={16} /> Look for them again</Button>
+        </div>
+      )}
       <TrackList
+        onPlay={() => session.playlistPlayed(id)}
         numbered
         rows={entries.map((e) => ({ key: e.entryId, track: e.track }))}
         extraItems={(_, i) => [

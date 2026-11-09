@@ -48,7 +48,7 @@ class Downloads(
 
     suspend fun queue(tracks: List<ApiTrack>) {
         var added = false
-        for (track in tracks.filter { it.isSong }) {
+        for (track in tracks.filter { it.isSong && !it.isMissing }) {
             val existing = dao.get(track.key)
             if (existing != null && existing.state != DownloadRow.STATE_FAILED) continue
             dao.upsert(DownloadRow(track.key, ApiJson.encodeToString(ApiTrack.serializer(), track), updatedAt = clock()))

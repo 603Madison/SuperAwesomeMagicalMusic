@@ -48,7 +48,7 @@ class PlaylistImporter(
                 val read = readers.read(link)
                 if (read.songs.isEmpty()) throw IOException("That playlist looks empty")
                 val found = match(read.songs, onProgress)
-                save(read.name, found.mapNotNull { it.second }, found.filter { it.second == null }.map { it.first }, read.note)
+                save(read.name, found.map { (song, track) -> track ?: standIn(song) }, found.filter { it.second == null }.map { it.first }, read.note)
             }
         }
     }
@@ -58,14 +58,38 @@ class PlaylistImporter(
         val songs = PlaylistReaders.parseText(text)
         if (songs.isEmpty()) throw IOException("There are no songs in that list")
         val found = match(songs, onProgress)
-        return save(name.trim().ifBlank { "Imported playlist" }, found.mapNotNull { it.second }, found.filter { it.second == null }.map { it.first }, null)
+        return save(name.trim().ifBlank { "Imported playlist" }, found.map { (song, track) -> track ?: standIn(song) }, found.filter { it.second == null }.map { it.first }, null)
+    }
+
+    /**
+     * Looks again for songs that weren't found (in [playlistId], or in every playlist): those found
+     * now take their places. Returns how many were found, and how many are still missing.
+     */
+    suspend fun findMissing(playlistId: String? = null): Pair<Int, Int> {
+        val ids = playlistId?.let { listOf(it) } ?: playlists.active().map { it.id }
+        var found = 0
+        var still = 0
+        for (id in ids) {
+            val missing = playlists.entries(id).filter { it.isMissing }
+            if (missing.isEmpty()) continue
+            val matched = match(missing.map { ListedSong(it.title, it.artist, it.durationMs, it.album, it.isrc) }) { _, _ -> }
+            val replacements = missing.zip(matched).mapNotNull { (standIn, match) -> match.second?.let { standIn.sourceId to it } }.toMap()
+            if (replacements.isNotEmpty()) playlists.replaceMissing(id, replacements)
+            found += replacements.size
+            still += missing.size - replacements.size
+        }
+        return found to still
     }
 
     private suspend fun save(name: String, tracks: List<Track>, missing: List<ListedSong>, note: String?): ImportResult {
-        if (tracks.isEmpty()) throw IOException("None of the songs could be found")
+        if (tracks.isEmpty()) throw IOException("There are no songs in it")
+        // Songs that weren't found go in too, greyed out, and are looked for again now and then.
         val id = playlists.create(name, tracks)
-        return ImportResult(id, name, tracks.size, missing, note)
+        return ImportResult(id, name, tracks.count { !it.isMissing }, missing, note)
     }
+
+    /** A song that wasn't found, kept in the playlist in its place. */
+    private fun standIn(song: ListedSong): Track = Track.missing(song.title.ifBlank { song.line.orEmpty() }, song.artist, song.album, song.durationMs, song.isrc)
 
     /** Finds each song, a few at a time, in the first source that has it. */
     private suspend fun match(songs: List<ListedSong>, onProgress: (Int, Int) -> Unit): List<Pair<ListedSong, Track?>> = coroutineScope {

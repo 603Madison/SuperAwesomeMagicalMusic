@@ -131,6 +131,8 @@ code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85em
   font-size: 0.9rem;
 }
 .nav-playlist span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.nav-playlist { border: 0; background: none; font: inherit; text-align: left; cursor: pointer; width: 100%; }
+.nav-playlist .artwork { border-radius: 8px; flex-shrink: 0; }
 .nav-playlist:hover { background: var(--surface-3); color: var(--text); }
 .nav-playlist.active { color: var(--text); background: var(--surface-3); }
 .sidebar-user { margin-top: auto; padding: 14px; color: var(--faint); font-size: 0.85rem; }
@@ -883,3 +885,13 @@ input[type="range"]:disabled { cursor: default; opacity: 0.5; }
 .info-list dd { margin: 0; overflow-wrap: anywhere; user-select: text; }
 .info-heading { font-size: 0.95rem; margin: 18px 0 10px; }
 @media (max-width: 560px) { .info-list > div { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Choosing a file to import: a button, with the file input inside it out of sight. */
+.file-pick { position: relative; align-self: flex-start; cursor: pointer; }
+.file-pick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+
+/* A song a playlist names that wasn't found: shown, greyed out, not played. */
+.track-row.is-missing { opacity: 0.45; }
+.track-row.is-missing .track-play { cursor: default; }
+.missing-note { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; padding: 12px 16px; border-radius: 16px; background: var(--surface-2); color: var(--muted); }
+.missing-note p { margin: 0; flex: 1; min-width: 220px; }

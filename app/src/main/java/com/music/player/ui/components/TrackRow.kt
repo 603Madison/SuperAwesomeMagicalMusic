@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,8 +56,10 @@ fun TrackRow(
     extraMenuItems: @Composable ColumnScope.(dismiss: () -> Unit) -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    // A song a playlist names that wasn't found: shown greyed out, not played.
+    val missing = track.isMissing
     ListItem(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier.clickable(onClick = onClick).alpha(if (missing) 0.45f else 1f),
         colors = if (highlighted) {
             ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
         } else {
@@ -73,7 +76,7 @@ fun TrackRow(
         },
         supportingContent = {
             Text(
-                listOfNotNull(track.artist, track.album).joinToString(" · "),
+                listOfNotNull("Not found".takeIf { missing }, track.artist, track.album).joinToString(" · "),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -94,7 +97,7 @@ fun TrackRow(
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         val dismiss = { menuOpen = false }
-                        StandardTrackMenuItems(track, downloaded, dismiss)
+                        if (!missing) StandardTrackMenuItems(track, downloaded, dismiss)
                         extraMenuItems(dismiss)
                     }
                 }

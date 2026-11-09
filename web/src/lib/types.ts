@@ -162,6 +162,10 @@ export interface PlaylistSummary {
   updatedAt: number;
   revision: number;
   artwork: string[];
+  /** When it was last played, on any of the person's devices. */
+  playedAt?: number | null;
+  /** How many of its songs weren't found (greyed out; looked for again every few hours). */
+  missing?: number;
 }
 
 export interface PlaylistEntry {

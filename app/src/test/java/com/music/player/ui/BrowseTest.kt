@@ -51,7 +51,15 @@ class BrowseTest {
             }
         }
 
-        override fun after() = jellyfin.shutdown()
+        override fun after() {
+            // The stand-in Jellyfin mustn't stay set up for the tests that run after these.
+            val container = (ApplicationProvider.getApplicationContext<Application>() as MusicApp).container
+            runBlocking {
+                container.settings.setJellyfin(JellyfinConfig())
+                container.settings.setYouTubeMusicEnabled(true)
+            }
+            jellyfin.shutdown()
+        }
     }
 
     val compose = createAndroidComposeRule<MainActivity>()
@@ -83,7 +91,10 @@ class BrowseTest {
         val result = container.playlistImporter.importText("Velvet Satellites - Neon Tidepool\nNobody - Nothing At All", "Typed")
         assertEquals(1, result.added)
         assertEquals(listOf("Nothing At All"), result.notFound.map { it.title })
-        assertEquals("Neon Tidepool", container.playlists.entries(result.playlistId).single().title)
+        // The song not found is kept, in its place, greyed out (see MissingSongsTest).
+        val entries = container.playlists.entries(result.playlistId)
+        assertEquals(listOf("Neon Tidepool", "Nothing At All"), entries.map { it.title })
+        assertEquals(listOf(false, true), entries.map { it.isMissing })
         assertEquals(PlaylistReaders.parseText("Nobody - Nothing At All").single(), result.notFound.single())
     }
 

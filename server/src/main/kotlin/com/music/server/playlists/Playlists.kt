@@ -21,6 +21,10 @@ data class PlaylistSummary(
     val revision: Long,
     /** Artwork of the first few songs, for a cover. */
     val artwork: List<String>,
+    /** When it was last played (on any of the person's devices), if ever. */
+    val playedAt: Long? = null,
+    /** How many of its songs weren't found (kept greyed out, and looked for again now and then). */
+    val missing: Int = 0,
 )
 
 @Serializable
@@ -105,6 +109,32 @@ class PlaylistStore(private val db: Database, private val clock: () -> Long = Sy
         Playlist(summary(id)!!, entries(id))
     }
 
+    /** Notes that the person started playing it (the sidebar lists playlists by when they were played). */
+    suspend fun played(userId: String, id: String) = db.tx {
+        owned(userId, id)
+        update("UPDATE playlists SET played_at = ? WHERE id = ?", clock(), id)
+    }
+
+    /** Songs that weren't found, across everyone's playlists, for looking for again: (user, playlist, entry). */
+    suspend fun missingEntries(limit: Int): List<Triple<String, String, PlaylistEntry>> = db.tx {
+        query(
+            "SELECT p.user_id, e.* FROM playlist_entries e JOIN playlists p ON p.id = e.playlist_id WHERE e.track LIKE ? ORDER BY e.added_at LIMIT ?",
+            "%\"sourceId\":\"${com.music.player.model.Track.MISSING_PREFIX}%", limit,
+        ) { row ->
+            Triple(row.string("user_id"), row.string("playlist_id"), PlaylistEntry(row.string("entry_id"), TrackJson.decodeFromString(ApiTrack.serializer(), row.string("track")), row.long("added_at")))
+        }
+    }
+
+    /** Puts songs found since in place of stand-ins ([replacements]: entry id to the song found). */
+    suspend fun replace(userId: String, id: String, replacements: Map<String, ApiTrack>): Playlist = db.tx {
+        owned(userId, id)
+        replacements.forEach { (entryId, track) ->
+            update("UPDATE playlist_entries SET track = ? WHERE playlist_id = ? AND entry_id = ?", TrackJson.encodeToString(ApiTrack.serializer(), track), id, entryId)
+        }
+        if (replacements.isNotEmpty()) touch(id)
+        Playlist(summary(id)!!, entries(id))
+    }
+
     private fun Tx.owned(userId: String, id: String) {
         val owner = one("SELECT user_id FROM playlists WHERE id = ?", id) { it.string("user_id") }
         if (owner != userId) throw ApiError.notFound("No such playlist")
@@ -141,6 +171,8 @@ class PlaylistStore(private val db: Database, private val clock: () -> Long = Sy
                 updatedAt = row.long("updated_at"),
                 revision = row.long("revision"),
                 artwork = entries.mapNotNull { it.track.artworkUrl }.distinct().take(4),
+                playedAt = row.longOrNull("played_at"),
+                missing = entries.count { it.track.toTrack().isMissing },
             )
         }
     }

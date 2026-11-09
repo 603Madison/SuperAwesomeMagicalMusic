@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.guava.future
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 
@@ -65,7 +66,8 @@ class LibraryCallback(
             parentId == PLAYLISTS -> c.library.all.first().map { folder("$PLAYLIST${it.id}", it.name, "${it.count} songs") }
             parentId.startsWith(PLAYLIST) -> {
                 val id = parentId.removePrefix(PLAYLIST)
-                c.library.entriesNow(id).mapIndexed { i, e -> browseItem("$IN_PLAYLIST$id:$i", e.track) }
+                // Songs that weren't found aren't offered (they can't play).
+                c.library.entriesNow(id).withIndex().filter { !it.value.track.isMissing }.map { (i, e) -> browseItem("$IN_PLAYLIST$id:$i", e.track) }
             }
             parentId == DOWNLOADS -> c.downloads.all.first().filter { it.done }.mapIndexed { i, d -> browseItem("$IN_DOWNLOADS$i", d.track) }
             parentId == RADIO -> radioFolders()
@@ -194,7 +196,11 @@ class LibraryCallback(
         }
         if (mediaId.startsWith(IN_PLAYLIST)) {
             val (id, index) = mediaId.removePrefix(IN_PLAYLIST).let { it.substringBeforeLast(':') to (it.substringAfterLast(':').toIntOrNull() ?: 0) }
-            return c.library.entriesNow(id).map { MediaItems.playable(it.track, server, ::art) } to index
+            val entries = c.library.entriesNow(id)
+            val start = entries.getOrNull(index)?.track
+            val playable = entries.map { it.track }.filter { !it.isMissing }
+            c.scope.launch { runCatching { c.api.playlistPlayed(id) } }
+            return playable.map { MediaItems.playable(it, server, ::art) } to playable.indexOf(start).coerceAtLeast(0)
         }
         if (mediaId.startsWith(IN_DOWNLOADS)) {
             val index = mediaId.removePrefix(IN_DOWNLOADS).toIntOrNull() ?: 0

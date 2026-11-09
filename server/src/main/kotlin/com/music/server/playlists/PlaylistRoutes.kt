@@ -44,6 +44,10 @@ data class ImportRequest(val url: String = "", val text: String = "", val name: 
 @Serializable
 data class ImportResult(val playlist: Playlist, val found: Int, val missing: List<String>, val note: String? = null)
 
+/** What looking for a playlist's missing songs again found. */
+@Serializable
+data class FoundAgain(val playlist: Playlist, val found: Int, val stillMissing: Int)
+
 @Serializable
 data class HistoryUpload(val listens: List<Listen>)
 
@@ -83,13 +87,14 @@ fun Route.playlistRoutes(services: Services) {
                 }
                 else -> throw ApiError.badRequest("Paste a link, or a list of songs")
             }
-            if (imported.tracks.isEmpty()) throw ApiError.badRequest("None of its songs could be found in your sources")
+            if (imported.tracks.isEmpty()) throw ApiError.badRequest("There are no songs in it")
+            // Songs that weren't found go in too, greyed out, and are looked for again now and then.
             val tracks = imported.tracks.take(PlaylistStore.MAX_ENTRIES)
             val playlist = services.playlists.create(user.id, imported.name, imported.origin, tracks)
             call.respond(
                 ImportResult(
                     playlist.out(),
-                    tracks.size,
+                    tracks.count { !it.toTrack().isMissing },
                     imported.missing.map { if (it.artist.isBlank()) it.title else "${it.artist} – ${it.title}" },
                     imported.note,
                 ),
@@ -99,6 +104,23 @@ fun Route.playlistRoutes(services: Services) {
             get {
                 val user = call.requireUser(services)
                 call.respond(services.playlists.get(user.id, call.parameters["id"].orEmpty()).out())
+            }
+            // Started playing (on any device): the sidebar lists playlists by when they were played.
+            post("/played") {
+                val user = call.requireUser(services)
+                services.playlists.played(user.id, call.parameters["id"].orEmpty())
+                call.respond(mapOf("ok" to true))
+            }
+            // Looks again for its songs that weren't found; those found now take their places.
+            post("/find-missing") {
+                val user = call.requireUser(services)
+                val id = call.parameters["id"].orEmpty()
+                val playlist = services.playlists.get(user.id, id)
+                val missing = playlist.entries.filter { it.track.toTrack().isMissing }
+                val found = if (missing.isEmpty()) emptyList() else services.importer.findAgain(user, missing.map { it.track })
+                val replacements = missing.zip(found).mapNotNull { (entry, track) -> track?.let { entry.entryId to it } }.toMap()
+                val updated = if (replacements.isEmpty()) playlist else services.playlists.replace(user.id, id, replacements)
+                call.respond(FoundAgain(updated.out(), replacements.size, missing.size - replacements.size))
             }
             // The playlist as a CSV file (Exportify's columns, which the import reads back).
             get("/export.csv") {

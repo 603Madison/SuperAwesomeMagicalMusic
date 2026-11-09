@@ -111,6 +111,19 @@ object Schema {
             PRIMARY KEY (user_id, key)
         );
         """,
+        // 4: when each playlist was last played, and the live channels and stations played (for
+        // the sidebar's most-played ones).
+        """
+        ALTER TABLE playlists ADD COLUMN played_at INTEGER;
+        CREATE TABLE live_plays (
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            track TEXT NOT NULL,
+            played_at INTEGER NOT NULL,
+            plays INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (user_id, key)
+        );
+        """,
     )
 
     val version: Int get() = migrations.size

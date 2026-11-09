@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Disc3, ListEnd, ListPlus, ListStart, Mic2, MoreHorizontal, Pause, Play, Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
-import { duration, SOURCE_LABELS, trackKey } from "../lib/format";
+import { duration, isMissing, SOURCE_LABELS, trackKey } from "../lib/format";
 import { session, useSession } from "../lib/session";
 import type { Track } from "../lib/types";
 import { player, usePlayer } from "../player/player";
@@ -17,12 +17,14 @@ export interface Row {
 }
 
 /** A list of songs: click one to play the list from it. */
-export function TrackList({ rows, extraItems, showAlbum = true, numbered = false }: {
+export function TrackList({ rows, extraItems, showAlbum = true, numbered = false, onPlay }: {
   rows: Row[];
   /** More menu items for a row (like "remove from playlist"). */
   extraItems?: (row: Row, index: number) => MenuItem[];
   showAlbum?: boolean;
   numbered?: boolean;
+  /** Told when a song in the list starts playing (a playlist notes it was played). */
+  onPlay?: () => void;
 }) {
   const playingKey = usePlayer((s) => {
     const item = s.queue[s.index];
@@ -35,22 +37,31 @@ export function TrackList({ rows, extraItems, showAlbum = true, numbered = false
     <ol className="track-list">
       {rows.map((row, i) => {
         const isCurrent = playingKey === trackKey(row.track);
+        const missing = isMissing(row.track);
+        const play = () => {
+          if (missing) return;
+          if (isCurrent) { player.toggle(); return; }
+          player.playTracks(tracks, i);
+          onPlay?.();
+        };
         return (
           <li
             key={row.key}
-            className={`track-row ${isCurrent ? "is-current" : ""}`}
-            onDoubleClick={() => player.playTracks(tracks, i)}
+            className={`track-row ${isCurrent ? "is-current" : ""} ${missing ? "is-missing" : ""}`}
+            onDoubleClick={play}
+            title={missing ? "Not found in your sources yet: it's looked for again every few hours" : undefined}
           >
             <button
               className="track-play"
-              aria-label={isCurrent && playing ? `Pause ${row.track.title}` : `Play ${row.track.title}`}
-              onClick={() => (isCurrent ? player.toggle() : player.playTracks(tracks, i))}
+              aria-label={missing ? `${row.track.title} (not found)` : isCurrent && playing ? `Pause ${row.track.title}` : `Play ${row.track.title}`}
+              onClick={play}
+              disabled={missing}
             >
               {numbered && <span className="track-number">{i + 1}</span>}
               <Artwork url={row.track.artworkUrl} size={44} />
               <span className="track-play-icon">{isCurrent && playing ? <Pause size={18} /> : <Play size={18} />}</span>
             </button>
-            <div className="track-text" onClick={() => (isCurrent ? player.toggle() : player.playTracks(tracks, i))}>
+            <div className="track-text" onClick={play}>
               <div className="track-title">{row.track.title}</div>
               <div className="track-sub">
                 {row.track.artist}
@@ -58,9 +69,12 @@ export function TrackList({ rows, extraItems, showAlbum = true, numbered = false
               </div>
             </div>
             {/* Where a song plays from is the app's business; radio is worth saying. */}
-            {isRadio(row.track) ? <span className="badge track-source">{SOURCE_LABELS[row.track.source] ?? row.track.source}</span> : <span className="track-source" />}
+            {missing ? <span className="badge track-source">Not found</span>
+              : isRadio(row.track) ? <span className="badge track-source">{SOURCE_LABELS[row.track.source] ?? row.track.source}</span> : <span className="track-source" />}
             <span className="track-duration">{duration(row.track.durationMs)}</span>
-            <TrackMenu track={row.track} extra={extraItems?.(row, i)} />
+            {missing
+              ? (extraItems?.(row, i)?.length ? <Menu label={`More for ${row.track.title}`} trigger={<MoreHorizontal size={20} />} items={extraItems(row, i)} /> : <span />)
+              : <TrackMenu track={row.track} extra={extraItems?.(row, i)} />}
           </li>
         );
       })}
@@ -143,11 +157,12 @@ export function NewPlaylistDialog({ tracks = [], onClose, onCreated }: { tracks?
 
 export const removeItem = (onRemove: () => void): MenuItem => ({ label: "Remove from playlist", icon: <Trash2 size={18} />, danger: true, onSelect: onRemove });
 
-export function PlayButtons({ tracks, children }: { tracks: Track[]; children?: ReactNode }) {
+export function PlayButtons({ tracks: all, children, onPlay }: { tracks: Track[]; children?: ReactNode; onPlay?: () => void }) {
+  const tracks = all.filter((t) => !isMissing(t));
   return (
     <div className="play-buttons">
-      <Button variant="primary" disabled={!tracks.length} onClick={() => player.playTracks(tracks)}><Play size={18} /> Play</Button>
-      <Button disabled={tracks.length < 2} onClick={() => player.playShuffled(tracks)}>Shuffle</Button>
+      <Button variant="primary" disabled={!tracks.length} onClick={() => { player.playTracks(tracks); onPlay?.(); }}><Play size={18} /> Play</Button>
+      <Button disabled={tracks.length < 2} onClick={() => { player.playShuffled(tracks); onPlay?.(); }}>Shuffle</Button>
       {children}
     </div>
   );

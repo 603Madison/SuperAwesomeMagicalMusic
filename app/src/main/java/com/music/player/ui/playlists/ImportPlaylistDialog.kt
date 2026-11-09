@@ -1,5 +1,15 @@
 package com.music.player.ui.playlists
 
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,6 +54,37 @@ fun ImportPlaylistDialog(onDismiss: () -> Unit, onImported: (String) -> Unit) {
     var progress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf<ImportResult?>(null) }
+    var fileName by rememberSaveable { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    // A CSV or text file from the phone (Downloads, Drive…): its songs fill the list, its name the name.
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val label = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    }
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                        val out = java.io.ByteArrayOutputStream()
+                        val buffer = ByteArray(16 * 1024)
+                        while (out.size() <= MAX_FILE) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            out.write(buffer, 0, read)
+                        }
+                        out.toByteArray()
+                    } ?: error("Couldn't open the file")
+                    if (bytes.size > MAX_FILE) error("That file is too big (1 MB at most)")
+                    label to String(bytes, Charsets.UTF_8)
+                }
+            }.onSuccess { (label, content) ->
+                text = content
+                fileName = label ?: "the file"
+                if (name.isBlank()) label?.let { name = it.substringBeforeLast('.').replace('_', ' ').trim() }
+            }.onFailure { error = it.message ?: "Couldn't read the file" }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = { job?.cancel(); onDismiss() },
@@ -57,7 +98,7 @@ fun ImportPlaylistDialog(onDismiss: () -> Unit, onImported: (String) -> Unit) {
                         done.note?.let { Text("$it.", style = MaterialTheme.typography.bodySmall) }
                         if (done.notFound.isNotEmpty()) {
                             Text(
-                                "Couldn't find ${done.notFound.size}: " +
+                                "Couldn't find ${done.notFound.size} (they're in the playlist greyed out, and are looked for again now and then): " +
                                     done.notFound.take(8).joinToString(", ") { if (it.artist.isBlank()) it.title else "${it.title} (${it.artist})" } +
                                     if (done.notFound.size > 8) "…" else "",
                                 style = MaterialTheme.typography.bodySmall,
@@ -102,9 +143,13 @@ fun ImportPlaylistDialog(onDismiss: () -> Unit, onImported: (String) -> Unit) {
                                 maxLines = 8,
                                 modifier = Modifier.fillMaxWidth(),
                             )
+                            OutlinedButton(onClick = { pickFile.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/octet-stream")) }) {
+                                Icon(Icons.Default.FileOpen, contentDescription = null)
+                                Text(fileName?.let { " From $it" } ?: " Choose a file (CSV or text)")
+                            }
                             Text(
-                                "One a line, like “Artist - Title”, or a pasted CSV export with title and artist columns " +
-                                    "(for Qobuz and other services, export one with TuneMyMusic or Soundiiz).",
+                                "One a line, like “Artist - Title”, or a CSV export with title and artist columns: choose the " +
+                                    "file, or paste it (for Qobuz and other services, export one with TuneMyMusic or Soundiiz).",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -144,3 +189,5 @@ fun ImportPlaylistDialog(onDismiss: () -> Unit, onImported: (String) -> Unit) {
         },
     )
 }
+
+private const val MAX_FILE = 1_000_000

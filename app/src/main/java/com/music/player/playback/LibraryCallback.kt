@@ -241,7 +241,8 @@ class LibraryCallback(
                 .map { channel -> channel.toTrack().let { browsable(it, LibraryIds.track(it)) } }
         }
         LibraryIds.parsePlaylist(parentId)?.let { (id, _) ->
-            return container.playlists.entries(id).mapIndexed { index, track -> browsable(track, LibraryIds.playlistEntry(id, index)) }
+            // Songs that weren't found aren't offered (they can't play).
+            return container.playlists.entries(id).withIndex().filter { !it.value.isMissing }.map { (index, track) -> browsable(track, LibraryIds.playlistEntry(id, index)) }
         }
         return emptyList()
     }
@@ -348,8 +349,10 @@ class LibraryCallback(
     internal suspend fun expand(mediaId: String): Pair<List<Track>, Int>? {
         LibraryIds.parseTrack(mediaId)?.let { return listOf(it) to 0 }
         LibraryIds.parsePlaylist(mediaId)?.let { (id, index) ->
-            val tracks = container.playlists.entries(id)
-            return tracks to (index ?: 0).coerceIn(0, (tracks.size - 1).coerceAtLeast(0))
+            val all = container.playlists.entries(id)
+            val start = all.getOrNull(index ?: 0)
+            val tracks = all.filter { !it.isMissing }
+            return tracks to tracks.indexOf(start).coerceAtLeast(0)
         }
         LibraryIds.parseDownload(mediaId)?.let { key ->
             val tracks = completedDownloads()
@@ -381,7 +384,7 @@ class LibraryCallback(
      * what was asked for, else songs (Jellyfin first); empty plays downloads.
      */
     private suspend fun voiceSearch(query: String): List<Track> {
-        if (query.isBlank()) return completedDownloads().shuffled().ifEmpty { container.playlists.active().firstOrNull()?.let { container.playlists.entries(it.id) }.orEmpty() }
+        if (query.isBlank()) return completedDownloads().shuffled().ifEmpty { container.playlists.active().firstOrNull()?.let { container.playlists.entries(it.id).filter { t -> !t.isMissing } }.orEmpty() }
         siriusXmChannels(query).firstOrNull()?.let { return listOf(it) }
         if (container.networkMonitor.state.value.isOnline) {
             runCatching { withTimeoutOrNull(VOICE_SEARCH_MS) { spoken(query) } }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }

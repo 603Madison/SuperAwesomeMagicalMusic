@@ -66,6 +66,10 @@ data class ThumbRequest(val thumb: String, val elapsedMs: Long = 0)
 @Serializable
 data class RadioNow(val title: String? = null)
 
+/** A live channel or station that started playing. */
+@Serializable
+data class PlayedLive(val track: ApiTrack)
+
 /** Making a live channel or station a favourite, or not. */
 @Serializable
 data class FavoriteChange(val track: ApiTrack, val favorite: Boolean)
@@ -122,6 +126,23 @@ fun Route.liveRoutes(services: Services) {
             if (track.via.isNullOrBlank() || services.sources.accessible(user, track.via) == null) throw ApiError.notFound("That source isn't available")
             services.liveFavorites.set(user.id, track, change.favorite)
             call.respond(services.liveFavorites.list(user.id).map(art::outgoing))
+        }
+
+        // A channel, station or Pandora station started playing (on any device), for the top ones.
+        post("/played") {
+            val user = call.requireUser(services)
+            val track = art.incoming(call.receive<PlayedLive>().track)
+            if (!track.toTrack().isLive || track.toTrack().isSiriusXmStationTrack) throw ApiError.badRequest("Only channels and stations")
+            if (track.via.isNullOrBlank() || services.sources.accessible(user, track.via) == null) throw ApiError.notFound("That source isn't available")
+            services.liveFavorites.played(user.id, track)
+            call.respond(mapOf("ok" to true))
+        }
+
+        // The person's top channels and stations (favourites played lately first), for the sidebar.
+        get("/top") {
+            val user = call.requireUser(services)
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, 20) ?: 4
+            call.respond(services.liveFavorites.top(user.id, limit).map(art::outgoing))
         }
 
         // ---- SiriusXM ----

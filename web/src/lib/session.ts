@@ -11,9 +11,11 @@ interface Session {
   playlists: PlaylistSummary[];
   /** Their favourite live channels and stations. */
   favorites: Track[];
+  /** Their top channels and stations (favourites played lately first), for the sidebar. */
+  topStations: Track[];
 }
 
-export const useSession = create<Session>(() => ({ config: null, user: null, loading: true, playlists: [], favorites: [] }));
+export const useSession = create<Session>(() => ({ config: null, user: null, loading: true, playlists: [], favorites: [], topStations: [] }));
 
 /** Identifies a live channel or station, on the source it's from. */
 export const liveKey = (track: Track) => `${track.via ?? ""}|${track.source}:${track.sourceId}`;
@@ -28,6 +30,7 @@ export const session = {
     if (me) {
       void session.refreshPlaylists();
       void session.refreshFavorites();
+      void session.refreshTopStations();
     }
   },
 
@@ -35,11 +38,12 @@ export const session = {
     useSession.setState({ user });
     void session.refreshPlaylists();
     void session.refreshFavorites();
+    void session.refreshTopStations();
   },
 
   async signOut() {
     await api.logout().catch(() => undefined);
-    useSession.setState({ user: null, playlists: [], favorites: [] });
+    useSession.setState({ user: null, playlists: [], favorites: [], topStations: [] });
   },
 
   async refreshPlaylists() {
@@ -58,6 +62,26 @@ export const session = {
     }
   },
 
+  async refreshTopStations() {
+    try {
+      useSession.setState({ topStations: await api.liveTop(4) });
+    } catch {
+      // None shown.
+    }
+  },
+
+  /** A playlist started playing: it moves to the top of the sidebar, here and on other devices. */
+  playlistPlayed(id: string) {
+    const now = Date.now();
+    useSession.setState({ playlists: useSession.getState().playlists.map((p) => (p.id === id ? { ...p, playedAt: now } : p)) });
+    api.playlistPlayed(id).catch(() => undefined);
+  },
+
+  /** A channel, station or Pandora station started playing: noted for the sidebar's top ones. */
+  livePlayed(track: Track) {
+    api.livePlayed(track).then(() => session.refreshTopStations(), () => undefined);
+  },
+
   /** Makes a live channel or station a favourite, or not; shown at once, then as the server has it. */
   async setFavorite(track: Track, favorite: boolean) {
     const before = useSession.getState().favorites;
@@ -65,6 +89,7 @@ export const session = {
     useSession.setState({ favorites: favorite ? [track, ...others] : others });
     try {
       useSession.setState({ favorites: await api.setLiveFavorite(track, favorite) });
+      void session.refreshTopStations();
     } catch (e) {
       useSession.setState({ favorites: before });
       throw e;

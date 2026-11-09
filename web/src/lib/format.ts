@@ -43,3 +43,6 @@ export function when(time: number): string {
 export function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
+
+/** A song a playlist names that wasn't found in any source: shown greyed out, never played. */
+export const isMissing = (track: Track): boolean => track.sourceId.startsWith("missing:");
