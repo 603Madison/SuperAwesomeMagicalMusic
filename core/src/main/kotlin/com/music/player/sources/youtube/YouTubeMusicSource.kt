@@ -175,14 +175,13 @@ class YouTubeMusicSource(
         )
     }
 
-    /** Streams must be fetched with the same kind of client YouTube issued them to. */
+    /**
+     * Streams must be fetched with the same kind of client YouTube issued them to. (YouTube's
+     * Android and iOS clients stopped working in November 2026; NewPipe no longer uses them.)
+     */
     private fun playbackHeaders(url: String): Map<String, String> {
         val localization = Localization.fromLocale(Locale.getDefault())
         return when {
-            YoutubeParsingHelper.isAndroidStreamingUrl(url) ->
-                mapOf("User-Agent" to YoutubeParsingHelper.getAndroidUserAgent(localization))
-            YoutubeParsingHelper.isIosStreamingUrl(url) ->
-                mapOf("User-Agent" to YoutubeParsingHelper.getIosUserAgent(localization))
             YoutubeParsingHelper.isVisionOsStreamingUrl(url) ->
                 mapOf("User-Agent" to YoutubeParsingHelper.getVisionOsUserAgent(localization))
             else -> mapOf(
