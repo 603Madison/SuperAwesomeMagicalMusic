@@ -129,6 +129,18 @@ class LibraryTest {
 
                 // Other people can't stream from it.
                 assertEquals(HttpStatusCode.NotFound, admin.get(url).status)
+
+                // The stream test says what the server sees when it fetches the song.
+                val via = resolved["track"]!!.jsonObject.str("via")
+                val id = resolved["track"]!!.jsonObject.str("sourceId")
+                val test = user.get("/api/diagnostics/stream?via=$via&id=$id&kbps=0")
+                assertEquals(HttpStatusCode.OK, test.status)
+                val report = test.bodyAsText()
+                assertTrue(report, "Found it in" in report)
+                assertTrue(report, Regex("answered HTTP 20[06] in \\d+ ms").containsMatchIn(report))
+                assertTrue(report, "Read 0 KB of audio" in report)
+                assertFalse(report, "jf-token" in report)
+                assertEquals(HttpStatusCode.NotFound, admin.get("/api/diagnostics/stream?via=$via&id=$id").status)
             }
         } finally {
             server.shutdown()

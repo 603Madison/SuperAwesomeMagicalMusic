@@ -22,7 +22,9 @@ import org.robolectric.annotation.Config
 class UnitsTest {
     @Test
     fun `the bitrate follows the network, and Data Saver keeps it low`() {
-        val settings = Settings(kbpsWifi = 0, kbpsCellular = 320, kbpsSatellite = 64)
+        // By default Data Saver doesn't change the choice; a cap for it is chosen in Settings.
+        assertEquals(320, Settings(kbpsCellular = 320).kbpsFor(NetworkClass.CELLULAR, savingData = true))
+        val settings = Settings(kbpsWifi = 0, kbpsCellular = 320, kbpsSatellite = 64, kbpsDataSaver = 128)
         assertEquals(0, settings.kbpsFor(NetworkClass.WIFI, savingData = false))
         assertEquals(320, settings.kbpsFor(NetworkClass.CELLULAR, savingData = false))
         assertEquals(64, settings.kbpsFor(NetworkClass.SATELLITE, savingData = false))

@@ -30,8 +30,11 @@ data class Settings(
     val kbpsSatellite: Int = 64,
     /** The quality songs are downloaded at. */
     val kbpsDownload: Int = 0,
-    /** The most to stream while Android's Data Saver is on (0: no lower than the network's own choice). */
-    val kbpsDataSaver: Int = DATA_SAVER_KBPS,
+    /**
+     * The most to stream while Android restricts this app's mobile data (Data Saver). 0, the
+     * default: the network's own choice stands.
+     */
+    val kbpsDataSaver: Int = 0,
     /** Downloads wait for Wi-Fi (or another unmetered network). */
     val downloadOnWifiOnly: Boolean = true,
     val levelling: Boolean = true,
@@ -39,10 +42,15 @@ data class Settings(
     val speakers: Boolean = true,
     /** Speakers' addresses typed in, for networks where they can't be found by themselves. */
     val speakerAddresses: List<String> = emptyList(),
+    /**
+     * YouTube Music songs are fetched by the phone itself, over its own connection (YouTube turns
+     * servers away more and more); the server's copy is the fallback.
+     */
+    val youtubeOnPhone: Boolean = true,
 ) {
     val signedIn: Boolean get() = server.isNotEmpty() && token != null
 
-    /** The cap for [network] (0 is no cap); Android's Data Saver keeps it to 128 kbps at most. */
+    /** The cap for [network] (0 is no cap), and no more than [kbpsDataSaver] while Data Saver is on. */
     fun kbpsFor(network: NetworkClass, savingData: Boolean): Int {
         val cap = when (network) {
             NetworkClass.SATELLITE -> kbpsSatellite
@@ -55,10 +63,6 @@ data class Settings(
 
     /** Whether Data Saver is what's holding [network]'s quality down right now. */
     fun dataSaverLowers(network: NetworkClass, savingData: Boolean): Boolean = kbpsFor(network, savingData) != kbpsFor(network, false)
-
-    companion object {
-        const val DATA_SAVER_KBPS = 128
-    }
 }
 
 class Prefs(private val context: Context) {
@@ -89,6 +93,7 @@ class Prefs(private val context: Context) {
         prefs[LEVELLING] = next.levelling
         prefs[SPEAKERS] = next.speakers
         prefs[SPEAKER_ADDRESSES] = next.speakerAddresses.joinToString("\n")
+        prefs[YOUTUBE_ON_PHONE] = next.youtubeOnPhone
         next.user?.let { prefs[USER] = ApiJson.encodeToString(User.serializer(), it) }
     }
 
@@ -101,11 +106,12 @@ class Prefs(private val context: Context) {
         kbpsCellular = prefs[KBPS_CELLULAR] ?: 320,
         kbpsSatellite = prefs[KBPS_SATELLITE] ?: 64,
         kbpsDownload = prefs[KBPS_DOWNLOAD] ?: 0,
-        kbpsDataSaver = prefs[KBPS_DATA_SAVER] ?: Settings.DATA_SAVER_KBPS,
+        kbpsDataSaver = prefs[KBPS_DATA_SAVER] ?: 0,
         downloadOnWifiOnly = prefs[DOWNLOAD_WIFI_ONLY] ?: true,
         levelling = prefs[LEVELLING] ?: true,
         speakers = prefs[SPEAKERS] ?: true,
         speakerAddresses = prefs[SPEAKER_ADDRESSES].orEmpty().lines().map { it.trim() }.filter { it.isNotEmpty() },
+        youtubeOnPhone = prefs[YOUTUBE_ON_PHONE] ?: true,
     )
 
     private companion object {
@@ -122,5 +128,6 @@ class Prefs(private val context: Context) {
         val LEVELLING = booleanPreferencesKey("levelling")
         val SPEAKERS = booleanPreferencesKey("speakers")
         val SPEAKER_ADDRESSES = stringPreferencesKey("speaker_addresses")
+        val YOUTUBE_ON_PHONE = booleanPreferencesKey("youtube_on_phone")
     }
 }

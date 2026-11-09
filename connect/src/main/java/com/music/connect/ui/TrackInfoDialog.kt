@@ -75,10 +75,11 @@ fun TrackInfoDialog(track: ApiTrack, onDismiss: () -> Unit) {
                         }
                         facts[track.key]?.let { fact ->
                             Info("Copy", fact.description)
+                            if (!fact.downloaded && !track.isLive) Info("Fetched by", if (fact.byPhone) "This phone, straight from YouTube" else "Your server")
                             fact.kbps?.let { Info("Bitrate", "$it kbps" + if (fact.transcoded) " (converted on your server)" else "") }
                             fact.capKbps?.let { cap ->
                                 val why = when {
-                                    fact.dataSaver -> "Android's Data Saver is on (see Settings › Quality)"
+                                    fact.dataSaver -> "Android restricts this app's mobile data, so “With Data Saver on” applies (Settings › Quality)"
                                     else -> "picked on ${fact.network ?: network.networkClass.label}"
                                 }
                                 Info("Quality cap", "${if (cap == 0) "Original" else "$cap kbps"} ($why)")

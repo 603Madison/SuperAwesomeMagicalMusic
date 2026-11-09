@@ -49,6 +49,11 @@ export function TrackInfo({ track, onClose }: { track: Track; onClose: () => voi
     now.push(["Volume levelling", !levelling ? "Off" : `${gain >= 0 ? "+" : ""}${gain.toFixed(1)} dB (${current.gainDb != null ? "from your library's loudness value" : "measured while playing"})`]);
     if (!live) now.push(["Loaded ahead", duration(ahead * 1000)]);
   }
+  // What the server sees when it fetches this (a song that won't start: blocked, or just slow?).
+  const via = current?.track.via;
+  const test = !isCurrent || !current || !via ? null
+    : live ? (current.track.source === "SIRIUSXM" ? { href: `/api/live/sxm/${encodeURIComponent(via)}/diagnostics`, label: "SiriusXM's stream log on your server" } : null)
+    : { href: `/api/diagnostics/stream?via=${encodeURIComponent(via)}&id=${encodeURIComponent(current.track.sourceId)}&kbps=${kbps}`, label: "Test this song's stream from your server" };
   return (
     <Modal title={track.title} onClose={onClose} footer={<Button variant="primary" onClick={onClose}>Close</Button>}>
       <dl className="info-list">
@@ -62,6 +67,7 @@ export function TrackInfo({ track, onClose }: { track: Track; onClose: () => voi
       ) : (
         <p className="muted">When it plays, your server picks the copy: your library first, then the other services, for the best one within your quality setting.</p>
       )}
+      {test && <p className="info-tools"><a href={test.href} target="_blank" rel="noreferrer">{test.label}</a></p>}
     </Modal>
   );
 }

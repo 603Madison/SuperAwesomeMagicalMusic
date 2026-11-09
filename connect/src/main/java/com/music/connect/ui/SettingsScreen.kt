@@ -56,7 +56,7 @@ fun SettingsScreen() {
 
         Panel("Quality") {
             Text(
-                "Now on ${network.networkClass.label}" + if (network.savingData) " with Data Saver" else "",
+                "Now on ${network.networkClass.label}" + if (network.savingData) " (Android reports this app's data as restricted)" else "",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             QualityChoice("On Wi-Fi", settings.kbpsWifi, network.networkClass == NetworkClass.WIFI) { k -> update { it.copy(kbpsWifi = k) } }
@@ -65,7 +65,7 @@ fun SettingsScreen() {
             QualityChoice("With Data Saver on", settings.kbpsDataSaver, network.savingData) { k -> update { it.copy(kbpsDataSaver = k) } }
             if (network.savingData && settings.kbpsDataSaver != 0) {
                 Text(
-                    "Android's Data Saver is on, so songs are kept to ${settings.kbpsDataSaver} kbps at most, whatever's chosen above. Choose Original for “With Data Saver on” to use your choices anyway.",
+                    "Android says this app's mobile data is restricted right now (Data Saver, or the app's own Background data setting), so songs are kept to ${settings.kbpsDataSaver} kbps at most. Choose Original for “With Data Saver on” to use your choices above anyway.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -75,6 +75,11 @@ fun SettingsScreen() {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             ToggleRow("Even out volume", "Songs from different services play at about the same loudness.", settings.levelling) { v -> update { it.copy(levelling = v) } }
+            ToggleRow(
+                "Get YouTube Music on this phone",
+                "YouTube often turns servers away, so the phone asks YouTube for the song itself, over its own connection. Your server's copy is used if that doesn't work.",
+                settings.youtubeOnPhone,
+            ) { v -> update { it.copy(youtubeOnPhone = v) } }
         }
 
         Panel("Downloads") {

@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -94,16 +95,65 @@ class Streamer(
         passThrough(call, stream, refresh = null)
     }
 
+    /**
+     * Fetches the start of [stream] the way a player would and says what happened: how the
+     * service answered, how long it took and how fast the audio came (Settings' stream test).
+     */
+    suspend fun probe(stream: SourceStream): List<String> = withContext(Dispatchers.IO) {
+        val lines = mutableListOf<String>()
+        val host = stream.url.toHttpUrlOrNull()?.host ?: "?"
+        val started = System.nanoTime()
+        fun ms() = (System.nanoTime() - started) / 1_000_000
+        val quick = http.newBuilder().readTimeout(PROBE_TIMEOUT_S, TimeUnit.SECONDS).callTimeout(PROBE_TIMEOUT_S * 2, TimeUnit.SECONDS).build()
+        try {
+            open(stream, if (stream.supportsRangeRequests) "bytes=0-${PROBE_BYTES - 1}" else null, quick).use { response ->
+                val answered = ms()
+                lines += "$host answered HTTP ${response.code} in $answered ms" +
+                    listOfNotNull(
+                        response.header(HttpHeaders.ContentType),
+                        response.header(HttpHeaders.ContentRange) ?: response.header(HttpHeaders.ContentLength)?.let { "$it bytes" },
+                    ).joinToString(", ", prefix = " (", postfix = ")").takeIf { it != " ()" }.orEmpty()
+                val body = response.body
+                if (!response.isSuccessful || body == null) {
+                    body?.string()?.trim()?.take(300)?.takeIf { it.isNotEmpty() }?.let { lines += "It said: $it" }
+                    return@use
+                }
+                val source = body.source()
+                val sink = okio.Buffer()
+                var read = 0L
+                while (read < PROBE_BYTES) {
+                    val n = source.read(sink, 16_384)
+                    if (n < 0) break
+                    read += n
+                    sink.clear()
+                }
+                val took = (ms() - answered).coerceAtLeast(1)
+                lines += "Read ${read / 1024} KB of audio in $took ms (${read * 1000 / 1024 / took} KB/s; this song needs about ${(stream.kbps ?: 128) / 8} KB/s)"
+            }
+        } catch (e: Exception) {
+            lines += "Failed after ${ms()} ms: ${(e as? ApiError)?.message ?: e.toString()}"
+        }
+        lines
+    }
+
     private suspend fun passThrough(call: ApplicationCall, stream: SourceStream, refresh: (suspend () -> SourceStream)?) {
         val range = call.request.header(HttpHeaders.Range)
         var current = stream
+        val started = System.nanoTime()
         var response = open(current, range)
         if (response.code in EXPIRED && refresh != null) {
+            CoreLog.w(TAG, "${hostOf(current)} answered HTTP ${response.code} for ${current.description}; asking for a new address")
             response.close()
             current = refresh()
             response = open(current, range)
         }
         val upstream = response
+        val waited = (System.nanoTime() - started) / 1_000_000
+        if (upstream.code !in 200..299 && upstream.code != 416) {
+            CoreLog.w(TAG, "${hostOf(current)} answered HTTP ${upstream.code} for ${current.description} after $waited ms")
+        } else if (waited > SLOW_MS) {
+            CoreLog.w(TAG, "${hostOf(current)} took $waited ms to start sending ${current.description}")
+        }
         var handedOff = false
         try {
             when {
@@ -209,22 +259,28 @@ class Streamer(
         }
     }
 
-    private suspend fun open(stream: SourceStream, range: String?): Response = withContext(Dispatchers.IO) {
+    private suspend fun open(stream: SourceStream, range: String?, client: OkHttpClient = http): Response = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(stream.url).apply {
             stream.headers.forEach { (name, value) -> header(name, value) }
             if (range != null && stream.supportsRangeRequests) header(HttpHeaders.Range, range)
         }.build()
         try {
-            http.newCall(request).execute()
+            client.newCall(request).execute()
         } catch (e: IOException) {
+            CoreLog.w(TAG, "Couldn't reach ${hostOf(stream)} for ${stream.description}: ${e.message ?: e.javaClass.simpleName}")
             throw ApiError.upstream("Couldn't reach the source: ${e.message ?: e.javaClass.simpleName}")
         }
     }
+
+    private fun hostOf(stream: SourceStream): String = stream.url.toHttpUrlOrNull()?.host ?: "The source"
 
     companion object {
         private const val TAG = "Streamer"
         private const val BUFFER = 64 * 1024
         private const val QUEUE_WAIT_MS = 15_000L
+        private const val SLOW_MS = 8_000L
+        private const val PROBE_BYTES = 256 * 1024
+        private const val PROBE_TIMEOUT_S = 20L
         private const val CAP_SLACK_KBPS = 8
         private const val LOSSLESS_KBPS = 1_000
         private const val OPUS_ORIGINAL_KBPS = 192

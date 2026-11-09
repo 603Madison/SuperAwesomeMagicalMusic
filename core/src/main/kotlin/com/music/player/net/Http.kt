@@ -9,9 +9,11 @@ import okhttp3.Callback
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -41,8 +43,37 @@ object Http {
                 chain.proceed(request.newBuilder().header("User-Agent", USER_AGENT).build())
             }
         })
+        .addInterceptor(YouTubeMediaRequests)
         .addNetworkInterceptor(DropCredentialsOnRedirect)
         .build()
+
+    /**
+     * Asks YouTube's media servers for audio the way NewPipe's own player does: a POST with a
+     * two-byte body, a request number, and no compression. YouTube's servers stall or refuse
+     * requests that don't look like its players' (and NewPipe's library is built around these).
+     */
+    object YouTubeMediaRequests : Interceptor {
+        private val number = AtomicInteger()
+        private val BODY = byteArrayOf(0x78, 0)
+
+        fun applies(request: Request): Boolean =
+            request.method == "GET" && request.url.host.endsWith(".googlevideo.com") && request.url.encodedPath.startsWith("/videoplayback")
+
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val request = chain.request()
+            if (!applies(request)) return chain.proceed(request)
+            val url = request.url.newBuilder().apply {
+                if (request.url.queryParameter("rn") == null) addQueryParameter("rn", number.incrementAndGet().toString())
+            }.build()
+            return chain.proceed(
+                request.newBuilder()
+                    .url(url)
+                    .header("Accept-Encoding", "identity")
+                    .post(BODY.toRequestBody(null))
+                    .build(),
+            )
+        }
+    }
 
     /**
      * OkHttp drops the Authorization header when a redirect leads to another host, but not other

@@ -17,6 +17,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -163,6 +164,31 @@ fun Route.musicRoutes(services: Services) {
         val stream = services.catalog.streamOf(source, id, quality)
         val plan = services.streamer.plan(stream, quality, codecs, start)
         services.streamer.respond(call, stream, plan, start) { services.catalog.streamOf(source, id, quality, fresh = true) }
+    }
+
+    // What the server sees when it fetches a song: finding it on the service, then the first
+    // part of the audio (the details window links here, to tell a blocked service from a slow one).
+    get("/api/diagnostics/stream") {
+        val user = call.requireUser(services)
+        val params = call.request.queryParameters
+        val source = services.sources.accessible(user, params["via"].orEmpty())?.takeIf { it.enabled }
+            ?: throw ApiError.notFound("That source isn't available")
+        val id = params["id"]?.takeIf { it.isNotBlank() && it.length < 500 } ?: throw ApiError.badRequest("Which song?")
+        val quality = qualityOf(params["kbps"]?.toIntOrNull() ?: 0)
+        val lines = mutableListOf("Stream test: $id on ${source.name}, ${quality.toStored().takeIf { it > 0 }?.let { "up to $it kbps" } ?: "original quality"}")
+        val started = System.nanoTime()
+        val stream = try {
+            services.catalog.streamOf(source, id, quality, fresh = true)
+        } catch (e: Exception) {
+            lines += "Finding the song failed after ${(System.nanoTime() - started) / 1_000_000} ms: ${e.message ?: e}"
+            null
+        }
+        if (stream != null) {
+            lines += "Found it in ${(System.nanoTime() - started) / 1_000_000} ms: ${stream.description}"
+            lines += services.streamer.probe(stream)
+        }
+        call.response.header(HttpHeaders.CacheControl, "no-store")
+        call.respondText(lines.joinToString("\n", postfix = "\n"), ContentType.Text.Plain)
     }
 
     // ffmpeg's way in to a stream it's converting; only from the server itself.

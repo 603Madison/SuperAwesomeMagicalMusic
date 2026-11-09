@@ -108,9 +108,14 @@ class NetworkMonitor(private val context: Context) {
         }
     }
 
+    /** The state now, with Data Saver asked afresh (its broadcast only reaches an app in front). */
+    fun current(): NetworkState = _state.value.copy(dataSaver = dataSaverOn()).also { _state.value = it }
+
     /**
-     * Whether Data Saver is on. "Whitelisted" means it's on but this app is exempted, which still
-     * counts: the exemption is about background data, and the user wants the lower bitrate.
+     * Whether Android restricts this app's mobile data. That's Data Saver ("whitelisted" means it's
+     * on with this app exempted, which still counts), but Android also says so when this app's own
+     * "Background data" is off, with Data Saver off. So it only lowers quality when the person
+     * picked a quality for it (Settings › Quality › With Data Saver on, Original by default).
      */
     fun dataSaverOn(): Boolean = runCatching {
         connectivityManager.restrictBackgroundStatus != ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLED

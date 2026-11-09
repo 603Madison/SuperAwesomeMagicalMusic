@@ -218,6 +218,12 @@ class SiriusXmClient(
         var heardAtMs: Long? = null
         var reportedCut: SxmCut? = null
         var lastProgressMs = 0L
+        /**
+         * The last track's playlist, while SiriusXM had only sent part of it (no ENDLIST): fetched
+         * again now and then for the rest, which would otherwise never come. (id, url, key id)
+         */
+        var growing: Triple<String, String, String?>? = null
+        var grownAtMs = 0L
     }
 
     /**
@@ -244,6 +250,7 @@ class SiriusXmClient(
         val channel = xtraChannels[channelId]?.takeIf { now - it.lastServedMs < XTRA_IDLE_RESET_MS }
             ?: XtraChannel(XtraStream(now)).also { xtraChannels[channelId] = it }
         return channel.mutex.withLock {
+            growLastTrack(channel, now)
             if (channel.stream.isEmpty) {
                 appendStreams(type, channelId, channel, tune(type, channelId), now, "tune")
                 if (channel.stream.isEmpty) throw IllegalStateException("SiriusXM sent nothing to play on this channel")
@@ -261,6 +268,21 @@ class SiriusXmClient(
             }
             channel.lastServedMs = now
             channel.stream.render()
+        }
+    }
+
+    /** Fetches the rest of a track SiriusXM had only sent part of (see [XtraChannel.growing]). */
+    private suspend fun growLastTrack(channel: XtraChannel, now: Long) {
+        val (id, url, keyId) = channel.growing ?: return
+        if (now - channel.grownAtMs < XTRA_GROW_MS) return
+        channel.grownAtMs = now
+        try {
+            val segments = channel.stream.append(id, url, SiriusXmParser.rewriteKeys(fetchPlaylist(url), keyId ?: fallbackKeyId), null, now)
+            val last = channel.stream.lastTrack
+            if (last == null || last.key != id || last.complete) channel.growing = null
+            if (segments > 0) recordDiagnostics("xtra grow $id", "$segments more segments${if (channel.growing == null) ", complete" else ""}")
+        } catch (e: Exception) {
+            recordDiagnostics("xtra grow $id failed", e.toString())
         }
     }
 
@@ -313,6 +335,10 @@ class SiriusXmClient(
                 playlist = fetchPlaylist(variant)
             }
             val segments = channel.stream.append(id, playlistUrl, SiriusXmParser.rewriteKeys(playlist, keyId ?: fallbackKeyId), cut, now)
+            // Only part of it so far: the rest is fetched as playback goes on (growLastTrack).
+            val last = channel.stream.lastTrack
+            channel.growing = if (last != null && last.key == id && !last.complete) Triple(id, playlistUrl, keyId) else null
+            channel.grownAtMs = now
             channel.added += id
             while (channel.added.size > 500) channel.added.remove(channel.added.first())
             added++
@@ -723,6 +749,7 @@ class SiriusXmClient(
         /** Ask for more tracks when less than this is left to play, and wait this long between attempts. */
         private const val XTRA_LEAD_MS = 60_000L
         private const val XTRA_RETRY_MS = 10_000L
+        private const val XTRA_GROW_MS = 8_000L
         private const val XTRA_PROGRESS_INTERVAL_MS = 30_000L
         /** The player reloads a live playlist every few seconds; a longer silence means it stopped. */
         private const val XTRA_IDLE_RESET_MS = 2 * 60_000L

@@ -21,6 +21,7 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receive
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
@@ -170,6 +171,14 @@ fun Route.liveRoutes(services: Services) {
                 proxy.rewrite(text, "", source.id, keyPath(source))
             }
             proxy.respondPlaylist(call, playlist)
+        }
+
+        // What SiriusXM answered lately (no passwords or session tokens), for troubleshooting.
+        get("/sxm/{src}/diagnostics") {
+            val user = call.requireUser(services)
+            val (_, client) = call.siriusXm(user)
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            call.respondText(client.diagnostics().ifBlank { "Nothing yet: play a SiriusXM channel first." }, ContentType.Text.Plain)
         }
 
         get("/sxm/{src}/key/{guid}") {

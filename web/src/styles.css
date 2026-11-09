@@ -884,6 +884,8 @@ input[type="range"]:disabled { cursor: default; opacity: 0.5; }
 .info-list dt { color: var(--muted); font-size: 0.86rem; }
 .info-list dd { margin: 0; overflow-wrap: anywhere; user-select: text; }
 .info-heading { font-size: 0.95rem; margin: 18px 0 10px; }
+.info-tools { margin: 16px 0 0; font-size: 0.86rem; }
+.info-tools a { color: var(--accent); }
 @media (max-width: 560px) { .info-list > div { grid-template-columns: 1fr; gap: 2px; } }
 
 /* Choosing a file to import: a button, with the file input inside it out of sight. */

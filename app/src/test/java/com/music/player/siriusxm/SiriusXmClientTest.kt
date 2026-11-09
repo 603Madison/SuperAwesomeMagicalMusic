@@ -28,6 +28,8 @@ class SiriusXmClientTest {
     /** The queue SiriusXM hands out when the channel is tuned, and what peeking adds. */
     private var tuneQueue = listOf("intro", "song-1")
     private var peekQueue = listOf("song-1", "song-2")
+    /** Tracks SiriusXM has only sent the first part of so far (no ENDLIST yet). */
+    private val partial = mutableSetOf<String>()
 
     private var searchResponse = "{}"
     private var rejectFeedback = false
@@ -67,6 +69,11 @@ class SiriusXmClientTest {
                         )
                         path.startsWith("/cdn/") && path.endsWith("/media.m3u8") -> {
                             val track = path.removePrefix("/cdn/").substringBefore('/')
+                            if (track in partial) return MockResponse().setBody(
+                                "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:EVENT\n#EXT-X-TARGETDURATION:10\n#EXT-X-MEDIA-SEQUENCE:5\n" +
+                                    "#EXT-X-KEY:METHOD=AES-128,URI=\"https://key.example.com/12345678-1234-1234-1234-123456789abc\"\n" +
+                                    "#EXTINF:10.0,\n${track}_1.aac\n",
+                            )
                             MockResponse().setBody(
                                 "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-TARGETDURATION:10\n#EXT-X-MEDIA-SEQUENCE:5\n" +
                                     "#EXT-X-KEY:METHOD=AES-128,URI=\"https://key.example.com/12345678-1234-1234-1234-123456789abc\"\n" +
@@ -194,6 +201,38 @@ class SiriusXmClientTest {
         assertTrue(telemetry[0].contains("\"start\"") && telemetry[0].contains("\"id\":\"intro\""))
         assertTrue(telemetry[1].contains("\"progress\"") && telemetry[1].contains("\"id\":\"intro\"") && telemetry[1].contains("20000"))
         assertTrue(telemetry[2].contains("\"start\"") && telemetry[2].contains("\"id\":\"song-1\""))
+    }
+
+    @Test
+    fun `a track SiriusXM has only sent part of is fetched again until it's all there`() = runTest {
+        var now = 1_000_000L
+        val client = client(clock = { now })
+        partial += "song-2"
+        client.xtraPlaylist("channel-xtra", "x1")
+        val peeked = client.xtraPlaylist("channel-xtra", "x1") // peeks: song-2 joins, only its start so far
+        assertTrue(peeked.contains("song-2_1.aac"))
+        assertFalse(peeked.contains("song-2_2.aac"))
+        fun fetches() = requests.count { it.path!!.startsWith("/cdn/song-2/") && it.path!!.endsWith("/media.m3u8") }
+        val before = fetches()
+
+        // Asked again within a few seconds: not fetched again yet.
+        now += 2_000
+        client.xtraPlaylist("channel-xtra", "x1")
+        assertEquals(before, fetches())
+
+        // The rest has arrived at SiriusXM: fetched, and the song plays through.
+        partial.clear()
+        now += 8_000
+        val grown = client.xtraPlaylist("channel-xtra", "x1")
+        assertEquals(before + 1, fetches())
+        assertEquals(1, grown.lines().count { it.endsWith("song-2_1.aac") })
+        assertTrue(grown.contains("song-2_2.aac"))
+        assertTrue(client.diagnostics().contains("xtra grow song-2"))
+
+        // All there now: not fetched again.
+        now += 9_000
+        client.xtraPlaylist("channel-xtra", "x1")
+        assertEquals(before + 1, fetches())
     }
 
     @Test
