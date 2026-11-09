@@ -76,7 +76,7 @@ fun TrackInfoDialog(track: ApiTrack, onDismiss: () -> Unit) {
                         if (facts[track.key] == null && !track.isLive) Info("Copy", "Being picked by your server…")
                         facts[track.key]?.let { fact ->
                             Info("Copy", fact.description)
-                            if (!fact.downloaded && !track.isLive) Info("Fetched by", if (fact.byPhone) "This phone, straight from YouTube" else "Your server")
+                            if (!fact.downloaded && !track.isLive) Info("Fetched by", if (fact.byPhone) "This phone, straight from YouTube (your server couldn't play it)" else "Your server")
                             fact.kbps?.let { Info("Bitrate", "$it kbps" + if (fact.transcoded) " (converted on your server)" else "") }
                             fact.capKbps?.let { cap ->
                                 val why = when {

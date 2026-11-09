@@ -5,12 +5,24 @@ import android.os.Looper
 import androidx.media3.common.Player
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import com.music.connect.net.ApiTrack
 import com.music.connect.net.ServerApi
 import com.music.connect.playback.LibraryCallback
 import com.music.connect.playback.MediaItems
 import com.music.connect.playback.PlaybackService
+import com.music.player.model.SourceType
+import com.music.player.model.Track
+import com.music.player.quality.StreamQuality
+import com.music.player.sources.MusicSource
+import com.music.player.sources.SourceStream
+import java.time.Duration
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
+import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -23,7 +35,6 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ServiceController
 import org.robolectric.annotation.Config
-import java.time.Duration
 
 /** The playback service playing a song from the server, the way the phone does. */
 @RunWith(RobolectricTestRunner::class)
@@ -47,7 +58,7 @@ class PlaybackTest {
     @After
     fun stop() {
         service.destroy()
-        server.close()
+        runCatching { server.close() }
     }
 
     private fun waitFor(what: String, timeoutMs: Long = 15_000, condition: () -> Boolean) {
@@ -84,6 +95,45 @@ class PlaybackTest {
         val network = c.network.state.value
         val kbps = c.settings.value.kbpsFor(network.networkClass, network.savingData)
         assertEquals(if (kbps == 0) "FLAC (original file)" else "MP3 $kbps kbps (transcoded)", c.playingDescription.value[song.key])
+    }
+
+    @Test
+    fun `a YouTube Music song is asked of YouTube directly when the server can't be reached`() {
+        // YouTube, as the phone sees it: one song, whose audio is a short WAV file.
+        val youtube = MockWebServer().apply {
+            dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest) =
+                    MockResponse().setHeader("Content-Type", "audio/wav").setBody(Buffer().write(TestServer.wav()))
+            }
+            start()
+        }
+        val asked = mutableListOf<String>()
+        c.youtube = object : MusicSource {
+            override val type = SourceType.YOUTUBE_MUSIC
+            override suspend fun isAvailable() = true
+            override suspend fun search(query: String, limit: Int) = emptyList<Track>()
+            override suspend fun stream(sourceId: String, quality: StreamQuality): SourceStream {
+                asked += sourceId
+                return SourceStream(youtube.url("/videoplayback?id=$sourceId").toString(), mapOf("X-Client" to "phone"), "Opus 160 kbps", fileExtension = "webm", kbps = 160, codec = "opus")
+            }
+        }
+        try {
+            server.close()
+            val song = ApiTrack(SourceType.YOUTUBE_MUSIC, "dQw4w9WgXcQ", "Backup Song", "Someone", via = "yt")
+            val player = session().player
+            player.setMediaItem(MediaItems.playable(song, server.base) { null })
+            player.prepare()
+            player.play()
+            waitFor("YouTube to be asked") { c.streamFacts.value[song.key] != null || player.playerError != null }
+            val facts = c.streamFacts.value[song.key]
+            assertEquals(player.playerError?.toString(), true, facts?.byPhone)
+            assertEquals("Opus 160 kbps", facts?.description)
+            assertEquals(listOf("dQw4w9WgXcQ"), asked)
+            // Fetched with the headers YouTube's address needs.
+            assertEquals("phone", youtube.takeRequest(10, java.util.concurrent.TimeUnit.SECONDS)?.getHeader("X-Client"))
+        } finally {
+            youtube.shutdown()
+        }
     }
 
     @Test

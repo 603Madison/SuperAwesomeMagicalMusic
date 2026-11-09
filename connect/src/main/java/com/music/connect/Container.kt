@@ -22,6 +22,7 @@ import com.music.player.AppInfo
 import com.music.player.CoreLog
 import com.music.player.model.SourceType
 import com.music.player.net.Http
+import com.music.player.sources.MusicSource
 import com.music.player.sources.youtube.YouTubeMusicSource
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -58,8 +59,9 @@ class Container(val context: Context) {
 
     val api = ServerApi(http, { settings.value.server }, { settings.value.token })
 
-    /** YouTube Music, asked from the phone itself (see Settings.youtubeOnPhone). */
-    val youtube = YouTubeMusicSource(http)
+    /** YouTube Music, asked from the phone itself: the backup when the server can't play a song. */
+    @Volatile
+    var youtube: MusicSource = YouTubeMusicSource(http)
     val db = ConnectDb.build(context)
     val library = Library(db, api) { SyncWorker.enqueue(context) }
     val downloads = Downloads(context, db, api, http, prefs) { DownloadWorker.enqueue(context, settings.value.downloadOnWifiOnly) }

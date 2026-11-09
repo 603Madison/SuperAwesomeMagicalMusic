@@ -75,11 +75,6 @@ fun SettingsScreen() {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             ToggleRow("Even out volume", "Songs from different services play at about the same loudness.", settings.levelling) { v -> update { it.copy(levelling = v) } }
-            ToggleRow(
-                "Get YouTube Music on this phone",
-                "For when your server can't reach YouTube: the phone asks YouTube for the song itself, over its own connection (slower to start), and uses your server's copy if that doesn't work.",
-                settings.youtubeOnPhone,
-            ) { v -> update { it.copy(youtubeOnPhone = v) } }
         }
 
         Panel("Downloads") {

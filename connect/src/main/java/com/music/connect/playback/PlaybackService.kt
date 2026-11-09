@@ -37,10 +37,10 @@ import com.music.connect.container
 import com.music.connect.net.ApiTrack
 import com.music.connect.net.ConnectCommand
 import com.music.connect.net.PlayState
-import com.music.connect.net.ResolvedStream
 import com.music.player.model.SourceType
 import com.music.player.quality.NetworkClass
 import com.music.player.quality.StreamQuality
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -51,7 +51,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
@@ -71,8 +70,10 @@ data class StreamResolution(
     val network: NetworkClass? = null,
     /** Headers the address must be fetched with (YouTube's, when the phone fetches it). */
     val headers: Map<String, String> = emptyMap(),
-    /** Fetched by the phone itself, straight from the service (see Settings.youtubeOnPhone). */
+    /** Fetched by the phone itself, straight from YouTube (the backup: see PlaybackService.choose). */
     val byPhone: Boolean = false,
+    /** The song's YouTube id, when it's a YouTube Music song: for the backup. */
+    val youtubeId: String? = null,
 )
 
 /** Where a song being played comes from, for its details (see TrackInfoDialog). */
@@ -290,12 +291,7 @@ class PlaybackService : MediaLibraryService() {
             // YouTube's own addresses stop working after a few hours (the server's don't: it asks again).
             !it.byPhone || track.key == currentKey || now - it.atMs < PHONE_ADDRESS_MS
         }
-        val chosen = pinned ?: runBlocking {
-            // Comparing every service costs round trips: only where the link is quick.
-            val resolved = c.api.resolve(track, kbps, thorough = network.networkClass == NetworkClass.WIFI)
-            val viaServer = StreamResolution(c.api.absolute(resolved.streamUrl), resolved.description, resolved.gainDb, kbps, now, resolved.kbps, resolved.transcoded, network.networkClass)
-            fetchOnPhone(track, resolved, viaServer) ?: viaServer
-        }.also { resolutions[track.key] = it }
+        val chosen = pinned ?: runBlocking { choose(track, kbps, network.networkClass) }.also { resolutions[track.key] = it }
         describe(
             track,
             StreamFacts(
@@ -314,35 +310,66 @@ class PlaybackService : MediaLibraryService() {
         return if (chosen.headers.isEmpty()) located else located.withAdditionalHeaders(chosen.headers)
     }
 
-    /** Songs the phone couldn't play from YouTube itself: these come through the server. */
-    private val serverOnly: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    /**
+     * YouTube Music songs whose copy from the server didn't play (or the server couldn't be
+     * reached): the phone asks YouTube for these itself, by their YouTube id, for a while
+     * ([BACKUP_MS]) before trying the server again. (id, since)
+     */
+    private val fromYouTube = ConcurrentHashMap<String, Pair<String, Long>>()
 
     /**
-     * A YouTube Music song, fetched by the phone over its own connection: YouTube turns servers
-     * away (it trusts home and mobile connections far more). Null, for the server's copy: not
-     * YouTube, turned off in Settings, or YouTube didn't answer the phone either.
+     * The server's pick, always first. A YouTube Music song has a backup: the phone asks YouTube
+     * itself, over its own connection, when the server can't be reached or can't get it, or when
+     * the server's copy fails or stalls (see [fallBackToYouTube]). It's slower to start, so only then.
      */
-    private suspend fun fetchOnPhone(track: ApiTrack, resolved: ResolvedStream, viaServer: StreamResolution): StreamResolution? {
-        val song = resolved.track
-        if (!c.settings.value.youtubeOnPhone || song.source != SourceType.YOUTUBE_MUSIC || track.key in serverOnly) return null
-        return try {
-            val stream = withTimeoutOrNull(PHONE_FETCH_MS) { c.youtube.stream(song.sourceId, StreamQuality.fromStored(viaServer.kbps)) }
-                ?: return null.also { Log.w(TAG, "YouTube didn't answer the phone in time for ${track.title}") }
-            viaServer.copy(url = stream.url, description = stream.description, streamKbps = stream.kbps, transcoded = false, headers = stream.headers, byPhone = true)
-        } catch (e: Exception) {
-            Log.w(TAG, "Couldn't get ${track.title} from YouTube on the phone; your server's copy instead", e)
-            null
+    private suspend fun choose(track: ApiTrack, kbps: Int, network: NetworkClass): StreamResolution {
+        fromYouTube[track.key]?.takeIf { System.currentTimeMillis() - it.second < BACKUP_MS }?.let { (id, _) ->
+            return direct(track, id, kbps, network) ?: throw IOException("Neither your server nor YouTube could play \"${track.title}\"")
         }
+        val resolved = try {
+            // Comparing every service costs round trips: only where the link is quick.
+            c.api.resolve(track, kbps, thorough = network == NetworkClass.WIFI)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (track.source != SourceType.YOUTUBE_MUSIC) throw e
+            Log.w(TAG, "Your server couldn't get ${track.title}; asking YouTube directly", e)
+            fromYouTube[track.key] = track.sourceId to System.currentTimeMillis()
+            return direct(track, track.sourceId, kbps, network) ?: throw e
+        }
+        return StreamResolution(
+            c.api.absolute(resolved.streamUrl), resolved.description, resolved.gainDb, kbps, System.currentTimeMillis(),
+            resolved.kbps, resolved.transcoded, network,
+            youtubeId = resolved.track.sourceId.takeIf { resolved.track.source == SourceType.YOUTUBE_MUSIC },
+        )
+    }
+
+    /** [youtubeId] straight from YouTube, over the phone's own connection; null if YouTube didn't answer. */
+    private suspend fun direct(track: ApiTrack, youtubeId: String, kbps: Int, network: NetworkClass): StreamResolution? = try {
+        val stream = c.youtube.stream(youtubeId, StreamQuality.fromStored(kbps))
+        StreamResolution(
+            stream.url, stream.description, null, kbps, System.currentTimeMillis(), stream.kbps,
+            network = network, headers = stream.headers, byPhone = true, youtubeId = youtubeId,
+        )
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "YouTube didn't answer the phone for ${track.title} either", e)
+        null
     }
 
     /**
-     * The song playing now comes through the server from here on, when fetching it on the phone
-     * failed or stalled. False when it already was (nothing else to try).
+     * The song playing now is fetched straight from YouTube from here on, when the server's copy
+     * of it (a YouTube Music song) failed or stalled. False when there's nothing else to try.
      */
-    private fun fallBackToServer(reason: String): Boolean {
+    private fun fallBackToYouTube(reason: String): Boolean {
         val key = currentKey ?: return false
-        if (resolutions[key]?.byPhone != true || !serverOnly.add(key)) return false
-        Log.w(TAG, "Fetching ${player.currentMediaItem?.mediaMetadata?.title} on the phone $reason; through your server instead")
+        val failed = resolutions[key] ?: return false
+        val id = failed.youtubeId?.takeIf { !failed.byPhone } ?: return false
+        val now = System.currentTimeMillis()
+        if (fromYouTube[key]?.let { now - it.second < BACKUP_MS } == true) return false
+        fromYouTube[key] = id to now
+        Log.w(TAG, "Your server's copy of ${player.currentMediaItem?.mediaMetadata?.title} $reason; asking YouTube directly")
         resolutions.remove(key)
         val at = player.currentPosition
         val index = player.currentMediaItemIndex
@@ -354,7 +381,7 @@ class PlaybackService : MediaLibraryService() {
 
     /**
      * Watches for a song that never starts: nothing loaded for [STALL_MS] while it should be
-     * playing. One the phone fetched itself is tried through the server instead.
+     * playing. A YouTube Music song from the server is asked of YouTube directly instead.
      */
     private fun watchForStalls() = scope.launch {
         var stuck: String? = null
@@ -372,7 +399,7 @@ class PlaybackService : MediaLibraryService() {
                 }
                 SystemClock.elapsedRealtime() - since >= STALL_MS -> {
                     stuck = null
-                    fallBackToServer("stalled")
+                    fallBackToYouTube("stalled")
                 }
             }
         }
@@ -422,8 +449,8 @@ class PlaybackService : MediaLibraryService() {
         override fun onPlayerError(error: PlaybackException) {
             val track = player.currentMediaItem?.let(MediaItems::track)
             Log.w(TAG, "Couldn't play ${track?.title}", error)
-            // Fetched on the phone: the server may still get it.
-            if (fallBackToServer("failed (${error.errorCodeName})")) {
+            // A YouTube Music song from the server: YouTube may still give it to the phone.
+            if (fallBackToYouTube("failed (${error.errorCodeName})")) {
                 player.play()
                 return
             }
@@ -525,7 +552,7 @@ class PlaybackService : MediaLibraryService() {
         /** How long a stream fetched ahead stays chosen, whatever the network does meanwhile. */
         const val PIN_MS = 10 * 60_000L
         const val PHONE_ADDRESS_MS = 2 * 60 * 60_000L
-        const val PHONE_FETCH_MS = 20_000L
         const val STALL_MS = 20_000L
+        const val BACKUP_MS = 30 * 60_000L
     }
 }
