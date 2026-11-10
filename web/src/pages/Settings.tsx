@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LogOut, Monitor, Smartphone } from "lucide-react";
+import { Bot, Copy, LogOut, Monitor, Smartphone } from "lucide-react";
 import { api } from "../lib/api";
 import { when } from "../lib/format";
 import { session, useSession } from "../lib/session";
@@ -9,6 +9,8 @@ import { Button, errorToast, Field, IconButton, PageHeader, Spinner, toast, Togg
 
 export function Settings() {
   const user = useSession((s) => s.user)!;
+  // A new connector link shows in the list of sign-ins at once.
+  const [signIns, setSignIns] = useState(0);
   return (
     <div className="page settings">
       <PageHeader title="Settings" />
@@ -33,7 +35,12 @@ export function Settings() {
 
       <section className="panel">
         <h2>Signed in on</h2>
-        <Devices />
+        <Devices key={signIns} />
+      </section>
+
+      <section className="panel">
+        <h2>Claude connector</h2>
+        <ClaudeConnector onMade={() => setSignIns((n) => n + 1)} />
       </section>
 
       <section className="panel">
@@ -113,13 +120,13 @@ function Devices() {
       <ul className="device-list">
         {(data ?? []).map((s) => (
           <li key={s.id} className="device-row">
-            {s.kind === "APP" ? <Smartphone size={20} /> : <Monitor size={20} />}
+            {s.kind === "APP" ? <Smartphone size={20} /> : s.kind === "MCP" ? <Bot size={20} /> : <Monitor size={20} />}
             <div className="source-text">
               <div className="source-name">{s.name}{s.current && <span className="badge">This browser</span>}</div>
-              <div className="source-sub">Signed in {when(s.createdAt)} · last used {when(s.lastSeenAt)}</div>
+              <div className="source-sub">{s.kind === "MCP" ? "Link made" : "Signed in"} {when(s.createdAt)} · last used {when(s.lastSeenAt)}</div>
             </div>
             {!s.current && (
-              <IconButton label="Sign out this device" onClick={async () => {
+              <IconButton label={s.kind === "MCP" ? "Remove this connector link" : "Sign out this device"} onClick={async () => {
                 try { await api.revokeSession(s.id); setData((data ?? []).filter((x) => x.id !== s.id)); } catch (e) { errorToast(e); }
               }}><LogOut size={18} /></IconButton>
             )}
@@ -128,6 +135,42 @@ function Devices() {
       </ul>
       <Button variant="ghost" onClick={() => session.signOut()}><LogOut size={18} /> Sign out here</Button>
     </>
+  );
+}
+
+/**
+ * A link that lets Claude look at this server (its status, warnings, SiriusXM's stream log, stream
+ * tests, devices, search and history; it can't change anything), added in Claude as a custom
+ * connector. Shown once; listed and removed with the sign-ins above.
+ */
+function ClaudeConnector({ onMade }: { onMade: () => void }) {
+  const [link, setLink] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="form-stack">
+      <p className="muted">
+        Lets Claude look at this server to help troubleshoot it: its status and recent warnings, SiriusXM's stream log, stream tests,
+        your devices, search and your listening history. It can only look, never change anything, and sees only what your account sees.
+        In Claude, add it under Settings › Connectors › Add custom connector.
+      </p>
+      {link ? (
+        <>
+          <div className="copy-row">
+            <code>{link}</code>
+            <Button variant="ghost" onClick={() => { void navigator.clipboard?.writeText(link); toast("Copied"); }}><Copy size={16} /> Copy</Button>
+          </div>
+          <p className="muted">This link is the key: keep it private. It's shown only now; it's listed above as "Claude connector", where you can remove it.</p>
+        </>
+      ) : (
+        <div>
+          <Button busy={busy} onClick={async () => {
+            setBusy(true);
+            try { setLink((await api.mcpLink()).url); onMade(); } catch (e) { errorToast(e); }
+            setBusy(false);
+          }}><Bot size={18} /> Make a connector link</Button>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -199,6 +199,13 @@ fun Route.authRoutes(services: Services) {
             val principal = call.principal(services) ?: throw ApiError.unauthorized()
             call.respond(services.sessions.list(principal.user.id, principal.session.id))
         }
+        // A link for Claude's connector (see McpRoutes): shown once; it's listed, and revoked,
+        // with the account's devices.
+        post("/mcp-links") {
+            val user = call.requireUser(services)
+            val token = services.sessions.create(user.id, SessionKind.MCP, "Claude connector")
+            call.respond(McpLink("${publicBase(services, call)}/mcp/$token"))
+        }
         delete("/sessions/{id}") {
             val user = call.requireUser(services)
             if (!services.sessions.revoke(user.id, call.parameters["id"].orEmpty())) throw ApiError.notFound()
@@ -287,3 +294,6 @@ fun deviceName(call: ApplicationCall): String {
     }
     return if (system != null) "$browser on $system" else browser
 }
+
+@Serializable
+data class McpLink(val url: String)

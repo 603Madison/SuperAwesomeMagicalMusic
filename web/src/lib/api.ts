@@ -64,6 +64,7 @@ export const api = {
   changePassword: (current: string, next: string) => post<unknown>("/api/me/password", { current, new: next }),
   sessions: () => get<SessionInfo[]>("/api/me/sessions"),
   revokeSession: (id: string) => del<unknown>(`/api/me/sessions/${q(id)}`),
+  mcpLink: () => post<{ url: string }>("/api/me/mcp-links"),
 
   search: (query: string) => get<SearchResults>(`/api/search?q=${q(query)}`),
   artist: (id: string) => get<ArtistPage>(`/api/artist?id=${q(id)}`),

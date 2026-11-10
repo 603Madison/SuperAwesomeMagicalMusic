@@ -224,6 +224,8 @@ class SiriusXmClient(
          */
         var growing: Triple<String, String, String?>? = null
         var grownAtMs = 0L
+        /** The player has played everything queued and waits for more (noted once per wait). */
+        var ranOut = false
     }
 
     /**
@@ -235,7 +237,7 @@ class SiriusXmClient(
 
     /** Starts an Xtra channel afresh the next time it loads, e.g. after its stream failed. */
     fun resetXtra(channelId: String) {
-        xtraChannels.remove(channelId)
+        if (xtraChannels.remove(channelId) != null) xtraNote(channelId, "started afresh (its stream failed)")
     }
 
     /**
@@ -248,9 +250,20 @@ class SiriusXmClient(
     suspend fun xtraPlaylist(type: String, channelId: String): String {
         val now = clock()
         val channel = xtraChannels[channelId]?.takeIf { now - it.lastServedMs < XTRA_IDLE_RESET_MS }
-            ?: XtraChannel(XtraStream(now)).also { xtraChannels[channelId] = it }
+            ?: XtraChannel(XtraStream(now)).also { fresh ->
+                val idle = xtraChannels[channelId]?.let { (now - it.lastServedMs) / 1000 }
+                xtraNote(channelId, if (idle != null) "started afresh: the player hadn't asked for ${idle}s" else "tuned")
+                xtraChannels[channelId] = fresh
+            }
         return channel.mutex.withLock {
             growLastTrack(channel, now)
+            val left = remainingMs(channel, now)
+            if (!channel.stream.isEmpty && left <= 0 && !channel.ranOut) {
+                channel.ranOut = true
+                xtraNote(channelId, "the player has played everything queued and is waiting for SiriusXM's next track")
+            } else if (left > 0) {
+                channel.ranOut = false
+            }
             if (channel.stream.isEmpty) {
                 appendStreams(type, channelId, channel, tune(type, channelId), now, "tune")
                 if (channel.stream.isEmpty) throw IllegalStateException("SiriusXM sent nothing to play on this channel")
@@ -259,12 +272,19 @@ class SiriusXmClient(
                     appendStreams(type, channelId, channel, peek(type, channelId, channel), now, "peek")
                 } catch (e: Exception) {
                     recordDiagnostics("xtra peek failed", e.toString())
+                    xtraNote(channelId, "peek failed: $e")
                     0
                 }.takeIf { it > 0 } ?: runCatching {
                     // Peeking didn't help: tuning again may still bring tracks not heard yet.
                     appendStreams(type, channelId, channel, tune(type, channelId), now, "tune")
-                }.onFailure { recordDiagnostics("xtra tune failed", it.toString()) }.getOrDefault(0)
-                if (added == 0) channel.nextRequestMs = now + XTRA_RETRY_MS
+                }.onFailure {
+                    recordDiagnostics("xtra tune failed", it.toString())
+                    xtraNote(channelId, "tune failed: $it")
+                }.getOrDefault(0)
+                if (added == 0) {
+                    channel.nextRequestMs = now + XTRA_RETRY_MS
+                    xtraNote(channelId, "nothing new from SiriusXM; asking again in ${XTRA_RETRY_MS / 1000}s (queue ends in ${remainingMs(channel, now) / 1000}s)")
+                }
             }
             channel.lastServedMs = now
             channel.stream.render()
@@ -280,9 +300,13 @@ class SiriusXmClient(
             val segments = channel.stream.append(id, url, SiriusXmParser.rewriteKeys(fetchPlaylist(url), keyId ?: fallbackKeyId), null, now)
             val last = channel.stream.lastTrack
             if (last == null || last.key != id || last.complete) channel.growing = null
-            if (segments > 0) recordDiagnostics("xtra grow $id", "$segments more segments${if (channel.growing == null) ", complete" else ""}")
+            if (segments > 0) {
+                recordDiagnostics("xtra grow $id", "$segments more segments${if (channel.growing == null) ", complete" else ""}")
+                xtraNote(channelKeyOf(channel), "the last track grew by $segments segments${if (channel.growing == null) " and is complete" else ""}")
+            }
         } catch (e: Exception) {
             recordDiagnostics("xtra grow $id failed", e.toString())
+            xtraNote(channelKeyOf(channel), "fetching the rest of the last track failed: $e")
         }
     }
 
@@ -347,6 +371,11 @@ class SiriusXmClient(
         recordDiagnostics(
             "xtra $channelId",
             "$how: ${streams.size} streams, $added new, queue ends in ${remainingMs(channel, now) / 1000}s$summary",
+        )
+        xtraNote(
+            channelId,
+            "$how: ${streams.size} from SiriusXM, $added new${summary.toString().replace("\n+ ", "\n    + ")}\n    queue now ends ${remainingMs(channel, now) / 1000}s after what's being heard" +
+                if (channel.growing != null) " (the last track is still arriving)" else "",
         )
         return added
     }
@@ -414,6 +443,7 @@ class SiriusXmClient(
         val elapsed = (heardAtMs - cut.startMs).coerceAtLeast(0)
         val now = clock()
         if (cut.id != channel.reportedCut?.id) {
+            xtraNote(channelId, "now hearing ${cut.artist} – ${cut.title} (${cut.durationMs / 1000}s); queue ends in ${remainingMs(channel, heardAtMs) / 1000}s")
             // Tell SiriusXM the previous track played to the end before the next one starts.
             channel.reportedCut?.let { reportProgress(type, channelId, it.id, it.durationMs, start = false) }
             channel.reportedCut = cut
@@ -504,7 +534,29 @@ class SiriusXmClient(
     }
 
     /** What SiriusXM sent recently, for troubleshooting (no passwords or session tokens). */
-    fun diagnostics(): String = synchronized(diagnosticLog) { diagnosticLog.joinToString("\n\n") }
+    /**
+     * What happened lately: the Xtra timeline (a short line per event, for following a channel
+     * that stalls), then, with [details], what SiriusXM answered.
+     */
+    fun diagnostics(details: Boolean = true): String {
+        val parts = mutableListOf<String>()
+        synchronized(xtraLog) { if (xtraLog.isNotEmpty()) parts += "Xtra timeline (UTC, newest last):\n" + xtraLog.joinToString("\n") }
+        if (details) synchronized(diagnosticLog) {
+            if (diagnosticLog.isNotEmpty()) parts += "What SiriusXM answered (newest last):\n\n" + diagnosticLog.joinToString("\n\n")
+        }
+        return parts.joinToString("\n\n")
+    }
+
+    private val xtraLog = ArrayDeque<String>()
+
+    private fun xtraNote(channelId: String, text: String) {
+        synchronized(xtraLog) {
+            xtraLog.addLast("${SiriusXmParser.isoUtc(clock()).substring(11, 19)} $channelId: $text")
+            while (xtraLog.size > 400) xtraLog.removeFirst()
+        }
+    }
+
+    private fun channelKeyOf(channel: XtraChannel): String = xtraChannels.entries.firstOrNull { it.value === channel }?.key ?: "?"
 
     fun recordDiagnostics(label: String, detail: String) {
         synchronized(diagnosticLog) {

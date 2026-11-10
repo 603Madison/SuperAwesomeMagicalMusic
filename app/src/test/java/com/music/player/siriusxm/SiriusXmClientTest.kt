@@ -233,6 +233,20 @@ class SiriusXmClientTest {
         now += 9_000
         client.xtraPlaylist("channel-xtra", "x1")
         assertEquals(before + 1, fetches())
+
+        // The timeline says it all in short lines; the player running out of queue is noted once.
+        val start = 1_000_000L
+        client.onXtraHeard("channel-xtra", "x1", start + 61_000)
+        client.xtraPlaylist("channel-xtra", "x1")
+        client.xtraPlaylist("channel-xtra", "x1")
+        val timeline = client.diagnostics(details = false)
+        assertTrue(timeline, timeline.startsWith("Xtra timeline"))
+        assertTrue(timeline, "x1: tuned" in timeline)
+        assertTrue(timeline, "x1: peek: 2 from SiriusXM, 1 new" in timeline)
+        assertTrue(timeline, "the last track grew by 1 segments and is complete" in timeline)
+        assertEquals(timeline, 1, Regex("has played everything queued").findAll(timeline).count())
+        assertFalse(timeline, "What SiriusXM answered" in timeline)
+        assertTrue(client.diagnostics().contains("What SiriusXM answered"))
     }
 
     @Test

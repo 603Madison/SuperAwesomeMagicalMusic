@@ -6,8 +6,9 @@ import com.music.server.util.hex
 import com.music.server.util.sha256
 import kotlinx.serialization.Serializable
 
+/** A browser, the app, or a Claude connector link (usable only for /mcp: see McpRoutes). */
 @Serializable
-enum class SessionKind { WEB, APP }
+enum class SessionKind { WEB, APP, MCP }
 
 /** A signed-in browser or app, as shown in the account's list of devices. */
 @Serializable
@@ -101,7 +102,7 @@ class SessionStore(private val db: Database, private val clock: () -> Long = Sys
         const val APP_LIFETIME_MS = 365L * 24 * 3600 * 1000
         private const val TOUCH_INTERVAL_MS = 5L * 60 * 1000
 
-        fun lifetime(kind: SessionKind) = if (kind == SessionKind.APP) APP_LIFETIME_MS else WEB_LIFETIME_MS
+        fun lifetime(kind: SessionKind) = if (kind == SessionKind.WEB) WEB_LIFETIME_MS else APP_LIFETIME_MS
 
         fun idOf(token: String): String = sha256(token).hex()
     }

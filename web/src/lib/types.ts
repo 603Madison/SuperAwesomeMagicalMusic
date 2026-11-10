@@ -32,7 +32,8 @@ export interface User {
 
 export interface SessionInfo {
   id: string;
-  kind: "WEB" | "APP";
+  /** A browser, the app, or a Claude connector link. */
+  kind: "WEB" | "APP" | "MCP";
   name: string;
   createdAt: number;
   lastSeenAt: number;

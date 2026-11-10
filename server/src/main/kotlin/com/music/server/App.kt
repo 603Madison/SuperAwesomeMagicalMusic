@@ -1,6 +1,7 @@
 package com.music.server
 
 import com.music.server.connect.connectRoutes
+import com.music.server.mcp.mcpRoutes
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
 import io.ktor.server.websocket.timeout
@@ -98,6 +99,7 @@ fun Application.module(services: Services) {
         liveRoutes(services)
         playlistRoutes(services)
         connectRoutes(services)
+        mcpRoutes(services)
         route("/api/{...}") {
             handle { call.respond(HttpStatusCode.NotFound, ErrorBody("No such API")) }
         }

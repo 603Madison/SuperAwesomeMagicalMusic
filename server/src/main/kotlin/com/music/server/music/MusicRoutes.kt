@@ -8,6 +8,7 @@ import com.music.player.sources.TrackMatcher
 import com.music.player.sources.jellyfin.JellyfinSource
 import com.music.player.sources.youtube.YouTubeMusicSource
 import com.music.server.sources.SourceKind
+import com.music.server.sources.StoredSource
 import com.music.server.ApiError
 import com.music.server.Services
 import com.music.server.auth.requireUser
@@ -175,29 +176,7 @@ fun Route.musicRoutes(services: Services) {
         val source = services.sources.accessible(user, params["via"].orEmpty())?.takeIf { it.enabled }
             ?: throw ApiError.notFound("That source isn't available")
         val id = params["id"]?.takeIf { it.isNotBlank() && it.length < 500 } ?: throw ApiError.badRequest("Which song?")
-        val quality = qualityOf(params["kbps"]?.toIntOrNull() ?: 0)
-        val lines = mutableListOf("Stream test: $id on ${source.name}, ${quality.toStored().takeIf { it > 0 }?.let { "up to $it kbps" } ?: "original quality"}")
-        val started = System.nanoTime()
-        val stream = try {
-            services.catalog.streamOf(source, id, quality, fresh = true)
-        } catch (e: Exception) {
-            lines += "Finding the song failed after ${(System.nanoTime() - started) / 1_000_000} ms: ${e.message ?: e}"
-            null
-        }
-        if (stream != null) {
-            lines += "Found it in ${(System.nanoTime() - started) / 1_000_000} ms: ${stream.description}"
-            lines += services.streamer.probe(stream)
-            // YouTube offers a handful of copies; one can trickle while another flies.
-            val youtube = services.registry.music(source) as? YouTubeMusicSource
-            if (youtube != null) {
-                val others = runCatching { youtube.allStreams(id) }.getOrElse { emptyList() }.filter { it.description != stream.description }
-                for (other in others) {
-                    lines += ""
-                    lines += "Also offered: ${other.description}"
-                    lines += services.streamer.probe(other, maxBytes = 512 * 1024L, maxMs = 6_000L)
-                }
-            }
-        }
+        val lines = streamTest(services, source, id, qualityOf(params["kbps"]?.toIntOrNull() ?: 0))
         call.response.header(HttpHeaders.CacheControl, "no-store")
         call.respondText(lines.joinToString("\n", postfix = "\n"), ContentType.Text.Plain)
     }
@@ -292,3 +271,29 @@ fun qualityOf(kbps: Int): StreamQuality = StreamQuality.fromStored(kbps)
 /** The codecs named in [raw] that the server knows, or null to assume the usual ones play. */
 fun codecsOf(raw: String?): Set<String>? =
     raw?.split(',')?.map { it.trim().lowercase() }?.filter { it in Streamer.KNOWN_CODECS }?.toSet()?.takeIf { it.isNotEmpty() }
+
+/**
+ * What the server sees when it fetches a song: finding it on the service, then the first part of
+ * the audio, the way a player asks (a blocked service, or a slow one?). YouTube offers a handful
+ * of copies; one can trickle while another flies, so each is tried.
+ */
+suspend fun streamTest(services: Services, source: StoredSource, id: String, quality: StreamQuality): List<String> {
+    val lines = mutableListOf("Stream test: $id on ${source.name}, ${quality.toStored().takeIf { it > 0 }?.let { "up to $it kbps" } ?: "original quality"}")
+    val started = System.nanoTime()
+    val stream = try {
+        services.catalog.streamOf(source, id, quality, fresh = true)
+    } catch (e: Exception) {
+        lines += "Finding the song failed after ${(System.nanoTime() - started) / 1_000_000} ms: ${e.message ?: e}"
+        return lines
+    }
+    lines += "Found it in ${(System.nanoTime() - started) / 1_000_000} ms: ${stream.description}"
+    lines += services.streamer.probe(stream)
+    val youtube = services.registry.music(source) as? YouTubeMusicSource ?: return lines
+    val others = runCatching { youtube.allStreams(id) }.getOrElse { emptyList() }.filter { it.description != stream.description }
+    for (other in others) {
+        lines += ""
+        lines += "Also offered: ${other.description}"
+        lines += services.streamer.probe(other, maxBytes = 512 * 1024L, maxMs = 6_000L)
+    }
+    return lines
+}

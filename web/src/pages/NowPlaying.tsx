@@ -14,6 +14,7 @@ import { splitTwo } from "../player/live";
 import { TrackMenu } from "../components/TrackList";
 import { Button, IconButton, Spinner } from "../components/ui";
 import { TrackInfo } from "../components/TrackInfo";
+import { StationThumbs } from "../components/Thumbs";
 
 /**
  * What's playing, made to be looked at: the cover large and still, the room washed in its
@@ -96,6 +97,7 @@ export function NowPlaying() {
                 </p>
               </div>
               <div className="np-actions">
+                <StationThumbs track={base} size={20} />
                 {favorite && <FavoriteButton track={favorite} size={22} />}
                 <IconButton label="Details" onClick={() => setInfo(true)}><Info size={20} /></IconButton>
                 {song && !song.sourceId.startsWith("channel:") && <TrackMenu track={song} />}

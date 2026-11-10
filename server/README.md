@@ -187,6 +187,28 @@ location / {
   `docker exec superawesomemagicalmusic /opt/samm/bin/samm-server reset-admin-password` prints a
   new one (or give it one: `… reset-admin-password 'new password'`).
 
+## Claude connector (MCP)
+
+The server is also a [Model Context Protocol](https://modelcontextprotocol.io) server, so Claude
+can look at it to help troubleshoot. In the web player, open **Settings › Claude connector** and
+**Make a connector link**, then in Claude add it under **Settings › Connectors › Add custom
+connector**. Claude then has these tools, all read-only:
+
+| Tool | What it shows |
+|---|---|
+| `server_status` | Version, uptime, the public address, your sources (with their ids), devices connected |
+| `recent_warnings` | The server's latest warnings and errors (admins only) |
+| `siriusxm_log` | SiriusXM's Xtra timeline (tunes, peeks, when the player ran out of queue) and, with `details`, what SiriusXM answered |
+| `stream_test` | Fetches a song as a player would and says how the service answered and how fast (every YouTube copy) |
+| `search` | Songs from all your sources, with the ids `stream_test` takes |
+| `devices` | Your devices and what each is playing |
+| `recent_listens` | Your listening history |
+
+The link is the key (`https://your-server/mcp/<token>`; the token also works as a bearer token on
+`/mcp`). It sees only what your account sees, opens nothing but the connector, and is listed with
+your sign-ins under **Signed in on**, where it's removed. If Claude can't reach it behind
+Cloudflare, check that bot protection isn't blocking `/mcp`.
+
 ## Security notes
 
 - Passwords are stored as PBKDF2 hashes; sign-ins are random tokens stored hashed. Browsers get an
@@ -198,6 +220,9 @@ location / {
 - People who add their own sources make the server connect to addresses they choose. Turn off
   *People can add their own sources* if that's not wanted on your network.
 - The server talks to the services, so your Jellyfin and Lidarr needn't be reachable from outside.
+- A Claude connector link is a sign-in that only opens `/mcp`, where everything is read-only.
+  Anyone with the link can read what the tools show (your sources' names, your history, SiriusXM's
+  log); remove it under **Signed in on** if it leaks.
 
 ## Develop
 

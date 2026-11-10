@@ -36,7 +36,9 @@ suspend fun ApplicationCall.principal(services: Services): Principal? {
     val bearer = request.header(HttpHeaders.Authorization)?.takeIf { it.startsWith("Bearer ", ignoreCase = true) }?.substring(7)?.trim()
     val cookie = request.cookies[SESSION_COOKIE]
     val token = bearer ?: cookie
-    val found = token?.let { services.sessions.resolve(it) }?.let { (user, session) -> Principal(user, session, viaCookie = bearer == null) }
+    // A Claude connector link only opens the connector (/mcp), not the rest of the API.
+    val found = token?.let { services.sessions.resolve(it) }?.takeIf { it.second.kind != SessionKind.MCP }
+        ?.let { (user, session) -> Principal(user, session, viaCookie = bearer == null) }
     if (found != null && found.viaCookie && request.local.method !in SAFE_METHODS && request.header(CSRF_HEADER) == null) {
         throw ApiError.forbidden("Missing $CSRF_HEADER header")
     }

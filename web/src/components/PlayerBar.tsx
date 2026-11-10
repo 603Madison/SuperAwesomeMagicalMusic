@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  Laptop, ListMusic, Loader2, MonitorSpeaker, Moon, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Smartphone, Speaker, ThumbsDown, ThumbsUp,
+  Laptop, ListMusic, Loader2, MonitorSpeaker, Moon, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Smartphone, Speaker,
   Volume1, Volume2, VolumeX, MicVocal,
 } from "lucide-react";
-import { errorToast } from "./ui";
-import { splitTwo } from "../player/live";
+import { StationThumbs } from "./Thumbs";
 import { duration } from "../lib/format";
 import { player, usePlayer } from "../player/player";
 import { useSeek, useSeekBar } from "../player/useSeek";
@@ -23,7 +22,6 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
   const repeat = usePlayer((s) => s.repeat);
   const sleepAt = usePlayer((s) => s.sleepAt);
   const liveNow = usePlayer((s) => s.liveNow);
-  const thumbs = usePlayer((s) => s.thumbs);
   const navigate = useNavigate();
   const base = current?.track ?? item?.track;
   // The channel or station playing, or the Pandora station this song is from.
@@ -31,14 +29,13 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
   // On live radio, the song on now (when the channel says), with the channel underneath.
   const track = base && liveNow ? { ...base, title: liveNow.title || base.title, artist: liveNow.artist || base.title, artworkUrl: liveNow.artworkUrl ?? base.artworkUrl } : base;
   const detail = error ?? (current?.live ? (liveNow ? base?.title : current.description) : current?.description) ?? (buffering ? "Finding the best copy…" : "");
-  const stationTrackId = base?.sourceId.startsWith("stationtrack:") ? splitTwo(base.sourceId.slice("stationtrack:".length))[1] : null;
-  const thumb = stationTrackId ? thumbs[stationTrackId] : undefined;
   // Another of the person's devices playing (and not this one): the bar controls it instead.
   const remote = useRemote();
   if (remote) return <RemoteBar device={remote} queueOpen={queueOpen} onToggleQueue={onToggleQueue} />;
 
   return (
     <footer className="player-bar">
+      <MiniProgress />
       <div className="player-now">
         {track ? (
           <>
@@ -72,12 +69,7 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
       </div>
 
       <div className="player-right">
-        {stationTrackId && (
-          <>
-            <IconButton label="Thumbs down (skips it)" active={thumb === "DOWN"} onClick={() => player.thumb("DOWN").catch(errorToast)}><ThumbsDown size={18} /></IconButton>
-            <IconButton label="Thumbs up" active={thumb === "UP"} onClick={() => player.thumb("UP").catch(errorToast)}><ThumbsUp size={18} /></IconButton>
-          </>
-        )}
+        <StationThumbs track={base} />
         {favorite && <FavoriteButton track={favorite} size={18} />}
         <IconButton label="Lyrics" onClick={() => navigate("/now-playing?view=lyrics")} disabled={!track || current?.live}><MicVocal size={18} /></IconButton>
         <IconButton label="Queue" active={queueOpen} onClick={onToggleQueue}><ListMusic size={18} /></IconButton>
@@ -115,6 +107,22 @@ function LiveProgress() {
         <div style={{ width: `${(into / length) * 100}%` }} />
       </div>
       <span className="time">{duration(length)}</span>
+    </div>
+  );
+}
+
+/**
+ * How far into the song, as a line along the top of the bar: on phones, where the bar has no
+ * room for the seek bar (the song's page has it).
+ */
+function MiniProgress() {
+  const position = usePlayer((s) => s.position);
+  const total = usePlayer((s) => s.duration);
+  const live = usePlayer((s) => s.current?.live);
+  if (live || !(total > 0)) return null;
+  return (
+    <div className="player-mini-progress" aria-hidden="true">
+      <div style={{ width: `${Math.min(100, (position / total) * 100)}%` }} />
     </div>
   );
 }

@@ -51,6 +51,8 @@ class Services(
     selfUrl: () -> String = { "http://127.0.0.1:${config.port}" },
 ) : AutoCloseable {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** When the server started, for the connector's status. */
+    val startedAt = clock()
     val users = UserStore(db, passwords, clock)
     val sessions = SessionStore(db, clock)
     val settings = SettingsStore(db, box)
