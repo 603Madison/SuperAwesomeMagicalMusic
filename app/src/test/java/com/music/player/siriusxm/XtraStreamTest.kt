@@ -26,6 +26,9 @@ class XtraStreamTest {
         stream.append("b", "https://cdn/b/media.m3u8", playlist("b", 2), cut("b"), nowMs = 0)
         val lines = stream.render().lines()
         assertTrue(lines.contains("#EXT-X-START:TIME-OFFSET=30.000,PRECISE=YES"))
+        // Or where it's asked to start (outside the stream: the newest track again).
+        assertTrue(stream.render(startAtMs = stream.startOf("a")).lines().contains("#EXT-X-START:TIME-OFFSET=0.000,PRECISE=YES"))
+        assertTrue(stream.render(startAtMs = 1_000_000L).lines().contains("#EXT-X-START:TIME-OFFSET=30.000,PRECISE=YES"))
         assertTrue(lines.contains("#EXT-X-PROGRAM-DATE-TIME:1970-01-01T00:00:30.000Z"))
         assertTrue(lines.contains("https://cdn/b/b_0.aac?token=abc"))
         assertEquals("a", stream.cutAt(29_000)?.id)

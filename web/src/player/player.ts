@@ -178,18 +178,28 @@ async function load(index: number, autoplay: boolean, startAt = 0) {
   }
 }
 
-/** Points the player at [src]: a plain file, or an HLS playlist (with hls.js where the browser needs it). */
+/**
+ * Points the player at [src]: a plain file, or an HLS playlist. Playlists play through hls.js
+ * wherever it works (every current browser, iPhones included), even where the browser plays HLS
+ * itself: browsers' own players start a live playlist at its end, ignoring where it says to
+ * start, and an Xtra channel's playlist has minutes of songs queued past where to begin (they
+ * played its last half minute, then stalled). The browser's own player is the fallback.
+ */
 async function attach(src: string, isHls: boolean) {
   if (hls) {
     hls.destroy();
     hls = null;
   }
-  if (!isHls || audio.canPlayType("application/vnd.apple.mpegurl")) {
+  if (!isHls) {
     audio.src = src;
     return;
   }
   const { default: Hls } = await import("hls.js");
-  if (!Hls.isSupported()) throw new ApiError(0, "This browser can't play live streams");
+  if (!Hls.isSupported()) {
+    if (!audio.canPlayType("application/vnd.apple.mpegurl")) throw new ApiError(0, "This browser can't play live streams");
+    audio.src = src;
+    return;
+  }
   const instance = new Hls({ backBufferLength: 60, maxBufferLength: 60, liveSyncDurationCount: 3 });
   let part: number | null = null;
   instance.on(Hls.Events.ERROR, (_, data) => {

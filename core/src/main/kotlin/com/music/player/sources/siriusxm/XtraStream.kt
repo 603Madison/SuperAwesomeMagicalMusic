@@ -113,19 +113,21 @@ class XtraStream(
     }
 
     /**
-     * The playlist to give the player. It has no end marker, so the player keeps reloading it,
-     * and it starts at the newest track, which is where a fresh start should begin.
+     * The playlist to give the player. It has no end marker, so the player keeps reloading it.
+     * It says to start ([EXT-X-START]) at [startAtMs] on the stream's clock (the track being
+     * heard, or the first a tune brought), or else at the newest track. Players that ignore that
+     * start at the end, a few segments from the last: hls.js and ExoPlayer honour it.
      */
     @Synchronized
-    fun render(): String = buildString {
+    fun render(startAtMs: Long? = null): String = buildString {
         appendLine("#EXTM3U")
         appendLine("#EXT-X-VERSION:3")
         appendLine("#EXT-X-TARGETDURATION:$targetDurationSec")
         appendLine("#EXT-X-MEDIA-SEQUENCE:$firstSequence")
         appendLine("#EXT-X-DISCONTINUITY-SEQUENCE:$discontinuitySequence")
         val first = segments.firstOrNull() ?: return@buildString
-        val newest = tracks.lastOrNull()?.startMs ?: first.startMs
-        appendLine("#EXT-X-START:TIME-OFFSET=${seconds(maxOf(0, newest - first.startMs))},PRECISE=YES")
+        val start = startAtMs?.takeIf { it >= first.startMs && it < endMs } ?: tracks.lastOrNull()?.startMs ?: first.startMs
+        appendLine("#EXT-X-START:TIME-OFFSET=${seconds(maxOf(0, start - first.startMs))},PRECISE=YES")
         var lastKey: String? = null
         for (segment in segments) {
             if (segment.discontinuity) appendLine("#EXT-X-DISCONTINUITY")
@@ -138,6 +140,14 @@ class XtraStream(
             appendLine(segment.url)
         }
     }
+
+    /** Where the track playing at [timeMs] starts, on the stream's clock. */
+    @Synchronized
+    fun trackStartAt(timeMs: Long): Long? = tracks.lastOrNull { it.startMs <= timeMs }?.startMs
+
+    /** Where the track [key] starts, on the stream's clock. */
+    @Synchronized
+    fun startOf(key: String): Long? = tracks.firstOrNull { it.key == key }?.startMs
 
     /** The song at [timeMs] on this stream's clock (the player's position as a date-time). */
     @Synchronized

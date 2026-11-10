@@ -170,6 +170,8 @@ class SiriusXmClientTest {
         client.maxBitrate = 128_000
         val first = client.xtraPlaylist("channel-xtra", "x1").lines()
         assertFalse(first.contains("#EXT-X-ENDLIST"))
+        // A player tuning in starts at the first song SiriusXM gave, not at the end of the queue.
+        assertTrue(first.contains("#EXT-X-START:TIME-OFFSET=0.000,PRECISE=YES"))
         // Both queued tracks, in order, after a discontinuity, from the variant within the cap.
         assertTrue(first.contains(server.url("/cdn/intro/96k/intro_1.aac").toString()))
         val discontinuity = first.indexOf("#EXT-X-DISCONTINUITY")
@@ -197,6 +199,8 @@ class SiriusXmClientTest {
         // What's heard is reported; finishing a track reports it played through before the next starts.
         client.onXtraHeard("channel-xtra", "x1", now + 5_000)
         client.onXtraHeard("channel-xtra", "x1", now + 25_000)
+        // A player starting again (a reload) begins at the song being heard: song-1, 20s in.
+        assertTrue(client.xtraPlaylist("channel-xtra", "x1").lines().contains("#EXT-X-START:TIME-OFFSET=20.000,PRECISE=YES"))
         val telemetry = requests.filter { it.path == "/playback/telemetry/v2/actions" }.map { it.body.readUtf8() }
         assertTrue(telemetry[0].contains("\"start\"") && telemetry[0].contains("\"id\":\"intro\""))
         assertTrue(telemetry[1].contains("\"progress\"") && telemetry[1].contains("\"id\":\"intro\"") && telemetry[1].contains("20000"))

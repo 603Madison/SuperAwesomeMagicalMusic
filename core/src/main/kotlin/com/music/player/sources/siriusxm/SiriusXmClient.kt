@@ -226,6 +226,8 @@ class SiriusXmClient(
         var grownAtMs = 0L
         /** The player has played everything queued and waits for more (noted once per wait). */
         var ranOut = false
+        /** The first track the latest tune brought: where a player that's just tuned in starts. */
+        var tunedTrack: String? = null
         /** The player's playlist reloads since [reloadsSinceMs], for the timeline's minute-by-minute line. */
         var reloads = 0
         var reloadsSinceMs = 0L
@@ -303,7 +305,10 @@ class SiriusXmClient(
                 }
             }
             channel.lastServedMs = now
-            channel.stream.render()
+            // A player starting (or starting again) begins at the song being heard, or else at the
+            // first song SiriusXM gave when tuned in: not at the end of what's queued.
+            val startAt = channel.heardAtMs?.let { channel.stream.trackStartAt(it) } ?: channel.tunedTrack?.let { channel.stream.startOf(it) }
+            channel.stream.render(startAt)
         }
     }
 
@@ -375,6 +380,7 @@ class SiriusXmClient(
                 playlist = fetchPlaylist(variant)
             }
             val segments = channel.stream.append(id, playlistUrl, SiriusXmParser.rewriteKeys(playlist, keyId ?: fallbackKeyId), cut, now)
+            if (how == "tune" && added == 0 && channel.heardAtMs == null) channel.tunedTrack = id
             // Only part of it so far: the rest is fetched as playback goes on (growLastTrack).
             val last = channel.stream.lastTrack
             channel.growing = if (last != null && last.key == id && !last.complete) Triple(id, playlistUrl, keyId) else null
