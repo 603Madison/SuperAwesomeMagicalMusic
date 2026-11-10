@@ -8,6 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.music.player.ui.LocalAppContainer
 import com.music.player.ui.MusicAppUi
 import com.music.player.ui.theme.MusicTheme
@@ -20,7 +22,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         handleIntent(intent)
         setContent {
-            MusicTheme {
+            val settings by container.settingsState.collectAsState()
+            MusicTheme(bold = settings.boldText) {
                 CompositionLocalProvider(LocalAppContainer provides container) {
                     MusicAppUi()
                 }

@@ -1,18 +1,20 @@
 import { create } from "zustand";
 
-/** Playback choices, kept in this browser. */
+/** Choices kept in this browser: playback, and how text looks. */
 interface Prefs {
   /** Bitrate cap in kbps; 0 is the original quality. */
   kbps: number;
   levelling: boolean;
   /** Compare every service for the best copy before playing (slower to start). */
   thorough: boolean;
+  /** All text in Lexend Bold, like a phone's Bold text setting. */
+  boldText: boolean;
 }
 
 const KEY = "samm.prefs";
 
 function load(): Prefs {
-  const defaults: Prefs = { kbps: 0, levelling: true, thorough: true };
+  const defaults: Prefs = { kbps: 0, levelling: true, thorough: true, boldText: false };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) ?? "{}") };
   } catch {
@@ -22,7 +24,12 @@ function load(): Prefs {
 
 export const usePrefs = create<Prefs>(load);
 
+/** Bold text: the stylesheet turns every weight to Bold while the page has data-bold. */
+const showBold = (on: boolean) => document.documentElement.toggleAttribute("data-bold", on);
+showBold(usePrefs.getState().boldText);
+
 usePrefs.subscribe((prefs) => {
+  showBold(prefs.boldText);
   try {
     localStorage.setItem(KEY, JSON.stringify(prefs));
   } catch {

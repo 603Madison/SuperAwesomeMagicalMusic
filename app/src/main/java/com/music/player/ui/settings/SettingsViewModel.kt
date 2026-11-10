@@ -112,6 +112,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setLoadArtworkOnSatellite(enabled: Boolean) = launch { settings.setLoadArtworkOnSatellite(enabled) }
 
+    fun setBoldText(enabled: Boolean) = launch { settings.setBoldText(enabled) }
+
     fun setBufferAheadSeconds(seconds: Int) = launch { settings.setBufferAheadSeconds(seconds) }
 
     fun setPlayback(playback: com.music.player.settings.PlaybackSettings) = launch { settings.setPlayback(playback) }

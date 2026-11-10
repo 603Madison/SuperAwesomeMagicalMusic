@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithTag
@@ -70,7 +71,10 @@ class ScreensTest {
     @Test
     fun `playlists, offline`() = playlistsOffline(ThemeMode.SYSTEM, "")
 
-    private fun playlistsOffline(mode: ThemeMode, suffix: String) {
+    @Test
+    fun `playlists, offline, with Bold text on`() = playlistsOffline(ThemeMode.SYSTEM, "-bold", bold = true)
+
+    private fun playlistsOffline(mode: ThemeMode, suffix: String, bold: Boolean = false) {
         val app = RuntimeEnvironment.getApplication()
         val c = app.container
         runBlocking {
@@ -83,10 +87,12 @@ class ScreensTest {
             c.library.create("Late-night drive", songs)
             c.library.create("Focus")
             c.library.setKeepOffline(c.library.all.first().first { it.name == "Focus" }.id, true)
+            // Set either way: the setting is kept between tests.
+            c.prefs.update { it.copy(boldText = bold) }
         }
         val player = PlayerConnection(app) { "https://music.example.com" }
         compose.setContent {
-            ConnectTheme(mode) {
+            ConnectTheme(mode, bold = c.settings.collectAsState().value.boldText) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     CompositionLocalProvider(LocalPlayer provides player) { MainScaffold() }
                 }
@@ -104,6 +110,7 @@ class ScreensTest {
         save("playlist$suffix")
         compose.onNodeWithText("Settings").performClickSafe()
         compose.waitForIdle()
+        compose.onNodeWithText("Bold text").assertExists()
         save("settings$suffix")
     }
 

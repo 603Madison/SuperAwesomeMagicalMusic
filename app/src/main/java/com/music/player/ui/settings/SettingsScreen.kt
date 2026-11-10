@@ -89,6 +89,7 @@ fun SettingsScreen() {
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            AppearanceSection(settings, viewModel)
             QualitySection(settings, viewModel)
             BufferSection(settings, viewModel)
             PlaybackSection(settings, viewModel)
@@ -137,6 +138,18 @@ private fun SiriusXmSection(settings: AppSettings, viewModel: SettingsViewModel)
             }
         }
         StatusText(status)
+    }
+}
+
+@Composable
+private fun AppearanceSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    Section("Appearance") {
+        ToggleRow(
+            "Bold text",
+            "All text in Lexend Bold, the way your phone's Bold text setting draws it",
+            settings.boldText,
+            viewModel::setBoldText,
+        )
     }
 }
 

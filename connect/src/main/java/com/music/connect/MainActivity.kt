@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
                     navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM) { dark },
                 )
             }
-            ConnectTheme(settings.themeMode, settings.wallpaperColors) {
+            ConnectTheme(settings.themeMode, settings.wallpaperColors, settings.boldText) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     CompositionLocalProvider(LocalPlayer provides player) {
                         if (settings.signedIn && !finishing.value) MainScaffold() else SignInScreen(finishing.value, signInError.value)

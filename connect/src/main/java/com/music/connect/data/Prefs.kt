@@ -41,6 +41,8 @@ data class Settings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     /** The phone's wallpaper colours (Android 12 and later) instead of the app's own violet. */
     val wallpaperColors: Boolean = false,
+    /** All text in Lexend Bold, as the phone's own Bold text setting draws it. */
+    val boldText: Boolean = false,
 ) {
     val signedIn: Boolean get() = server.isNotEmpty() && token != null
 
@@ -88,6 +90,7 @@ class Prefs(private val context: Context) {
         prefs[SPEAKER_ADDRESSES] = next.speakerAddresses.joinToString("\n")
         prefs[THEME_MODE] = next.themeMode.name
         prefs[WALLPAPER_COLORS] = next.wallpaperColors
+        prefs[BOLD_TEXT] = next.boldText
         next.user?.let { prefs[USER] = ApiJson.encodeToString(User.serializer(), it) }
     }
 
@@ -106,6 +109,7 @@ class Prefs(private val context: Context) {
         speakerAddresses = prefs[SPEAKER_ADDRESSES].orEmpty().lines().map { it.trim() }.filter { it.isNotEmpty() },
         themeMode = ThemeMode.entries.firstOrNull { it.name == prefs[THEME_MODE] } ?: ThemeMode.SYSTEM,
         wallpaperColors = prefs[WALLPAPER_COLORS] ?: false,
+        boldText = prefs[BOLD_TEXT] ?: false,
     )
 
     private companion object {
@@ -123,5 +127,6 @@ class Prefs(private val context: Context) {
         val SPEAKER_ADDRESSES = stringPreferencesKey("speaker_addresses")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val WALLPAPER_COLORS = booleanPreferencesKey("wallpaper_colors")
+        val BOLD_TEXT = booleanPreferencesKey("bold_text")
     }
 }

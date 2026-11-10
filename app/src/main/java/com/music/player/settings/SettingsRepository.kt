@@ -150,6 +150,8 @@ class SettingsRepository(context: Context) {
 
     suspend fun setLoadArtworkOnSatellite(enabled: Boolean) = store.edit { it[Keys.ARTWORK_ON_SATELLITE] = enabled }
 
+    suspend fun setBoldText(enabled: Boolean) = store.edit { it[Keys.BOLD_TEXT] = enabled }
+
     suspend fun setBufferAheadSeconds(seconds: Int) = store.edit { it[Keys.BUFFER_AHEAD] = seconds }
 
     suspend fun setPlayback(playback: PlaybackSettings) = store.edit {
@@ -240,6 +242,7 @@ class SettingsRepository(context: Context) {
                 allowSatellite = this[Keys.DL_SATELLITE] ?: defaults.downloads.allowSatellite,
             ),
             loadArtworkOnSatellite = this[Keys.ARTWORK_ON_SATELLITE] ?: defaults.loadArtworkOnSatellite,
+            boldText = this[Keys.BOLD_TEXT] ?: defaults.boldText,
             bufferAheadSeconds = this[Keys.BUFFER_AHEAD] ?: defaults.bufferAheadSeconds,
             playback = PlaybackSettings(
                 levelVolume = this[Keys.LEVEL_VOLUME] ?: defaults.playback.levelVolume,
@@ -333,6 +336,7 @@ class SettingsRepository(context: Context) {
         val DL_CELLULAR = booleanPreferencesKey("download_cellular")
         val DL_SATELLITE = booleanPreferencesKey("download_satellite")
         val ARTWORK_ON_SATELLITE = booleanPreferencesKey("artwork_on_satellite")
+        val BOLD_TEXT = booleanPreferencesKey("bold_text")
         val BUFFER_AHEAD = intPreferencesKey("buffer_ahead_seconds")
         val LEVEL_VOLUME = booleanPreferencesKey("level_volume")
         val SXM_FROM_SONG_START = booleanPreferencesKey("sxm_from_song_start")

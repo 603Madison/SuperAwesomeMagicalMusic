@@ -27,6 +27,11 @@ export function Settings() {
       </section>
 
       <section className="panel">
+        <h2>Appearance in this browser</h2>
+        <AppearanceSettings />
+      </section>
+
+      <section className="panel">
         <h2>Account</h2>
         <Profile />
         {user.hasPassword && <PasswordChange />}
@@ -62,6 +67,15 @@ function PlaybackSettings() {
       </Field>
       <Toggle label="Even out volume" help="Songs from different services play at about the same loudness." checked={prefs.levelling} onChange={(levelling) => usePrefs.setState({ levelling })} />
       <Toggle label="Compare every service for the best copy" help="Starts songs a moment later, but asks every service and picks the best copy that fits your quality setting." checked={prefs.thorough} onChange={(thorough) => usePrefs.setState({ thorough })} />
+    </div>
+  );
+}
+
+function AppearanceSettings() {
+  const boldText = usePrefs((p) => p.boldText);
+  return (
+    <div className="form-stack">
+      <Toggle label="Bold text" help="All text in Lexend Bold, the way a phone's Bold text setting draws it." checked={boldText} onChange={(boldText) => usePrefs.setState({ boldText })} />
     </div>
   );
 }

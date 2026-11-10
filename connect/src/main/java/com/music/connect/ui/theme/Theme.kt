@@ -137,10 +137,15 @@ val Lexend = FontFamily(
     Font(R.font.lexend_bold, FontWeight.Bold),
 )
 
-private fun TextStyle.lexend() = copy(fontFamily = Lexend)
+/**
+ * Lexend Bold alone, for Settings › Bold text: as the only face, it draws every text in Bold
+ * whatever weight it asks for, the way the phone's own Bold text setting draws the app.
+ */
+private val LexendBold = FontFamily(Font(R.font.lexend_bold, FontWeight.Bold))
 
-/** Material's scale with the same weights as the other apps, all in Lexend. */
-private val AppTypography = Typography().run {
+/** Material's scale with the same weights as the other apps, all in [family]. */
+private fun appTypography(family: FontFamily) = Typography().run {
+    fun TextStyle.lexend() = copy(fontFamily = family)
     Typography(
         displayLarge = displayLarge.lexend(),
         displayMedium = displayMedium.lexend(),
@@ -160,6 +165,9 @@ private val AppTypography = Typography().run {
     )
 }
 
+private val AppTypography = appTypography(Lexend)
+private val BoldTypography = appTypography(LexendBold)
+
 @Composable
 fun isAppInDarkTheme(mode: ThemeMode): Boolean = when (mode) {
     ThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -169,10 +177,10 @@ fun isAppInDarkTheme(mode: ThemeMode): Boolean = when (mode) {
 
 /**
  * The app's theme: its own violet over slate by default, or the phone's wallpaper colours
- * (Android 12 and later) when [wallpaper] is on.
+ * (Android 12 and later) when [wallpaper] is on; all text in Lexend Bold when [bold] is on.
  */
 @Composable
-fun ConnectTheme(mode: ThemeMode = ThemeMode.SYSTEM, wallpaper: Boolean = false, content: @Composable () -> Unit) {
+fun ConnectTheme(mode: ThemeMode = ThemeMode.SYSTEM, wallpaper: Boolean = false, bold: Boolean = false, content: @Composable () -> Unit) {
     val dark = isAppInDarkTheme(mode)
     val useWallpaper = wallpaper && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val context = LocalContext.current
@@ -188,6 +196,6 @@ fun ConnectTheme(mode: ThemeMode = ThemeMode.SYSTEM, wallpaper: Boolean = false,
         else -> Brush.verticalGradient(listOf(Color(0xFFECE7FB), Color(0xFFF5F7FB)))
     }
     CompositionLocalProvider(LocalIsDark provides dark, LocalBackdrop provides backdrop) {
-        MaterialTheme(colorScheme = colors, shapes = AppShapes, typography = AppTypography, content = content)
+        MaterialTheme(colorScheme = colors, shapes = AppShapes, typography = if (bold) BoldTypography else AppTypography, content = content)
     }
 }

@@ -116,6 +116,8 @@ data class AppSettings(
     val jellyfinTranscodeCodec: TranscodeCodec = TranscodeCodec.MP3,
     val downloads: DownloadSettings = DownloadSettings(),
     val loadArtworkOnSatellite: Boolean = false,
+    /** All text in Lexend Bold, as the phone's own Bold text setting draws it. */
+    val boldText: Boolean = false,
     /** Pandora artist stations started on SiriusXM, newest first. */
     val siriusXmStations: List<SxmStation> = emptyList(),
     /** Favourite radio stations, shown first. */

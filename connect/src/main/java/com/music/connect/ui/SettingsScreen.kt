@@ -81,6 +81,11 @@ fun SettingsScreen() {
                     settings.wallpaperColors,
                 ) { v -> update { it.copy(wallpaperColors = v) } }
             }
+            ToggleRow(
+                "Bold text",
+                "All text in Lexend Bold, the way your phone's Bold text setting draws it.",
+                settings.boldText,
+            ) { v -> update { it.copy(boldText = v) } }
         }
 
         Panel("Quality") {

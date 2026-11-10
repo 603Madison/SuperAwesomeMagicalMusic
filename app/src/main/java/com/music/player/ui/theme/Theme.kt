@@ -89,10 +89,15 @@ val Lexend = FontFamily(
     Font(R.font.lexend_bold, FontWeight.Bold),
 )
 
-private fun TextStyle.lexend() = copy(fontFamily = Lexend)
+/**
+ * Lexend Bold alone, for Settings › Bold text: as the only face, it draws every text in Bold
+ * whatever weight it asks for, the way the phone's own Bold text setting draws the app.
+ */
+private val LexendBold = FontFamily(Font(R.font.lexend_bold, FontWeight.Bold))
 
-/** Lexend throughout, with bolder, tighter headings so titles stand out from details. */
-private val AppTypography = Typography().run {
+/** [family] throughout, with bolder, tighter headings so titles stand out from details. */
+private fun appTypography(family: FontFamily) = Typography().run {
+    fun TextStyle.lexend() = copy(fontFamily = family)
     Typography(
         displayLarge = displayLarge.lexend(),
         displayMedium = displayMedium.lexend(),
@@ -123,8 +128,12 @@ private val AppTypography = Typography().run {
     )
 }
 
+private val AppTypography = appTypography(Lexend)
+private val BoldTypography = appTypography(LexendBold)
+
+/** The phone's wallpaper colours (Android 12 and later), in Lexend; all text in Lexend Bold when [bold] is on. */
 @Composable
-fun MusicTheme(content: @Composable () -> Unit) {
+fun MusicTheme(bold: Boolean = false, content: @Composable () -> Unit) {
     val dark = isSystemInDarkTheme()
     val colors = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
@@ -134,5 +143,5 @@ fun MusicTheme(content: @Composable () -> Unit) {
         dark -> DarkColors
         else -> LightColors
     }
-    MaterialTheme(colorScheme = colors, shapes = AppShapes, typography = AppTypography, content = content)
+    MaterialTheme(colorScheme = colors, shapes = AppShapes, typography = if (bold) BoldTypography else AppTypography, content = content)
 }
