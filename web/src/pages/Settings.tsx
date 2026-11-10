@@ -120,13 +120,13 @@ function Devices() {
       <ul className="device-list">
         {(data ?? []).map((s) => (
           <li key={s.id} className="device-row">
-            {s.kind === "APP" ? <Smartphone size={20} /> : s.kind === "MCP" ? <Bot size={20} /> : <Monitor size={20} />}
+            {s.kind === "APP" ? <Smartphone size={20} /> : s.kind.startsWith("MCP") ? <Bot size={20} /> : <Monitor size={20} />}
             <div className="source-text">
               <div className="source-name">{s.name}{s.current && <span className="badge">This browser</span>}</div>
-              <div className="source-sub">{s.kind === "MCP" ? "Link made" : "Signed in"} {when(s.createdAt)} · last used {when(s.lastSeenAt)}</div>
+              <div className="source-sub">{s.kind.startsWith("MCP") ? "Link made" : "Signed in"} {when(s.createdAt)} · last used {when(s.lastSeenAt)}</div>
             </div>
             {!s.current && (
-              <IconButton label={s.kind === "MCP" ? "Remove this connector link" : "Sign out this device"} onClick={async () => {
+              <IconButton label={s.kind.startsWith("MCP") ? "Remove this connector link" : "Sign out this device"} onClick={async () => {
                 try { await api.revokeSession(s.id); setData((data ?? []).filter((x) => x.id !== s.id)); } catch (e) { errorToast(e); }
               }}><LogOut size={18} /></IconButton>
             )}
@@ -144,8 +144,11 @@ function Devices() {
  * connector. Shown once; listed and removed with the sign-ins above.
  */
 function ClaudeConnector({ onMade }: { onMade: () => void }) {
+  const admin = useSession((s) => s.user)?.role === "ADMIN";
   const [link, setLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // An admin's link can see every account (their SiriusXM, devices, history), to troubleshoot anyone's.
+  const [everyone, setEveryone] = useState(true);
   return (
     <div className="form-stack">
       <p className="muted">
@@ -162,13 +165,23 @@ function ClaudeConnector({ onMade }: { onMade: () => void }) {
           <p className="muted">This link is the key: keep it private. It's shown only now; it's listed above as "Claude connector", where you can remove it.</p>
         </>
       ) : (
-        <div>
-          <Button busy={busy} onClick={async () => {
-            setBusy(true);
-            try { setLink((await api.mcpLink()).url); onMade(); } catch (e) { errorToast(e); }
-            setBusy(false);
-          }}><Bot size={18} /> Make a connector link</Button>
-        </div>
+        <>
+          {admin && (
+            <Toggle
+              checked={everyone}
+              onChange={setEveryone}
+              label="See every account"
+              help="As an admin, the link can see every account's sources, SiriusXM, devices and listening history (and the server's log), to troubleshoot anyone's. Off: only yours."
+            />
+          )}
+          <div>
+            <Button busy={busy} onClick={async () => {
+              setBusy(true);
+              try { setLink((await api.mcpLink(admin && everyone)).url); onMade(); } catch (e) { errorToast(e); }
+              setBusy(false);
+            }}><Bot size={18} /> Make a connector link</Button>
+          </div>
+        </>
       )}
     </div>
   );

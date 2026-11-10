@@ -65,6 +65,23 @@ data class ProgressReport(val elapsedMs: Long, val start: Boolean = false)
 data class ThumbRequest(val thumb: String, val elapsedMs: Long = 0)
 
 @Serializable
+data class PlayerReport(val event: String, val channel: String? = null)
+
+/** At most [perMinute] reports a minute for each key: a player in trouble can report often. */
+class ReportLimiter(private val perMinute: Int = 30, private val clock: () -> Long = System::currentTimeMillis) {
+    private val windows = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Int>>()
+
+    fun allow(key: String): Boolean {
+        val now = clock()
+        val (start, count) = windows.compute(key) { _, old ->
+            if (old == null || now - old.first >= 60_000) now to 1 else old.first to old.second + 1
+        }!!
+        if (windows.size > 1_000) windows.entries.removeIf { now - it.value.first >= 60_000 }
+        return now - start < 60_000 && count <= perMinute
+    }
+}
+
+@Serializable
 data class RadioNow(val title: String? = null)
 
 /** A live channel or station that started playing. */
@@ -79,6 +96,7 @@ fun Route.liveRoutes(services: Services) {
     val proxy = services.live
     val art = services.artwork
     val counted = ConcurrentHashMap.newKeySet<String>()
+    val reportLimiter = ReportLimiter()
 
     /** The SiriusXM source [call] names, if the person may use it, and its client. */
     suspend fun ApplicationCall.siriusXm(user: User): Pair<StoredSource, SiriusXmClient> {
@@ -173,6 +191,17 @@ fun Route.liveRoutes(services: Services) {
             proxy.respondPlaylist(call, playlist)
         }
 
+        // What the web player ran into playing a channel (stream errors, stalls), for SiriusXM's
+        // timeline: the server can't see what happens in the browser otherwise.
+        post("/sxm/{src}/player-report") {
+            val user = call.requireUser(services)
+            val (source, client) = call.siriusXm(user)
+            val report = call.receive<PlayerReport>()
+            val key = "${user.id}|${source.id}"
+            if (reportLimiter.allow(key)) client.note(report.channel, "web player: ${report.event}")
+            call.respond(mapOf("ok" to true))
+        }
+
         // What SiriusXM answered lately (no passwords or session tokens), for troubleshooting.
         get("/sxm/{src}/diagnostics") {
             val user = call.requireUser(services)
@@ -184,7 +213,13 @@ fun Route.liveRoutes(services: Services) {
         get("/sxm/{src}/key/{guid}") {
             val user = call.requireUser(services)
             val (_, client) = call.siriusXm(user)
-            val key = SourceSetup.service("SiriusXM") { client.key(call.parameters["guid"].orEmpty()) }
+            val guid = call.parameters["guid"].orEmpty()
+            val key = try {
+                SourceSetup.service("SiriusXM") { client.key(guid) }
+            } catch (e: Exception) {
+                client.note(null, "the server couldn't get key $guid: ${e.message ?: e}")
+                throw e
+            }
             call.response.header(HttpHeaders.CacheControl, "private, max-age=86400")
             call.respondBytes(key, ContentType.Application.OctetStream)
         }
@@ -283,9 +318,26 @@ fun Route.liveRoutes(services: Services) {
             if (!proxy.verify(scope, kind, url, call.request.queryParameters["s"].orEmpty())) throw ApiError.notFound()
             val source = services.sources.accessible(user, scope)?.takeIf { it.enabled } ?: throw ApiError.notFound()
             val headers = if (source.kind == SourceKind.SIRIUSXM) LiveProxy.SXM_HEADERS else emptyMap()
-            if (kind == 's') return@get proxy.respondFile(call, url, headers)
-            val (text, finalUrl) = proxy.fetchPlaylist(url, headers)
             val client = services.registry.siriusXm(source)
+            // What the relay couldn't fetch goes in SiriusXM's timeline, where a stall is followed.
+            fun relayFailed(e: Exception, what: String) {
+                val host = url.substringAfter("://").substringBefore('/')
+                client?.note(null, "the server couldn't relay a $what from $host (${url.substringBefore('?').substringAfterLast('/')}): ${e.message ?: e}")
+            }
+            if (kind == 's') {
+                return@get try {
+                    proxy.respondFile(call, url, headers)
+                } catch (e: ApiError) {
+                    relayFailed(e, "segment")
+                    throw e
+                }
+            }
+            val (text, finalUrl) = try {
+                proxy.fetchPlaylist(url, headers)
+            } catch (e: ApiError) {
+                relayFailed(e, "playlist")
+                throw e
+            }
             val playlist = if (client != null) {
                 proxy.rewrite(SiriusXmParser.rewriteKeys(text, client.fallbackKeyId), finalUrl, scope, keyPath(source))
             } else {

@@ -1,5 +1,6 @@
 package com.music.server.music
 
+import com.music.player.CoreLog
 import com.music.player.sources.siriusxm.SiriusXmClient
 import com.music.player.sources.siriusxm.SiriusXmParser
 import com.music.server.ApiError
@@ -79,7 +80,10 @@ class LiveProxy(http: OkHttpClient, private val box: SecretBox, private val cloc
         val request = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
         try {
             http.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw ApiError.upstream("The stream answered HTTP ${response.code}")
+                if (!response.isSuccessful) {
+                    CoreLog.w(TAG, "Playlist ${url.toHttpUrlOrNull()?.host}/…/${url.substringBefore('?').substringAfterLast('/')}: HTTP ${response.code}")
+                    throw ApiError.upstream("The stream answered HTTP ${response.code}")
+                }
                 val body = response.body?.byteStream()?.use { it.readNBytes(MAX_PLAYLIST_BYTES) } ?: ByteArray(0)
                 String(body) to response.request.url.toString()
             }
@@ -96,7 +100,15 @@ class LiveProxy(http: OkHttpClient, private val box: SecretBox, private val cloc
     /** Passes a segment (or any file) through, with byte ranges. */
     suspend fun respondFile(call: ApplicationCall, url: String, headers: Map<String, String> = emptyMap()) {
         val range = call.request.header(HttpHeaders.Range)
+        val started = System.nanoTime()
         val response = open(url, headers + listOfNotNull(range?.let { HttpHeaders.Range to it }))
+        val waited = (System.nanoTime() - started) / 1_000_000
+        val name = "${url.toHttpUrlOrNull()?.host ?: "?"}/…/${url.substringBefore('?').substringAfterLast('/')}"
+        if (response.code != 200 && response.code != 206) {
+            CoreLog.w(TAG, "Relaying $name: HTTP ${response.code} after $waited ms")
+        } else {
+            CoreLog.i(TAG, "Relaying $name: HTTP ${response.code} after $waited ms, ${response.body?.contentLength()?.takeIf { it >= 0 }?.let { "${it / 1024} KB" } ?: "size unknown"}")
+        }
         var handedOff = false
         try {
             if (response.code != 200 && response.code != 206) throw ApiError.upstream("The stream answered HTTP ${response.code}")
@@ -165,6 +177,7 @@ class LiveProxy(http: OkHttpClient, private val box: SecretBox, private val cloc
         try {
             http.newCall(request).execute()
         } catch (e: IOException) {
+            CoreLog.w(TAG, "Couldn't reach ${url.toHttpUrlOrNull()?.host}: ${e.message ?: e.javaClass.simpleName}")
             throw ApiError.upstream("Couldn't reach the stream: ${e.message ?: e.javaClass.simpleName}")
         } catch (e: IllegalArgumentException) {
             throw ApiError.upstream("That stream's address isn't usable")
@@ -172,6 +185,7 @@ class LiveProxy(http: OkHttpClient, private val box: SecretBox, private val cloc
     }
 
     companion object {
+        private const val TAG = "Relay"
         private const val BUFFER = 32 * 1024
         private const val MAX_PLAYLIST_BYTES = 4 * 1024 * 1024
         private val URI_ATTRIBUTE = Regex("URI=\"([^\"]*)\"")

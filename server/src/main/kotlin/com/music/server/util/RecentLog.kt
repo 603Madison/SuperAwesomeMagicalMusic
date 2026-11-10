@@ -8,26 +8,33 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 /**
- * The server's latest warnings and errors, kept in memory (logback.xml attaches it), so they can
- * be read without the container's log: the Claude connector's recent_warnings tool shows them.
+ * What the server logged lately, kept in memory (logback.xml attaches it), so it can be read
+ * without the container's log: the Claude connector's server_log and recent_warnings tools show
+ * it. Warnings are kept longer than the rest, which every request adds to.
  */
 class RecentLog : AppenderBase<ILoggingEvent>() {
     override fun append(event: ILoggingEvent) {
-        if (!event.level.isGreaterOrEqual(Level.WARN)) return
         val cause = event.throwableProxy?.let { " (${it.className}: ${it.message})" }.orEmpty()
         val line = "${TIME.format(Instant.ofEpochMilli(event.timeStamp))} ${event.level} ${event.loggerName.substringAfterLast('.')}: ${event.formattedMessage}$cause"
-        synchronized(lines) {
-            lines.addLast(line.take(2_000))
-            while (lines.size > MAX) lines.removeFirst()
+            .take(2_000)
+        synchronized(everything) {
+            everything.addLast(line)
+            while (everything.size > MAX_EVERYTHING) everything.removeFirst()
+            if (event.level.isGreaterOrEqual(Level.WARN)) {
+                warnings.addLast(line)
+                while (warnings.size > MAX_WARNINGS) warnings.removeFirst()
+            }
         }
     }
 
     companion object {
-        private const val MAX = 300
-        private val lines = ArrayDeque<String>()
+        private const val MAX_EVERYTHING = 4_000
+        private const val MAX_WARNINGS = 400
+        private val everything = ArrayDeque<String>()
+        private val warnings = ArrayDeque<String>()
         private val TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'").withZone(ZoneOffset.UTC)
 
-        /** The latest lines, oldest first. */
-        fun latest(): List<String> = synchronized(lines) { lines.toList() }
+        /** The latest lines, oldest first: everything, or only warnings and errors. */
+        fun latest(warningsOnly: Boolean = false): List<String> = synchronized(everything) { (if (warningsOnly) warnings else everything).toList() }
     }
 }

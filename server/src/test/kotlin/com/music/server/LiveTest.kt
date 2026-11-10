@@ -136,4 +136,16 @@ class LiveTest {
             icy.shutdown()
         }
     }
+
+    @Test
+    fun `a player's reports are limited to a few a minute`() {
+        var now = 0L
+        val limiter = com.music.server.music.ReportLimiter(perMinute = 2) { now }
+        assertTrue(limiter.allow("a"))
+        assertTrue(limiter.allow("a"))
+        assertFalse(limiter.allow("a"))
+        assertTrue(limiter.allow("b"))
+        now += 60_000
+        assertTrue(limiter.allow("a"))
+    }
 }

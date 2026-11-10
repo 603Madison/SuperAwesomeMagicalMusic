@@ -63,7 +63,7 @@ class McpTest {
         assertEquals(HttpStatusCode.Accepted, notified.status)
         val tools = client.rpc(path, "tools/list").obj()["result"]!!.jsonObject["tools"]!!.jsonArray.map { it.jsonObject }
         assertEquals(
-            setOf("server_status", "recent_warnings", "siriusxm_log", "stream_test", "search", "devices", "recent_listens"),
+            setOf("server_status", "recent_warnings", "server_log", "siriusxm_log", "stream_test", "search", "devices", "recent_listens"),
             tools.map { it.str("name") }.toSet(),
         )
         assertTrue(tools.all { it["annotations"]!!.jsonObject.str("readOnlyHint") == "true" })
@@ -75,7 +75,13 @@ class McpTest {
         assertFalse(status, statusFailed)
         assertTrue(status, "SuperAwesomeMagicalMusic server ${Services.version}" in status)
         assertTrue(status, "maddie" in status && "YOUTUBE_MUSIC" in status)
-        assertEquals("No listens yet." to false, client.tool(path, "recent_listens"))
+        assertEquals("No listens yet for maddie." to false, client.tool(path, "recent_listens"))
+        // Only her own account, from her link.
+        val (other, refusedOther) = client.tool(path, "recent_listens", """{"account":"admin"}""")
+        assertTrue(other, refusedOther && "only maddie's" in other)
+        assertTrue(client.tool(path, "server_log").second)
+        // Only admins make links that see every account.
+        assertEquals(HttpStatusCode.Forbidden, user.post("/api/me/mcp-links") { csrf(); json("""{"allAccounts":true}""") }.status)
         assertEquals("None of this account's devices is connected now." to false, client.tool(path, "devices"))
         assertEquals("This account has no SiriusXM source turned on." to false, client.tool(path, "siriusxm_log"))
         val (warnings, refused) = client.tool(path, "recent_warnings")
@@ -101,6 +107,32 @@ class McpTest {
         // Removed with the sign-ins: the link stops working.
         user.delete("/api/me/sessions/${link.str("id")}") { csrf() }
         assertEquals(HttpStatusCode.NotFound, client.rpc(path, "ping").status)
+    }
+
+    @Test
+    fun `an admin's every-account link sees every account, and the server's log`() = serverTest { services ->
+        services.users.create("maddie", password = "correct horse")
+        val maddie = browser()
+        maddie.post("/api/auth/login") { json("""{"username":"maddie","password":"correct horse"}""") }
+        maddie.post("/api/history") { csrf(); json("""{"listens":[{"track":{"source":"JELLYFIN","sourceId":"s1","title":"Fool's Gold","artist":"Buffalo Traffic Jam"},"playedAt":1700000000000,"listenedMs":120000,"client":"Pixel"}]}""") }
+        val admin = browser()
+        admin.post("/api/auth/login") { json("""{"username":"admin","password":"break-glass-pw"}""") }
+        val made = admin.post("/api/me/mcp-links") { csrf(); json("""{"allAccounts":true}""") }
+        assertEquals(HttpStatusCode.OK, made.status)
+        val path = "/" + made.obj().str("url").substringAfter("://").substringAfter('/')
+        assertTrue(admin.get("/api/me/sessions").json().jsonArray.any { it.jsonObject.str("kind") == "MCP_ALL" })
+
+        val (status, _) = client.tool(path, "server_status")
+        assertTrue(status, "sees every account" in status && "- maddie (user)" in status)
+        val (listens, failed) = client.tool(path, "recent_listens", """{"account":"maddie"}""")
+        assertFalse(listens, failed)
+        assertTrue(listens, "Fool's Gold — Buffalo Traffic Jam" in listens && "on Pixel" in listens)
+        // The log has what the connector was asked.
+        val (log, _) = client.tool(path, "server_log", """{"contains":"Claude connector"}""")
+        assertTrue(log, "Claude connector of admin (every account): recent_listens" in log)
+        // It still opens nothing else.
+        val token = path.removePrefix("/mcp/")
+        assertEquals(HttpStatusCode.Unauthorized, client.get("/api/me/sessions") { header("Authorization", "Bearer $token") }.status)
     }
 
     @Test

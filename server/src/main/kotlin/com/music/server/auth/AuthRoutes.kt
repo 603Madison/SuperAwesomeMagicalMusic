@@ -203,7 +203,13 @@ fun Route.authRoutes(services: Services) {
         // with the account's devices.
         post("/mcp-links") {
             val user = call.requireUser(services)
-            val token = services.sessions.create(user.id, SessionKind.MCP, "Claude connector")
+            val request = runCatching { call.receive<McpLinkRequest>() }.getOrDefault(McpLinkRequest())
+            if (request.allAccounts && !user.isAdmin) throw ApiError.forbidden("Only admins can make a link that sees every account")
+            val token = if (request.allAccounts) {
+                services.sessions.create(user.id, SessionKind.MCP_ALL, "Claude connector (every account)")
+            } else {
+                services.sessions.create(user.id, SessionKind.MCP, "Claude connector")
+            }
             call.respond(McpLink("${publicBase(services, call)}/mcp/$token"))
         }
         delete("/sessions/{id}") {
@@ -297,3 +303,7 @@ fun deviceName(call: ApplicationCall): String {
 
 @Serializable
 data class McpLink(val url: String)
+
+/** An admin's link can see every account, not just their own. */
+@Serializable
+data class McpLinkRequest(val allAccounts: Boolean = false)

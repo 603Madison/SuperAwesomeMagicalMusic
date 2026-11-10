@@ -6,9 +6,16 @@ import com.music.server.util.hex
 import com.music.server.util.sha256
 import kotlinx.serialization.Serializable
 
-/** A browser, the app, or a Claude connector link (usable only for /mcp: see McpRoutes). */
+/**
+ * A browser, the app, or a Claude connector link (usable only for /mcp: see McpRoutes); an
+ * admin's link may see every account ([MCP_ALL]).
+ */
 @Serializable
-enum class SessionKind { WEB, APP, MCP }
+enum class SessionKind {
+    WEB, APP, MCP, MCP_ALL;
+
+    val isConnector: Boolean get() = this == MCP || this == MCP_ALL
+}
 
 /** A signed-in browser or app, as shown in the account's list of devices. */
 @Serializable

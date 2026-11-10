@@ -35,6 +35,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -42,26 +43,29 @@ import java.time.format.DateTimeFormatter
 /**
  * The server as a Model Context Protocol server (Streamable HTTP, answering each request with
  * plain JSON): Claude, given a connector link from Settings, can look at the server to help
- * troubleshoot it: its sources, its latest warnings, SiriusXM's stream log, a stream test of
- * any song, the person's devices, search and listening history.
+ * troubleshoot it: its sources, its log, SiriusXM's stream log, a stream test of any song, the
+ * devices, search and listening history.
  *
- * Everything is read-only and limited to the person the link belongs to (the server's warnings,
- * which concern everyone, to admins). The link is the key: `/mcp/<token>`, or `/mcp` with the
- * token as a bearer token. Links are sign-ins of their own kind ([SessionKind.MCP]), listed and
- * revoked with the account's devices, and open nothing but this.
+ * Everything is read-only and limited to the person the link belongs to (the server's log,
+ * which concerns everyone, to admins). An admin's link made to see every account
+ * ([SessionKind.MCP_ALL]) sees every account's sources, SiriusXM, devices and history, while its
+ * admin still is one. The link is the key: `/mcp/<token>`, or `/mcp` with the token as a bearer
+ * token. Links are sign-ins of their own kind, listed and revoked with the account's devices, and
+ * open nothing but this.
  */
 fun Route.mcpRoutes(services: Services) {
     val mcp = McpServer(services)
 
     suspend fun ApplicationCall.serve(token: String?) {
-        val user = token?.let { services.sessions.resolve(it) }?.takeIf { it.second.kind == SessionKind.MCP }?.first
+        val (user, session) = token?.let { services.sessions.resolve(it) }?.takeIf { it.second.kind.isConnector }
             ?: return respond(HttpStatusCode.NotFound, ErrorBody("That connector link isn't valid (any more): make a new one in Settings"))
+        val caller = McpServer.Caller(user, everyone = session.kind == SessionKind.MCP_ALL && user.isAdmin)
         val body = runCatching { ApiJson.parseToJsonElement(receiveText()) }.getOrNull()
             ?: return respondJson(McpServer.error(JsonNull, -32700, "That isn't JSON"))
         when (body) {
-            is JsonObject -> mcp.handle(user, body)?.let { respondJson(it) } ?: respond(HttpStatusCode.Accepted, "")
+            is JsonObject -> mcp.handle(caller, body)?.let { respondJson(it) } ?: respond(HttpStatusCode.Accepted, "")
             is JsonArray -> {
-                val replies = body.mapNotNull { (it as? JsonObject)?.let { message -> mcp.handle(user, message) } }
+                val replies = body.mapNotNull { (it as? JsonObject)?.let { message -> mcp.handle(caller, message) } }
                 if (replies.isEmpty()) respond(HttpStatusCode.Accepted, "") else respondJson(JsonArray(replies))
             }
             else -> respondJson(McpServer.error(JsonNull, -32600, "Not a JSON-RPC request"))
@@ -94,16 +98,19 @@ private suspend fun ApplicationCall.respondJson(element: JsonElement) {
 
 /** The protocol: initialize, ping, and the tools (see [tools]). */
 class McpServer(private val services: Services) {
+    /** Who's asking: the link's account, and whether it sees every account (an admin's link). */
+    class Caller(val user: User, val everyone: Boolean)
+
     private class Tool(
         val name: String,
         val title: String,
         val description: String,
         val inputSchema: JsonObject,
-        val run: suspend (User, JsonObject) -> String,
+        val run: suspend (Caller, JsonObject) -> String,
     )
 
     /** One JSON-RPC message from the client; null for a notification (nothing to answer). */
-    suspend fun handle(user: User, message: JsonObject): JsonObject? {
+    suspend fun handle(caller: Caller, message: JsonObject): JsonObject? {
         val id = message["id"]?.takeUnless { it is JsonNull }
         val method = (message["method"] as? JsonPrimitive)?.contentOrNull
         if (id == null) return null // A notification ("initialized", "cancelled"), or a reply.
@@ -114,7 +121,7 @@ class McpServer(private val services: Services) {
                 "initialize" -> result(id, initialize(params))
                 "ping" -> result(id, JsonObject(emptyMap()))
                 "tools/list" -> result(id, buildJsonObject { put("tools", JsonArray(tools.map(::describe))) })
-                "tools/call" -> callTool(id, user, params)
+                "tools/call" -> callTool(id, caller, params)
                 "resources/list" -> result(id, buildJsonObject { put("resources", JsonArray(emptyList())) })
                 "resources/templates/list" -> result(id, buildJsonObject { put("resourceTemplates", JsonArray(emptyList())) })
                 "prompts/list" -> result(id, buildJsonObject { put("prompts", JsonArray(emptyList())) })
@@ -135,24 +142,26 @@ class McpServer(private val services: Services) {
             putJsonObject("serverInfo") {
                 put("name", "superawesomemagicalmusic")
                 put("title", "SuperAwesomeMagicalMusic")
-                put("version", com.music.server.Services.version)
+                put("version", Services.version)
             }
             put(
                 "instructions",
                 "A self-hosted music server (SuperAwesomeMagicalMusic): a web player and phone app play the owner's Jellyfin " +
                     "library, Qobuz, YouTube Music, SiriusXM (live, Xtra channels and Pandora stations) and radio through it. " +
                     "These tools only look: start with server_status; for a song that won't play, search then stream_test; for " +
-                    "SiriusXM channels that stall, siriusxm_log; for errors, recent_warnings.",
+                    "SiriusXM channels that stall, siriusxm_log (its Xtra timeline includes what the web player reported); for " +
+                    "errors, recent_warnings, and server_log for everything the server did lately (admins).",
             )
         }
     }
 
-    private suspend fun callTool(id: JsonElement, user: User, params: JsonObject): JsonObject {
+    private suspend fun callTool(id: JsonElement, caller: Caller, params: JsonObject): JsonObject {
         val name = (params["name"] as? JsonPrimitive)?.contentOrNull
         val tool = tools.firstOrNull { it.name == name } ?: return error(id, -32602, "No tool named $name")
         val arguments = params["arguments"] as? JsonObject ?: JsonObject(emptyMap())
+        log.info("Claude connector of {}{}: {} {}", caller.user.username, if (caller.everyone) " (every account)" else "", name, arguments)
         val (text, failed) = try {
-            tool.run(user, arguments) to false
+            tool.run(caller, arguments) to false
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -181,14 +190,19 @@ class McpServer(private val services: Services) {
         }
     }
 
+    private val account = "account" to stringProperty(
+        "Whose: an account's username (default the link's own; an admin's every-account link can name any account)",
+    )
+
     private val tools = listOf(
         Tool(
             "server_status",
             "Server status",
             "The server's version and uptime, its public address, the sources this account uses (Jellyfin, Qobuz, " +
-                "YouTube Music, SiriusXM, radio, Lidarr) with their ids, and how many of the account's devices are connected.",
+                "YouTube Music, SiriusXM, radio, Lidarr) with their ids, and the devices connected. An every-account link " +
+                "lists every account and everyone's sources.",
             schema(),
-        ) { user, _ -> status(user) },
+        ) { caller, _ -> status(caller) },
         Tool(
             "recent_warnings",
             "Recent warnings",
@@ -198,20 +212,38 @@ class McpServer(private val services: Services) {
                 "limit" to intProperty("How many lines, newest last (default 60, at most 300)"),
                 "contains" to stringProperty("Only lines containing this text (any case)"),
             ),
-        ) { user, args ->
-            if (!user.isAdmin) error("The server's warnings are for admins; this connector belongs to ${user.username}")
+        ) { caller, args ->
+            requireAdmin(caller)
             val contains = args.string("contains")?.lowercase()
-            val lines = RecentLog.latest().filter { contains == null || contains in it.lowercase() }
+            val lines = RecentLog.latest(warningsOnly = true).filter { contains == null || contains in it.lowercase() }
             lines.takeLast(args.int("limit")?.coerceIn(1, 300) ?: 60).joinToString("\n").ifBlank { "No warnings since the server started." }
+        },
+        Tool(
+            "server_log",
+            "Server log",
+            "Everything the server logged lately (newest last): each API request with its status and time (song streams, " +
+                "relayed SiriusXM playlists, segments and keys), SiriusXM's timeline, what the Claude connector was asked, " +
+                "sign-ins, warnings. Admins only.",
+            schema(
+                "limit" to intProperty("How many lines, newest last (default 200, at most 2000)"),
+                "contains" to stringProperty("Only lines containing this text (any case), e.g. a path, a host or a channel id"),
+                "warnings_only" to boolProperty("Only warnings and errors"),
+            ),
+        ) { caller, args ->
+            requireAdmin(caller)
+            val contains = args.string("contains")?.lowercase()
+            val lines = RecentLog.latest(warningsOnly = args.bool("warnings_only") ?: false).filter { contains == null || contains in it.lowercase() }
+            lines.takeLast(args.int("limit")?.coerceIn(1, 2000) ?: 200).joinToString("\n").takeLast(MAX_TEXT).ifBlank { "Nothing logged that matches." }
         },
         Tool(
             "siriusxm_log",
             "SiriusXM stream log",
-            "For the account's SiriusXM: the Xtra channel timeline (each tune and peek, what was added, when the player " +
-                "ran out of queued tracks) and, with details, what SiriusXM's servers answered. Use it when a SiriusXM " +
-                "channel or Pandora station stalls or skips.",
-            schema("details" to boolProperty("Also what SiriusXM answered, in full (long; default false)")),
-        ) { user, args -> siriusXmLog(user, args.bool("details") ?: false) },
+            "For SiriusXM: the Xtra channel timeline (each tune and peek, what was added, the player's playlist reloads, the " +
+                "song heard, when the player ran out of queued tracks, segments or keys the server couldn't relay, and the " +
+                "errors and stalls the web player reported) and, with details, what SiriusXM's servers answered. Use it when " +
+                "a SiriusXM channel or Pandora station stalls or skips. An every-account link shows everyone's SiriusXM.",
+            schema("details" to boolProperty("Also what SiriusXM answered, in full (long; default false)"), account),
+        ) { caller, args -> siriusXmLog(caller, args) },
         Tool(
             "stream_test",
             "Stream test",
@@ -223,61 +255,102 @@ class McpServer(private val services: Services) {
                 "source" to stringProperty("A source id (from server_status or search)"),
                 "id" to stringProperty("The song's id on that source (from search)"),
                 "kbps" to intProperty("A bitrate cap, as a player would ask (0 or none: original quality)"),
+                account,
             ),
-        ) { user, args -> streamTestOf(user, args) },
+        ) { caller, args -> streamTestOf(caller, args) },
         Tool(
             "search",
             "Search songs",
             "Searches every source the account uses for songs; each result names its source id and song id (for stream_test).",
-            schema("query" to stringProperty("What to search for"), "limit" to intProperty("Songs per source (default 5, at most 25)"), required = listOf("query")),
-        ) { user, args -> search(user, args) },
+            schema(
+                "query" to stringProperty("What to search for"),
+                "limit" to intProperty("Songs per source (default 5, at most 25)"),
+                account,
+                required = listOf("query"),
+            ),
+        ) { caller, args -> search(caller, args) },
         Tool(
             "devices",
             "Devices",
-            "The account's connected devices (web players, phones, MusicCast speakers) and what each is playing: song, " +
-                "position, playing or paused.",
+            "The connected devices (web players, phones, MusicCast speakers) and what each is playing: song, position, " +
+                "playing or paused. An every-account link shows everyone's.",
             schema(),
-        ) { user, _ -> devices(user) },
+        ) { caller, _ -> devices(caller) },
         Tool(
             "recent_listens",
             "Recent listens",
-            "The account's listening history, newest first: when, what, from which source, how long, on which device.",
-            schema("limit" to intProperty("How many (default 30, at most 200)")),
-        ) { user, args -> listens(user, args.int("limit")?.coerceIn(1, 200) ?: 30) },
+            "An account's listening history, newest first: when, what, from which source, how long, on which device.",
+            schema("limit" to intProperty("How many (default 30, at most 200)"), account),
+        ) { caller, args -> listens(accountOf(caller, args), args.int("limit")?.coerceIn(1, 200) ?: 30) },
     )
 
-    private suspend fun status(user: User): String {
+    private fun requireAdmin(caller: Caller) {
+        if (!caller.user.isAdmin) error("The server's log is for admins; this connector belongs to ${caller.user.username}")
+    }
+
+    /** The account a tool is asked about: the link's own, or (every-account links) any named one. */
+    private suspend fun accountOf(caller: Caller, args: JsonObject): User {
+        val name = args.string("account") ?: return caller.user
+        if (name.equals(caller.user.username, ignoreCase = true)) return caller.user
+        if (!caller.everyone) error("This link sees only ${caller.user.username}'s account (an admin's every-account link sees others)")
+        return services.users.byUsername(name) ?: error("No account named $name")
+    }
+
+    private suspend fun status(caller: Caller): String {
+        val user = caller.user
         val lines = mutableListOf<String>()
-        lines += "SuperAwesomeMagicalMusic server ${com.music.server.Services.version}, running for ${span(services.clock() - services.startedAt)}"
+        lines += "SuperAwesomeMagicalMusic server ${Services.version}, running for ${span(services.clock() - services.startedAt)}"
         lines += "Public address: ${services.settings.get().publicUrl.ifBlank { "(not set)" }}"
-        lines += "This connector belongs to ${user.displayName} (${user.username}${if (user.isAdmin) ", admin" else ""})"
+        lines += "This connector belongs to ${user.displayName} (${user.username}${if (user.isAdmin) ", admin" else ""})" +
+            if (caller.everyone) " and sees every account" else ""
         lines += ""
-        lines += "Sources:"
-        for (source in services.sources.visibleTo(user)) {
-            val notes = listOfNotNull(
-                if (source.scope == "global") "shared" else "personal",
-                "off".takeIf { !source.enabled },
-                "hidden by this account".takeIf { source.hidden },
-            )
-            lines += "- ${source.name} (${source.kind}, id ${source.id}; ${notes.joinToString(", ")})"
+        if (caller.everyone) {
+            val accounts = services.users.list()
+            val names = accounts.associate { it.id to it.username }
+            lines += "Accounts:"
+            accounts.forEach { lines += "- ${it.username} (${if (it.isAdmin) "admin" else "user"}${if (it.disabled) ", turned off" else ""})" }
+            lines += ""
+            lines += "Sources (everyone's):"
+            for (source in services.sources.all()) {
+                val owner = source.ownerId?.let { "${names[it] ?: it}'s" } ?: "shared"
+                lines += "- ${source.name} (${source.kind}, id ${source.id}; $owner${if (!source.enabled) ", off" else ""})"
+            }
+        } else {
+            lines += "Sources:"
+            for (source in services.sources.visibleTo(user)) {
+                val notes = listOfNotNull(
+                    if (source.scope == "global") "shared" else "personal",
+                    "off".takeIf { !source.enabled },
+                    "hidden by this account".takeIf { source.hidden },
+                )
+                lines += "- ${source.name} (${source.kind}, id ${source.id}; ${notes.joinToString(", ")})"
+            }
         }
-        val devices = services.connect.devices(user.id)
         lines += ""
-        lines += "Devices connected now: ${devices.size}" + devices.joinToString("") { "\n- ${it.name} (${it.kind})${if (it.state?.playing == true) ", playing" else ""}" }
+        lines += devices(caller)
         return lines.joinToString("\n")
     }
 
-    private suspend fun siriusXmLog(user: User, details: Boolean): String {
-        val sources = services.sources.activeFor(user).filter { it.kind == SourceKind.SIRIUSXM }
-        if (sources.isEmpty()) return "This account has no SiriusXM source turned on."
+    private suspend fun siriusXmLog(caller: Caller, args: JsonObject): String {
+        val details = args.bool("details") ?: false
+        val named = args.string("account")?.let { accountOf(caller, args) }
+        val sources = when {
+            named != null -> services.sources.activeFor(named)
+            caller.everyone -> services.sources.all().filter { it.enabled }
+            else -> services.sources.activeFor(caller.user)
+        }.filter { it.kind == SourceKind.SIRIUSXM }
+        if (sources.isEmpty()) return if (caller.everyone || named != null) "No SiriusXM source is turned on." else "This account has no SiriusXM source turned on."
+        val names = if (caller.everyone) services.users.list().associate { it.id to it.username } else emptyMap()
         return sources.joinToString("\n\n") { source ->
             val log = services.registry.siriusXm(source)?.diagnostics(details).orEmpty()
+            val owner = source.ownerId?.let { names[it] }?.let { ", $it's" }.orEmpty()
             // The newest is what matters: the end is kept.
-            "== ${source.name} (id ${source.id}) ==\n" + log.ifBlank { "Nothing yet: nothing has been played from it since the server started." }.takeLast(MAX_TEXT)
+            "== ${source.name} (id ${source.id}$owner) ==\n" + log.ifBlank { "Nothing yet: nothing has been played from it since the server started." }.takeLast(MAX_TEXT)
         }
     }
 
-    private suspend fun streamTestOf(user: User, args: JsonObject): String {
+    private suspend fun streamTestOf(caller: Caller, args: JsonObject): String {
+        val user = accountOf(caller, args)
         val query = args.string("query")
         val (sourceId, songId) = if (query != null) {
             val groups = services.browser.search(user, query, 5).groups
@@ -286,11 +359,13 @@ class McpServer(private val services: Services) {
         } else {
             (args.string("source") ?: error("Give a source and id, or a query")) to (args.string("id") ?: error("Give the song's id, or a query"))
         }
-        val source = services.sources.accessible(user, sourceId)?.takeIf { it.enabled } ?: error("No source $sourceId for this account (see server_status)")
+        val source = (if (caller.everyone) services.sources.get(sourceId) else services.sources.accessible(user, sourceId))?.takeIf { it.enabled }
+            ?: error("No source $sourceId for this account (see server_status)")
         return streamTest(services, source, songId, qualityOf(args.int("kbps") ?: 0)).joinToString("\n")
     }
 
-    private suspend fun search(user: User, args: JsonObject): String {
+    private suspend fun search(caller: Caller, args: JsonObject): String {
+        val user = accountOf(caller, args)
         val query = args.string("query")?.takeIf { it.length in 1..200 } ?: error("What to search for?")
         val found = services.browser.search(user, query, args.int("limit")?.coerceIn(1, 25) ?: 5)
         return found.groups.joinToString("\n\n") { group ->
@@ -301,22 +376,25 @@ class McpServer(private val services: Services) {
         }.ifBlank { "No sources to search." }
     }
 
-    private fun devices(user: User): String {
-        val devices = services.connect.devices(user.id)
-        if (devices.isEmpty()) return "None of this account's devices is connected now."
-        return devices.joinToString("\n") { device ->
-            val state = device.state
-            val what = state?.track?.let { track ->
-                val where = if (state.live) "live" else "${span(state.positionMs)} of ${span(state.durationMs)}"
-                "${if (state.playing) "playing" else "paused on"} ${track.title} — ${track.artist} (${track.source}, $where, volume ${(state.volume * 100).toInt()}%)"
-            } ?: "nothing loaded"
-            "- ${device.name} (${device.kind}${if (device.active) ", the one in use" else ""}): $what"
+    private suspend fun devices(caller: Caller): String {
+        val accounts = if (caller.everyone) services.connect.accounts().mapNotNull { services.users.byId(it) } else listOf(caller.user)
+        val lines = accounts.flatMap { user ->
+            services.connect.devices(user.id).map { device ->
+                val state = device.state
+                val what = state?.track?.let { track ->
+                    val where = if (state.live) "live" else "${span(state.positionMs)} of ${span(state.durationMs)}"
+                    "${if (state.playing) "playing" else "paused on"} ${track.title} — ${track.artist} (${track.source}, $where, volume ${(state.volume * 100).toInt()}%)"
+                } ?: "nothing loaded"
+                "- ${device.name} (${device.kind}${if (caller.everyone) ", ${user.username}'s" else ""}${if (device.active) ", the one in use" else ""}): $what"
+            }
         }
+        if (lines.isEmpty()) return if (caller.everyone) "No devices are connected now." else "None of this account's devices is connected now."
+        return "Devices connected now:\n" + lines.joinToString("\n")
     }
 
     private suspend fun listens(user: User, limit: Int): String {
         val listens = services.history.list(user.id, limit)
-        if (listens.isEmpty()) return "No listens yet."
+        if (listens.isEmpty()) return "No listens yet for ${user.username}."
         return listens.joinToString("\n") {
             "${TIME.format(Instant.ofEpochMilli(it.playedAt))}  ${it.track.title} — ${it.track.artist} (${it.track.source}, " +
                 "listened ${span(it.listenedMs)}${it.client.takeIf { c -> c.isNotBlank() }?.let { c -> ", on $c" }.orEmpty()})"
@@ -324,6 +402,8 @@ class McpServer(private val services: Services) {
     }
 
     companion object {
+        private val log = LoggerFactory.getLogger("Connector")
+
         /** Newest first; an older one is answered when a client asks for it. */
         val VERSIONS = listOf("2025-06-18", "2025-03-26", "2024-11-05")
         private const val MAX_TEXT = 80_000

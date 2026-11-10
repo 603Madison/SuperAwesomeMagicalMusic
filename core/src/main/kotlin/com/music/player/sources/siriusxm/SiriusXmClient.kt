@@ -226,6 +226,9 @@ class SiriusXmClient(
         var grownAtMs = 0L
         /** The player has played everything queued and waits for more (noted once per wait). */
         var ranOut = false
+        /** The player's playlist reloads since [reloadsSinceMs], for the timeline's minute-by-minute line. */
+        var reloads = 0
+        var reloadsSinceMs = 0L
     }
 
     /**
@@ -258,6 +261,19 @@ class SiriusXmClient(
         return channel.mutex.withLock {
             growLastTrack(channel, now)
             val left = remainingMs(channel, now)
+            channel.reloads++
+            if (channel.reloadsSinceMs == 0L) channel.reloadsSinceMs = now
+            if (now - channel.reloadsSinceMs >= XTRA_HEARTBEAT_MS) {
+                val heard = channel.heardAtMs?.let { channel.stream.cutAt(it) }
+                xtraNote(
+                    channelId,
+                    "the player reloaded the playlist ${channel.reloads} times in ${(now - channel.reloadsSinceMs) / 1000}s; " +
+                        (heard?.let { "hearing ${it.artist} – ${it.title}, " } ?: "") + "queue ends in ${left / 1000}s" +
+                        if (channel.growing != null) "; the last track is still arriving" else "",
+                )
+                channel.reloads = 0
+                channel.reloadsSinceMs = now
+            }
             if (!channel.stream.isEmpty && left <= 0 && !channel.ranOut) {
                 channel.ranOut = true
                 xtraNote(channelId, "the player has played everything queued and is waiting for SiriusXM's next track")
@@ -549,7 +565,14 @@ class SiriusXmClient(
 
     private val xtraLog = ArrayDeque<String>()
 
+    /**
+     * A line in the timeline from outside: the server relaying the stream (a segment or key it
+     * couldn't fetch) or the player playing it (an error it hit), under [channelId] if known.
+     */
+    fun note(channelId: String?, text: String) = xtraNote(channelId?.takeIf { it.isNotBlank() } ?: "stream", text.take(500))
+
     private fun xtraNote(channelId: String, text: String) {
+        com.music.player.CoreLog.i("SiriusXM", "$channelId: ${text.replace("\n", " | ")}")
         synchronized(xtraLog) {
             xtraLog.addLast("${SiriusXmParser.isoUtc(clock()).substring(11, 19)} $channelId: $text")
             while (xtraLog.size > 400) xtraLog.removeFirst()
@@ -802,6 +825,7 @@ class SiriusXmClient(
         private const val XTRA_LEAD_MS = 60_000L
         private const val XTRA_RETRY_MS = 10_000L
         private const val XTRA_GROW_MS = 8_000L
+        private const val XTRA_HEARTBEAT_MS = 60_000L
         private const val XTRA_PROGRESS_INTERVAL_MS = 30_000L
         /** The player reloads a live playlist every few seconds; a longer silence means it stopped. */
         private const val XTRA_IDLE_RESET_MS = 2 * 60_000L

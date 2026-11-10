@@ -191,15 +191,75 @@ async function attach(src: string, isHls: boolean) {
   const { default: Hls } = await import("hls.js");
   if (!Hls.isSupported()) throw new ApiError(0, "This browser can't play live streams");
   const instance = new Hls({ backBufferLength: 60, maxBufferLength: 60, liveSyncDurationCount: 3 });
+  let part: number | null = null;
   instance.on(Hls.Events.ERROR, (_, data) => {
+    const segment = data.frag ? ` (segment ${data.frag.sn}, track part ${data.frag.cc}, from ${upstreamHost(data.frag.url)})` : "";
+    const code = data.response?.code ? ` HTTP ${data.response.code}` : "";
+    reportLive(`${data.fatal ? "fatal " : ""}${data.details}${code}${segment}${data.error?.message ? `: ${data.error.message}` : ""}`, data.details);
     if (!data.fatal) return;
     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) instance.startLoad();
-    else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) instance.recoverMediaError();
+    else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) recoverMedia(instance);
     else failed("The live stream stopped");
+  });
+  // Each track of an Xtra channel is a new part of the stream: noted, to line up with errors.
+  instance.on(Hls.Events.FRAG_CHANGED, (_, data) => {
+    if (data.frag.cc === part) return;
+    if (part != null) reportLive(`playing track part ${data.frag.cc} (segment ${data.frag.sn}, from ${upstreamHost(data.frag.url)})`, `part${data.frag.cc}`);
+    part = data.frag.cc;
   });
   instance.loadSource(src);
   instance.attachMedia(audio);
   hls = instance;
+}
+
+/**
+ * After the media pipeline failed (a track whose audio the browser couldn't take, say): hls.js
+ * rebuilds it, and playback carries on if it was meant to be playing. Twice in a minute is the
+ * limit; then it's given up as failed.
+ */
+let mediaRecoveries: number[] = [];
+function recoverMedia(instance: Hls) {
+  const now = Date.now();
+  mediaRecoveries = mediaRecoveries.filter((at) => now - at < 60_000);
+  if (mediaRecoveries.length >= 2) {
+    failed("The live stream stopped");
+    return;
+  }
+  mediaRecoveries.push(now);
+  // hls.js's own advice: the second time, the audio codec may be what's wrong (a track encoded
+  // differently from the one before), so it's swapped before trying again.
+  const swap = mediaRecoveries.length === 2;
+  reportLive(`recovering from a media error${swap ? " (swapping the audio codec)" : ""}`, `recover${mediaRecoveries.length}`);
+  if (swap) instance.swapAudioCodec();
+  instance.recoverMediaError();
+  if (state().playing) window.setTimeout(() => { if (hls === instance) audio.play().catch(() => undefined); }, 300);
+}
+
+/** The service's host behind one of the server's relayed addresses. */
+function upstreamHost(url: string | undefined): string {
+  try {
+    const relayed = new URL(url ?? "", location.href).searchParams.get("u");
+    return new URL(relayed ?? url ?? "").host || "?";
+  } catch {
+    return "?";
+  }
+}
+
+const lastReports: Record<string, number> = {};
+/**
+ * Tells the server what the player ran into on a SiriusXM channel (the server can't see the
+ * browser): it goes in SiriusXM's timeline, beside what SiriusXM sent. The same thing at most
+ * every few seconds.
+ */
+function reportLive(event: string, key = event) {
+  const track = state().queue[state().index]?.track;
+  if (!track?.via || track.source !== "SIRIUSXM" || !track.sourceId.startsWith("channel:")) return;
+  const now = Date.now();
+  if (now - (lastReports[key] ?? 0) < 5_000) return;
+  lastReports[key] = now;
+  const [, channel] = splitTwo(track.sourceId.slice("channel:".length));
+  const ahead = player.bufferedAhead().toFixed(1);
+  api.playerReport(track.via, { event: `${event} [at ${Math.round(audio.currentTime)}s, ${ahead}s loaded ahead]`, channel }).catch(() => undefined);
 }
 
 // ---- Live radio: what's on, and SiriusXM's station tracks ----
@@ -322,15 +382,33 @@ audio.addEventListener("timeupdate", () => {
   set({ position: offset + audio.currentTime });
   updatePositionState();
 });
+/** When the player started waiting for data (0: it isn't), and whether a pause is the person's. */
+let stalledAt = 0;
+let pausing = false;
+const STALL_REPORT_MS = 8_000;
+
 audio.addEventListener("durationchange", () => {
   if (isFinite(audio.duration) && audio.duration > 0) set({ duration: offset + audio.duration });
 });
-audio.addEventListener("playing", () => set({ playing: true, buffering: false, error: null }));
+audio.addEventListener("playing", () => {
+  if (stalledAt && Date.now() - stalledAt > STALL_REPORT_MS) reportLive(`playing again after ${Math.round((Date.now() - stalledAt) / 1000)}s`, "resumed");
+  stalledAt = 0;
+  set({ playing: true, buffering: false, error: null });
+});
 audio.addEventListener("pause", () => {
   lastTick = 0;
+  if (!pausing && hls && !audio.ended) reportLive("the browser paused it (not the pause button)", "paused");
+  pausing = false;
   if (!audio.ended) set({ playing: false });
 });
-audio.addEventListener("waiting", () => set({ buffering: true }));
+audio.addEventListener("waiting", () => {
+  set({ buffering: true });
+  stalledAt = Date.now();
+  const at = stalledAt;
+  window.setTimeout(() => {
+    if (stalledAt === at && state().playing) reportLive(`stalled for ${STALL_REPORT_MS / 1000}s`, "stalled");
+  }, STALL_REPORT_MS);
+});
 audio.addEventListener("ended", () => {
   reportListen();
   if (state().sleepAt === "track") {
@@ -347,6 +425,12 @@ audio.addEventListener("ended", () => {
 });
 audio.addEventListener("error", () => {
   if (!audio.src || state().buffering === false && !state().playing) return;
+  // A live stream's media pipeline failing: rebuilt rather than given up (see recoverMedia).
+  if (hls) {
+    reportLive(`media error ${audio.error?.code ?? "?"}${audio.error?.message ? `: ${audio.error.message}` : ""}`, "mediaerror");
+    recoverMedia(hls);
+    return;
+  }
   failed("The song stopped loading");
 });
 audio.volume = state().volume;
@@ -567,6 +651,7 @@ export const player = {
   },
 
   pause() {
+    pausing = true;
     audio.pause();
   },
 

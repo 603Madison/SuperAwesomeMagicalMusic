@@ -64,7 +64,7 @@ export const api = {
   changePassword: (current: string, next: string) => post<unknown>("/api/me/password", { current, new: next }),
   sessions: () => get<SessionInfo[]>("/api/me/sessions"),
   revokeSession: (id: string) => del<unknown>(`/api/me/sessions/${q(id)}`),
-  mcpLink: () => post<{ url: string }>("/api/me/mcp-links"),
+  mcpLink: (allAccounts: boolean) => post<{ url: string }>("/api/me/mcp-links", { allAccounts }),
 
   search: (query: string) => get<SearchResults>(`/api/search?q=${q(query)}`),
   artist: (id: string) => get<ArtistPage>(`/api/artist?id=${q(id)}`),
@@ -108,6 +108,7 @@ export const api = {
     const result = await get<NowView | null>(`/api/live/sxm/${q(src)}/now?type=${q(type)}&id=${q(id)}&at=${Math.round(at)}`);
     return result && typeof result === "object" ? result : null;
   },
+  playerReport: (src: string, report: { event: string; channel?: string }) => post<unknown>(`/api/live/sxm/${q(src)}/player-report`, report),
   sxmArtists: (src: string, query: string) => get<ArtistView[]>(`/api/live/sxm/${q(src)}/artists?q=${q(query)}`),
   station: (src: string, body: { artist?: ArtistView; stationId?: string; name?: string; more?: boolean }) =>
     post<StationTracks>(`/api/live/sxm/${q(src)}/station`, body),

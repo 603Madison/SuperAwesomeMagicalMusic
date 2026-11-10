@@ -104,6 +104,9 @@ class SourceStore(
 
     suspend fun allGlobal(): List<StoredSource> = db.tx { rows("WHERE owner_id IS NULL") }
 
+    /** Every source on the server, everyone's (an admin's every-account connector). */
+    suspend fun all(): List<StoredSource> = db.tx { rows("") }
+
     suspend fun create(
         id: String = Random.id(),
         ownerId: String?,

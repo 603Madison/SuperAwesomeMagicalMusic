@@ -173,6 +173,9 @@ class ConnectHub(private val clock: () -> Long = System::currentTimeMillis) {
 
     private fun devicesOf(userId: String): List<Device> = people[userId]?.values?.toList().orEmpty()
 
+    /** The accounts with a device connected now. */
+    fun accounts(): List<String> = people.filterValues { it.isNotEmpty() }.keys.toList()
+
     /** The device playing, else the one that played most recently. */
     private fun active(devices: List<Device>): Device? =
         devices.filter { it.state?.track != null }.maxWithOrNull(compareBy<Device> { it.state?.playing == true }.thenBy { it.playedAt })

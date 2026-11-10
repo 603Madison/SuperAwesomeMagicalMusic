@@ -198,7 +198,8 @@ connector**. Claude then has these tools, all read-only:
 |---|---|
 | `server_status` | Version, uptime, the public address, your sources (with their ids), devices connected |
 | `recent_warnings` | The server's latest warnings and errors (admins only) |
-| `siriusxm_log` | SiriusXM's Xtra timeline (tunes, peeks, when the player ran out of queue) and, with `details`, what SiriusXM answered |
+| `server_log` | Everything the server logged lately: each request with its status and time, relayed SiriusXM segments and keys, SiriusXM's timeline (admins only) |
+| `siriusxm_log` | SiriusXM's Xtra timeline (tunes, peeks, playlist reloads, the song heard, segments or keys the server couldn't relay, errors and stalls the web player reported) and, with `details`, what SiriusXM answered |
 | `stream_test` | Fetches a song as a player would and says how the service answered and how fast (every YouTube copy) |
 | `search` | Songs from all your sources, with the ids `stream_test` takes |
 | `devices` | Your devices and what each is playing |
@@ -206,7 +207,9 @@ connector**. Claude then has these tools, all read-only:
 
 The link is the key (`https://your-server/mcp/<token>`; the token also works as a bearer token on
 `/mcp`). It sees only what your account sees, opens nothing but the connector, and is listed with
-your sign-ins under **Signed in on**, where it's removed. If Claude can't reach it behind
+your sign-ins under **Signed in on**, where it's removed. An admin can turn on **See every account**
+before making the link: it then sees every account's sources, SiriusXM, devices and history (the
+tools take an `account` to look at someone's search or history), for as long as its admin is one. If Claude can't reach it behind
 Cloudflare, check that bot protection isn't blocking `/mcp`.
 
 ## Security notes
