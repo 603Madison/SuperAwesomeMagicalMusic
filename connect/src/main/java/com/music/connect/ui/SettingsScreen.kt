@@ -1,27 +1,32 @@
 package com.music.connect.ui
 
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Speaker
-import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Speaker
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,10 +39,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.music.connect.BuildConfig
 import com.music.connect.data.Settings
 import com.music.connect.data.SyncWorker
+import com.music.connect.data.ThemeMode
 import com.music.player.quality.NetworkClass
 import kotlinx.coroutines.launch
 
@@ -51,8 +59,29 @@ fun SettingsScreen() {
     var confirmSignOut by remember { mutableStateOf(false) }
     fun update(transform: (Settings) -> Settings) = scope.launch { c.prefs.update(transform) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Settings", style = MaterialTheme.typography.headlineMedium)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+      ScreenTitle("Settings")
+      Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Panel("Appearance") {
+            Text("Theme", style = MaterialTheme.typography.bodyLarge)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                ThemeMode.entries.forEachIndexed { i, mode ->
+                    SegmentedButton(
+                        selected = settings.themeMode == mode,
+                        onClick = { update { it.copy(themeMode = mode) } },
+                        shape = SegmentedButtonDefaults.itemShape(index = i, count = ThemeMode.entries.size),
+                        icon = {},
+                    ) { Text(mode.label) }
+                }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                ToggleRow(
+                    "Wallpaper colours",
+                    "Use your phone's wallpaper colours instead of the app's violet, like your other apps can.",
+                    settings.wallpaperColors,
+                ) { v -> update { it.copy(wallpaperColors = v) } }
+            }
+        }
 
         Panel("Quality") {
             Text(
@@ -91,7 +120,14 @@ fun SettingsScreen() {
             OutlinedButton(onClick = { confirmSignOut = true }) { Text("Sign out") }
         }
 
-        Text("SuperAwesomeMagicalMusic ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            "SuperAwesomeMagicalMusic ${BuildConfig.VERSION_NAME}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
+      }
     }
 
     if (confirmSignOut) {
@@ -105,14 +141,10 @@ fun SettingsScreen() {
     }
 }
 
+/** A settings group: a small heading above a card, as in the other apps. */
 @Composable
 private fun Panel(title: String, content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            content()
-        }
-    }
+    SectionCard(title) { content() }
 }
 
 @Composable
@@ -123,7 +155,7 @@ private fun QualityChoice(label: String, kbps: Int, inUse: Boolean, onPick: (Int
             Text(label + if (inUse) " (now)" else "", style = MaterialTheme.typography.bodyLarge)
         }
         Box {
-            TextButton(onClick = { open = true }) { Text(qualityLabel(kbps)) }
+            FilledTonalButton(onClick = { open = true }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) { Text(qualityLabel(kbps), style = MaterialTheme.typography.labelLarge) }
             DropdownMenu(open, onDismissRequest = { open = false }) {
                 qualitySteps.forEach { k -> DropdownMenuItem(text = { Text(qualityLabel(k)) }, onClick = { open = false; onPick(k) }) }
             }

@@ -16,8 +16,8 @@ android {
         applicationId = "com.music.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 45
-        versionName = "1.22.1"
+        versionCode = 46
+        versionName = "1.23.0"
     }
 
     // Release APKs are signed with one permanent key, so each release installs as an update over

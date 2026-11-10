@@ -2,17 +2,15 @@ package com.music.connect.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.platform.LocalContext
-import com.music.player.playlists.PlaylistCsv
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,28 +22,36 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DownloadForOffline
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileOpen
+import androidx.compose.material.icons.rounded.FileUpload
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -57,14 +63,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.music.connect.data.Library
 import com.music.connect.net.ImportResult
+import com.music.player.playlists.PlaylistCsv
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,31 +102,44 @@ fun PlaylistsScreen(onOpen: (String) -> Unit) {
         }
     }
     LaunchedEffect(online) { if (online) refresh(byHand = false) }
-    Scaffold(
-        floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = { creating = true }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("New playlist") })
-        },
-    ) { padding ->
-        PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refresh(byHand = true) }, modifier = Modifier.padding(padding).fillMaxSize()) {
-            LazyColumn(Modifier.fillMaxSize()) {
+    PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refresh(byHand = true) }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize()) {
+            item {
+                ScreenTitle("Playlists", if (playlists.isEmpty()) null else "${playlists.size} on this phone") {
+                    IconButton(onClick = { importing = true }) { Icon(Icons.Rounded.FileDownload, "Import a playlist") }
+                    FilledTonalIconButton(onClick = { creating = true }) { Icon(Icons.Rounded.Add, "New playlist") }
+                }
+            }
+            if (playlists.isEmpty()) {
                 item {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) {
-                        OutlinedButton(onClick = { importing = true }) { Icon(Icons.Rounded.FileDownload, null); Spacer(Modifier.width(8.dp)); Text("Import a playlist") }
+                    Empty(
+                        "No playlists yet",
+                        "Make one here or on the web player, or import one from Spotify, Apple Music, Tidal, Deezer and more; they're kept on your phone too.",
+                        Icons.AutoMirrored.Rounded.QueueMusic,
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { creating = true }) { Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(6.dp)); Text("New playlist") }
+                            OutlinedButton(onClick = { importing = true }) { Text("Import") }
+                        }
                     }
                 }
-                if (playlists.isEmpty()) item { Empty("No playlists yet", "Make one here or on the web player, or import one from Spotify, Apple Music, Tidal, Deezer and more; they're kept on your phone too.", Icons.AutoMirrored.Rounded.QueueMusic) }
-                items(playlists, key = { it.id }) { p ->
-                    Row(Modifier.fillMaxWidth().clickable { onOpen(p.id) }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Artwork(p.artwork.firstOrNull(), 56.dp)
+            } else {
+                item { Spacer(Modifier.height(8.dp)) }
+            }
+            itemsIndexed(playlists, key = { _, p -> p.id }) { i, p ->
+                CardItem(i, playlists.size) {
+                    Row(Modifier.fillMaxWidth().clickable { onOpen(p.id) }.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Artwork(p.artwork.firstOrNull(), 56.dp, corner = 14.dp)
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${p.count} songs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        if (p.keepOffline) Icon(Icons.Rounded.DownloadForOffline, "Kept offline", tint = MaterialTheme.colorScheme.primary)
+                        if (p.keepOffline) Pill("Offline", MaterialTheme.colorScheme.primary, icon = Icons.Rounded.DownloadForOffline)
                     }
                 }
             }
+            item { Spacer(Modifier.height(24.dp)) }
         }
     }
     if (importing) ImportDialog(onClose = { importing = false }, onImported = onOpen)
@@ -298,15 +321,48 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
         scope.launch { runCatching { c.api.playlistPlayed(id) } }
     }
 
+    var menu by remember { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize()) {
         item {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(playlist.name, style = MaterialTheme.typography.headlineMedium)
-                Text("${entries.size} songs" + if (!online) " · ${playable.size} downloaded" else "", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { player.play(playable); played() }, enabled = playable.isNotEmpty()) { Icon(Icons.Rounded.PlayArrow, null); Text("Play") }
-                    FilledTonalButton(onClick = { player.playShuffled(playable); played() }, enabled = playable.size > 1) { Icon(Icons.Rounded.Shuffle, null); Text("Shuffle") }
+            BackBar(LocalBack.current) {
+                Box {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(Icons.Rounded.Edit, null) }, onClick = { menu = false; renaming = true })
+                        DropdownMenuItem(
+                            text = { Text("Export CSV") },
+                            leadingIcon = { Icon(Icons.Rounded.FileUpload, null) },
+                            enabled = entries.isNotEmpty(),
+                            onClick = { menu = false; export.launch(PlaylistCsv.fileName(playlist.name)) },
+                        )
+                        DropdownMenuItem(text = { Text("Delete") }, leadingIcon = { Icon(Icons.Rounded.DeleteOutline, null) }, onClick = { menu = false; deleting = true })
+                    }
                 }
+            }
+        }
+        item {
+            Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Artwork(entries.firstOrNull { !it.track.isMissing }?.track?.artworkUrl, 96.dp, corner = 20.dp)
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(playlist.name, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "${entries.size} songs" + if (!online) " · ${playable.size} downloaded" else "",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        item {
+            Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { player.play(playable); played() }, enabled = playable.isNotEmpty()) { Icon(Icons.Rounded.PlayArrow, null); Text("Play") }
+                FilledTonalButton(onClick = { player.playShuffled(playable); played() }, enabled = playable.size > 1) { Icon(Icons.Rounded.Shuffle, null); Text("Shuffle") }
+            }
+        }
+        item {
+            AppCard(Modifier.padding(horizontal = 16.dp)) {
+              Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Keep offline", style = MaterialTheme.typography.bodyLarge)
@@ -341,17 +397,14 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
                         },
                     ) { Text(if (finding) "Looking…" else "Look for them again") }
                 }
-                Row {
-                    TextButton(onClick = { renaming = true }) { Text("Rename") }
-                    TextButton(onClick = { export.launch(PlaylistCsv.fileName(playlist.name)) }, enabled = entries.isNotEmpty()) { Text("Export CSV") }
-                    TextButton(onClick = { deleting = true }) { Text("Delete") }
-                }
+              }
             }
         }
         if (entries.isEmpty()) item { Empty("This playlist is empty", "Add songs from search with their ⋮ menu.") }
+        else item { SectionTitle("Songs") }
         itemsIndexed(entries, key = { _, e -> e.entryId }) { i, entry ->
             val available = !entry.track.isMissing && (online || entry.track.key in downloaded)
-            TrackRow(
+            CardItem(i, entries.size) { TrackRow(
                 entry.track,
                 onClick = {
                     when {
@@ -371,8 +424,9 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
                     if (i > 0) add("Move up" to { reorder(scope, c, id, entries.map { it.entryId }, i, i - 1) })
                     if (i < entries.size - 1) add("Move down" to { reorder(scope, c, id, entries.map { it.entryId }, i, i + 1) })
                 },
-            )
+            ) }
         }
+        item { Spacer(Modifier.height(24.dp)) }
     }
     if (renaming) {
         var name by remember { mutableStateOf(playlist.name) }
@@ -417,30 +471,36 @@ fun DownloadsScreen() {
     val waiting = downloads.filter { !it.done }
     LazyColumn(Modifier.fillMaxSize()) {
         item {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Downloads", style = MaterialTheme.typography.headlineMedium)
-                Text(
-                    "${done.size} songs · ${"%.1f".format(done.sumOf { it.bytes } / 1_048_576.0)} MB · they play with no connection at all",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { player.play(done.map { it.track }) }, enabled = done.isNotEmpty()) { Icon(Icons.Rounded.PlayArrow, null); Text("Play all") }
-                    FilledTonalButton(onClick = { player.playShuffled(done.map { it.track }) }, enabled = done.size > 1) { Icon(Icons.Rounded.Shuffle, null); Text("Shuffle") }
-                }
+            ScreenTitle(
+                "Downloads",
+                if (done.isEmpty()) null else "${done.size} songs · ${"%.1f".format(done.sumOf { it.bytes } / 1_048_576.0)} MB · play with no connection",
+            )
+        }
+        if (done.isNotEmpty()) item {
+            Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { player.play(done.map { it.track }) }) { Icon(Icons.Rounded.PlayArrow, null); Text("Play all") }
+                FilledTonalButton(onClick = { player.playShuffled(done.map { it.track }) }, enabled = done.size > 1) { Icon(Icons.Rounded.Shuffle, null); Text("Shuffle") }
             }
         }
         if (downloads.isEmpty()) item { Empty("Nothing downloaded yet", "Download songs from their ⋮ menu, or keep a whole playlist offline.", Icons.Rounded.CloudOff) }
         if (waiting.isNotEmpty()) {
             item { SectionTitle("Waiting (${waiting.size})") }
-            items(waiting, key = { "w-${it.track.key}" }) { d ->
-                TrackRow(d.track, onClick = {}, extraActions = listOf("Cancel" to { scope.launch { c.downloads.remove(d.track) }; Unit }))
-                d.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 76.dp, bottom = 4.dp)) }
+            itemsIndexed(waiting, key = { _, d -> "w-${d.track.key}" }) { i, d ->
+                CardItem(i, waiting.size) {
+                    Column {
+                        TrackRow(d.track, onClick = {}, extraActions = listOf("Cancel" to { scope.launch { c.downloads.remove(d.track) }; Unit }))
+                        d.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 72.dp, end = 12.dp, bottom = 6.dp)) }
+                    }
+                }
             }
         }
         if (done.isNotEmpty()) item { SectionTitle("On this phone") }
         itemsIndexed(done, key = { _, d -> "d-${d.track.key}" }) { i, d ->
-            TrackRow(d.track, onClick = { player.play(done.map { it.track }, i) }, current = playing.track?.key == d.track.key, downloaded = true)
+            CardItem(i, done.size) {
+                TrackRow(d.track, onClick = { player.play(done.map { it.track }, i) }, current = playing.track?.key == d.track.key, downloaded = true)
+            }
         }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 

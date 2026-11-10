@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -37,8 +39,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,8 +65,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.music.connect.net.LyricsView
-import com.music.connect.ui.theme.SiteRose
 import com.music.connect.playback.MediaItems
+import com.music.connect.ui.theme.SiteRose
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -114,18 +120,20 @@ fun PlayerScreen(onClose: () -> Unit) {
             }
         }
         item {
-            Artwork(artwork, 300.dp, Modifier.padding(16.dp).aspectRatio(1f), corner = 24.dp)
+            Surface(shape = RoundedCornerShape(28.dp), shadowElevation = 12.dp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
+                Artwork(artwork, 300.dp, Modifier.aspectRatio(1f), corner = 28.dp)
+            }
         }
         item {
             Column(Modifier.padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(artist, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                val detail = when {
-                    state.live -> "Live · ${track.title}"
-                    track.key in downloaded -> "Downloaded"
-                    else -> descriptions[track.key]
+                Text(title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(artist, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Normal, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(4.dp))
+                when {
+                    state.live -> Pill("Live · ${track.title}", MaterialTheme.colorScheme.tertiary)
+                    track.key in downloaded -> Pill("Downloaded", MaterialTheme.colorScheme.primary, icon = Icons.Rounded.DownloadDone)
+                    else -> descriptions[track.key]?.let { Pill(it, MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
-                detail?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
         item {
@@ -172,19 +180,24 @@ fun PlayerScreen(onClose: () -> Unit) {
             }
         }
         item {
-            PrimaryTabRow(selectedTabIndex = tab, modifier = Modifier.padding(top = 16.dp)) {
-                Tab(tab == 0, { tab = 0 }, text = { Text("Up next") })
-                Tab(tab == 1, { tab = 1 }, text = { Text("Lyrics") })
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 12.dp)) {
+                listOf("Up next", "Lyrics").forEachIndexed { i, label ->
+                    SegmentedButton(selected = tab == i, onClick = { tab = i }, shape = SegmentedButtonDefaults.itemShape(index = i, count = 2), icon = {}) { Text(label) }
+                }
             }
         }
         if (tab == 0) {
+            val upcoming = state.queue.size - state.index.coerceAtLeast(0)
             itemsIndexed(state.queue, key = { i, t -> "$i-${t.key}" }) { i, queued ->
                 if (i < state.index) return@itemsIndexed
-                TrackRow(queued, onClick = { player.jumpTo(i) }, current = i == state.index, downloaded = queued.key in downloaded, extraActions = listOf("Remove from queue" to { player.remove(i); Unit }))
+                CardItem(i - state.index.coerceAtLeast(0), upcoming) {
+                    TrackRow(queued, onClick = { player.jumpTo(i) }, current = i == state.index, downloaded = queued.key in downloaded, extraActions = listOf("Remove from queue" to { player.remove(i); Unit }))
+                }
             }
         } else {
-            item { Lyrics(nowSong, state.positionMs) }
+            item { AppCard(Modifier.padding(horizontal = 16.dp), padding = 0.dp) { Lyrics(nowSong, state.positionMs) } }
         }
+        item { Spacer(Modifier.height(24.dp)) }
     }
     if (addTo && nowSong != null) AddToPlaylistDialog(listOf(nowSong)) { addTo = false }
     if (info) TrackInfoDialog(track) { info = false }

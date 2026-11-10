@@ -12,6 +12,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -22,6 +23,7 @@ import com.music.connect.playback.PlayerConnection
 import com.music.connect.ui.LocalPlayer
 import com.music.connect.ui.MainScaffold
 import com.music.connect.ui.SignInScreen
+import com.music.connect.data.ThemeMode
 import com.music.connect.ui.theme.ConnectTheme
 import com.music.player.model.SourceType
 import kotlinx.coroutines.flow.first
@@ -63,7 +65,12 @@ class ScreensTest {
     }
 
     @Test
-    fun `playlists, offline`() {
+    fun `playlists, offline, in the dark theme`() = playlistsOffline(ThemeMode.DARK, "-dark")
+
+    @Test
+    fun `playlists, offline`() = playlistsOffline(ThemeMode.SYSTEM, "")
+
+    private fun playlistsOffline(mode: ThemeMode, suffix: String) {
         val app = RuntimeEnvironment.getApplication()
         val c = app.container
         runBlocking {
@@ -79,25 +86,25 @@ class ScreensTest {
         }
         val player = PlayerConnection(app) { "https://music.example.com" }
         compose.setContent {
-            ConnectTheme {
+            ConnectTheme(mode) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     CompositionLocalProvider(LocalPlayer provides player) { MainScaffold() }
                 }
             }
         }
-        compose.onNodeWithText("Search").assertExists()
-        save("search-offline")
+        compose.onAllNodesWithText("Search").onFirst().assertExists()
+        save("search-offline$suffix")
         compose.onNodeWithText("Playlists").performClickSafe()
         compose.waitForIdle()
         compose.onNodeWithText("Late-night drive").assertExists()
-        save("playlists")
+        save("playlists$suffix")
         compose.onNodeWithText("Late-night drive").performClickSafe()
         compose.waitForIdle()
         compose.onNodeWithText("Neon Tidepool").assertExists()
-        save("playlist")
+        save("playlist$suffix")
         compose.onNodeWithText("Settings").performClickSafe()
         compose.waitForIdle()
-        save("settings")
+        save("settings$suffix")
     }
 
     @Test

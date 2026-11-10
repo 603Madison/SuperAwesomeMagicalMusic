@@ -1,42 +1,44 @@
 package com.music.connect.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material3.IconButton
-import androidx.compose.material.icons.rounded.HeartBroken
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.ui.platform.testTag
-import com.music.connect.ui.theme.SiteRose
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.HeartBroken
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,6 +53,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,8 +61,9 @@ import com.music.connect.net.ApiTrack
 import com.music.connect.net.ArtistView
 import com.music.connect.net.ChannelView
 import com.music.connect.net.SourceView
-import kotlinx.coroutines.launch
+import com.music.connect.ui.theme.SiteRose
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 /** SiriusXM channels, Pandora artist stations and radio stations, through the server. */
 @Composable
@@ -70,11 +74,17 @@ fun RadioScreen() {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(online) { if (online) sources = runCatching { c.api.sources() }.getOrNull() }
     if (!online) {
-        Empty("Radio needs a connection", "Live radio streams from your server. Your downloads still play.", Icons.Rounded.CloudOff)
+        Column {
+            ScreenTitle("Radio")
+            Empty("Radio needs a connection", "Live radio streams from your server. Your downloads still play.", Icons.Rounded.CloudOff)
+        }
         return
     }
     val usable = sources?.filter { it.enabled && !it.hidden } ?: run {
-        Row(Modifier.fillMaxWidth().padding(32.dp)) { CircularProgressIndicator() }
+        Column {
+            ScreenTitle("Radio")
+            Row(Modifier.fillMaxWidth().padding(32.dp), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
+        }
         return
     }
     val sxm = usable.firstOrNull { it.kind == "SIRIUSXM" }
@@ -83,9 +93,18 @@ fun RadioScreen() {
     // Favourites made on the web player show up here when the tab opens.
     LaunchedEffect(Unit) { c.refreshFavorites() }
     Column(Modifier.fillMaxSize()) {
+        ScreenTitle("Radio")
         if (favorites.isNotEmpty()) Favorites(favorites)
-        PrimaryTabRow(selectedTabIndex = tab) {
-            listOf("SiriusXM", "Pandora", "Local radio").forEachIndexed { i, label -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(label) }) }
+        val kinds = listOf("SiriusXM", "Pandora", "Local radio")
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            kinds.forEachIndexed { i, label ->
+                SegmentedButton(
+                    selected = tab == i,
+                    onClick = { tab = i },
+                    shape = SegmentedButtonDefaults.itemShape(index = i, count = kinds.size),
+                    icon = {},
+                ) { Text(label, maxLines = 1) }
+            }
         }
         when (tab) {
             0 -> sxm?.let { Channels(it) } ?: Empty("No SiriusXM account", "Add yours on the server, in Settings › Sources.", Icons.Rounded.Radio)
@@ -127,7 +146,7 @@ private fun Favorites(favorites: List<ApiTrack>) {
                         onLongClickLabel = "More",
                     ),
                 ) {
-                    Artwork(track.artworkUrl, 88.dp, corner = 14.dp)
+                    Artwork(track.artworkUrl, 88.dp, corner = 18.dp)
                     Spacer(Modifier.height(6.dp))
                     Text(
                         track.title,
@@ -168,28 +187,27 @@ private fun Channels(source: SourceView) {
     val words = filter.lowercase().split(' ').filter { it.isNotBlank() }
     val shown = channels.orEmpty().filter { !it.locked && words.all { w -> "${it.track.title} ${it.number ?: ""} ${it.category}".lowercase().contains(w) } }
     LazyColumn(Modifier.fillMaxSize()) {
-        item {
-            OutlinedTextField(filter, { filter = it }, placeholder = { Text("Filter: name, number or genre") }, singleLine = true, leadingIcon = { Icon(Icons.Rounded.Search, null) }, modifier = Modifier.fillMaxWidth().padding(16.dp))
-        }
-        if (channels == null) item { Row(Modifier.padding(32.dp)) { CircularProgressIndicator() } }
-        error?.let { item { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) } }
+        item { SearchField(filter, { filter = it }, "Filter: name, number or genre") }
+        if (channels == null) item { Row(Modifier.fillMaxWidth().padding(32.dp), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() } }
+        error?.let { item { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) } }
         shown.groupBy { it.category.ifBlank { "Other" } }.forEach { (category, list) ->
             item(key = "c-$category") { SectionTitle(category) }
-            items(list, key = { it.track.sourceId }) { channel ->
-                Row(
-                    Modifier.fillMaxWidth().clickable { player.play(listOf(channel.track)) }.padding(horizontal = 16.dp, vertical = 6.dp),
+            itemsIndexed(list, key = { _, it -> it.track.sourceId }) { i, channel ->
+                CardItem(i, list.size) { Row(
+                    Modifier.fillMaxWidth().clickable { player.play(listOf(channel.track)) }.padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Artwork(channel.track.artworkUrl, 48.dp)
+                    Artwork(channel.track.artworkUrl, 48.dp, corner = 12.dp)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(channel.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (playing.track?.key == channel.track.key) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                         Text(channel.number?.let { "Ch $it" }.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (channel.track.key in favoriteKeys) Icon(Icons.Rounded.Favorite, "Favourite", tint = SiteRose, modifier = Modifier.size(18.dp))
-                }
+                    if (channel.track.key in favoriteKeys) Icon(Icons.Rounded.Favorite, "Favourite", tint = SiteRose, modifier = Modifier.padding(end = 8.dp).size(18.dp))
+                } }
             }
         }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
@@ -210,21 +228,13 @@ private fun Stations(source: SourceView) {
         }
     }
     LazyColumn(Modifier.fillMaxSize()) {
-        item {
-            OutlinedTextField(
-                query, { query = it },
-                placeholder = { Text("An artist to start a station from") },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                trailingIcon = { if (busy) CircularProgressIndicator(Modifier.padding(12.dp)) },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { search() }),
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-            )
-        }
+        item { SearchField(query, { query = it }, "An artist to start a station from", busy = busy, onSearch = { search() }) }
+        if (artists == null) item { Empty("Pandora artist stations", "Search for an artist to start their station; the heart keeps it in your favourites.", Icons.Rounded.Radio) }
         artists?.let { if (it.isEmpty()) item { Empty("No stations found", "Try the artist's full name.") } }
-        items(artists.orEmpty(), key = { it.id }) { artist ->
-            Row(
+        val found = artists.orEmpty()
+        if (found.isNotEmpty()) item { Spacer(Modifier.height(8.dp)) }
+        itemsIndexed(found, key = { _, it -> it.id }) { i, artist ->
+            CardItem(i, found.size) { Row(
                 Modifier.fillMaxWidth().clickable {
                     scope.launch {
                         runCatching { c.api.station(source.id, artist, null, null, false) }
@@ -234,18 +244,19 @@ private fun Stations(source: SourceView) {
                             }
                             .onFailure { c.tell(it.message ?: "Couldn't start the station") }
                     }
-                }.padding(horizontal = 16.dp, vertical = 8.dp),
+                }.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Artwork(artist.artworkUrl, 52.dp)
+                Artwork(artist.artworkUrl, 52.dp, corner = 26.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(artist.name, style = MaterialTheme.typography.bodyLarge)
                     Text(if (artist.stationId != null) "Pandora station" else "Artist station", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 StationHeart(source, artist)
-            }
+            } }
         }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
@@ -301,25 +312,19 @@ private fun LocalRadio(source: SourceView) {
     }
     LazyColumn(Modifier.fillMaxSize()) {
         item {
-            OutlinedTextField(
-                query, { query = it },
-                placeholder = { Text("Station name, e.g. WFMU or jazz") },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = {
-                    scope.launch {
-                        stations = runCatching { c.api.radioSearch(source.id, query.trim(), null) }.onFailure { c.tell(it.message ?: "Search failed") }.getOrNull()
-                        title = "“${query.trim()}”"
-                    }
-                }),
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-            )
+            SearchField(query, { query = it }, "Station name, e.g. WFMU or jazz", onSearch = {
+                scope.launch {
+                    stations = runCatching { c.api.radioSearch(source.id, query.trim(), null) }.onFailure { c.tell(it.message ?: "Search failed") }.getOrNull()
+                    title = "“${query.trim()}”"
+                }
+            })
         }
         item { SectionTitle(title) }
-        if (stations == null) item { Row(Modifier.padding(32.dp)) { CircularProgressIndicator() } }
-        items(stations.orEmpty(), key = { it.sourceId }) { station ->
-            TrackRow(station, onClick = { player.play(listOf(station)) }, current = playing.track?.key == station.key)
+        if (stations == null) item { Row(Modifier.fillMaxWidth().padding(32.dp), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() } }
+        val list = stations.orEmpty()
+        itemsIndexed(list, key = { _, it -> it.sourceId }) { i, station ->
+            CardItem(i, list.size) { TrackRow(station, onClick = { player.play(listOf(station)) }, current = playing.track?.key == station.key) }
         }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }

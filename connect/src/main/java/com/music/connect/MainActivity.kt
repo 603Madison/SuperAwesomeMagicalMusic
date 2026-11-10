@@ -3,12 +3,14 @@ package com.music.connect
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,7 +25,12 @@ import com.music.connect.ui.LocalPlayer
 import com.music.connect.ui.MainScaffold
 import com.music.connect.ui.SignInScreen
 import com.music.connect.ui.theme.ConnectTheme
+import com.music.connect.ui.theme.isAppInDarkTheme
 import kotlinx.coroutines.launch
+
+/** The scrims Android's default edge-to-edge puts behind three-button navigation. */
+private val LIGHT_SCRIM = android.graphics.Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
+private val DARK_SCRIM = android.graphics.Color.argb(0x80, 0x1b, 0x1b, 0x1b)
 
 class MainActivity : ComponentActivity() {
     private lateinit var player: PlayerConnection
@@ -41,9 +48,17 @@ class MainActivity : ComponentActivity() {
         player.connect()
         handle(intent)
         setContent {
-            ConnectTheme {
+            val settings by c.settings.collectAsState()
+            // The status and navigation bars' icons follow the app's theme, which may not be the phone's.
+            val dark = isAppInDarkTheme(settings.themeMode)
+            LaunchedEffect(dark) {
+                enableEdgeToEdge(
+                    statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark },
+                    navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM) { dark },
+                )
+            }
+            ConnectTheme(settings.themeMode, settings.wallpaperColors) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    val settings by c.settings.collectAsState()
                     CompositionLocalProvider(LocalPlayer provides player) {
                         if (settings.signedIn && !finishing.value) MainScaffold() else SignInScreen(finishing.value, signInError.value)
                     }

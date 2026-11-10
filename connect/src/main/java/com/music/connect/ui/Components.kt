@@ -5,30 +5,43 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.SatelliteAlt
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -38,6 +51,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
@@ -49,11 +64,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -64,6 +83,7 @@ import com.music.connect.data.Library
 import com.music.connect.net.ApiTrack
 import com.music.connect.playback.MediaItems
 import com.music.connect.playback.PlayerConnection
+import com.music.connect.ui.theme.LocalBackdrop
 import com.music.player.quality.NetworkClass
 import kotlinx.coroutines.launch
 
@@ -112,10 +132,10 @@ fun TrackRow(
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Artwork(track.artworkUrl, 48.dp)
+        Artwork(track.artworkUrl, 48.dp, corner = 12.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -239,19 +259,171 @@ fun AddToPlaylistDialog(tracks: List<ApiTrack>, onDone: () -> Unit) {
     )
 }
 
+/** A friendly, centred placeholder for empty lists and problems, as in the other apps. */
 @Composable
-fun Empty(title: String, body: String? = null, icon: ImageVector? = null) {
-    Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        icon?.let { Icon(it, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary) }
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        body?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+fun Empty(title: String, body: String? = null, icon: ImageVector? = null, action: (@Composable () -> Unit)? = null) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 36.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier.size(72.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon ?: Icons.Rounded.MusicNote, null, Modifier.size(34.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        body?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        }
+        action?.let {
+            Spacer(Modifier.height(16.dp))
+            it()
+        }
     }
 }
 
+/** A small heading above a card, as in the other apps' settings and lists. */
 @Composable
-fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 6.dp))
+fun SectionTitle(text: String, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null) {
+    Row(modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 20.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f).semantics { heading() },
+        )
+        trailing?.invoke()
+    }
 }
+
+/** Everything behind the screens: the theme's gentle gradient. */
+@Composable
+fun Backdrop(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(modifier.fillMaxSize().background(LocalBackdrop.current)) { content() }
+}
+
+/**
+ * A tab's title, large and left-aligned over the backdrop, with its actions on the right: as the
+ * other apps head their screens.
+ */
+@Composable
+fun ScreenTitle(title: String, subtitle: String? = null, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
+            subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        actions()
+    }
+}
+
+/** A page opened from a tab (an artist, an album, a playlist): back on the left, actions on the right. */
+@Composable
+fun BackBar(onBack: (() -> Unit)?, title: String? = null, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
+        Text(title.orEmpty(), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
+        actions()
+    }
+}
+
+/** The app's one card style, as in the other apps: 20dp corners on surfaceContainer. */
+@Composable
+fun AppCard(modifier: Modifier = Modifier, padding: Dp = 16.dp, onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+    val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+    val shape = RoundedCornerShape(CARD_CORNER)
+    val body: @Composable ColumnScope.() -> Unit = { Column(Modifier.padding(padding), content = content) }
+    if (onClick != null) Card(onClick = onClick, shape = shape, colors = colors, modifier = modifier.fillMaxWidth(), content = body)
+    else Card(shape = shape, colors = colors, modifier = modifier.fillMaxWidth(), content = body)
+}
+
+/** A heading above a card of rows, spaced like the other apps' settings. */
+@Composable
+fun SectionCard(title: String?, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.fillMaxWidth()) {
+        if (title != null) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp).semantics { heading() },
+            )
+        }
+        AppCard { Column(verticalArrangement = Arrangement.spacedBy(12.dp), content = content) }
+    }
+}
+
+/**
+ * One row of a card in a list: rows of a group sit together in one rounded card (the first
+ * rounds its top, the last its bottom), so long lists stay lazy.
+ */
+@Composable
+fun CardItem(index: Int, count: Int, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val top = if (index == 0) CARD_CORNER else 0.dp
+    val bottom = if (index == count - 1) CARD_CORNER else 0.dp
+    Box(
+        modifier
+            .padding(horizontal = 16.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(top = if (index == 0) 6.dp else 0.dp, bottom = if (index == count - 1) 6.dp else 0.dp),
+    ) { content() }
+}
+
+/** A small rounded label, e.g. "Live" or "Downloaded". */
+@Composable
+fun Pill(text: String, color: Color, modifier: Modifier = Modifier, icon: ImageVector? = null) {
+    Surface(color = color.copy(alpha = 0.14f), contentColor = color, shape = RoundedCornerShape(50), modifier = modifier) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(icon, null, Modifier.size(14.dp))
+                Spacer(Modifier.width(5.dp))
+            }
+            Text(text, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+/** A rounded search field on a card, for searches and filters. */
+@Composable
+fun SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    busy: Boolean = false,
+    onSearch: (() -> Unit)? = null,
+) {
+    TextField(
+        value, onValueChange,
+        leadingIcon = { Icon(Icons.Rounded.Search, null) },
+        trailingIcon = {
+            when {
+                busy -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                value.isNotEmpty() -> IconButton(onClick = { onValueChange("") }) { Icon(Icons.Rounded.Close, "Clear") }
+            }
+        },
+        placeholder = { Text(placeholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        singleLine = true,
+        shape = RoundedCornerShape(50),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+        ),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { onSearch?.invoke() }),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+}
+
+/** Corners of the app's cards, as in the other apps. */
+val CARD_CORNER = 20.dp
 
 /** Says when the app is offline or on satellite, and what that means. */
 @Composable
@@ -264,8 +436,8 @@ fun NetworkBanner() {
         network.networkClass == NetworkClass.SATELLITE -> Icons.Rounded.SatelliteAlt to "On satellite: lower quality, loading well ahead"
         else -> return
     }
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, Modifier.size(18.dp))
             Spacer(Modifier.width(10.dp))
             Text(text, style = MaterialTheme.typography.bodySmall)

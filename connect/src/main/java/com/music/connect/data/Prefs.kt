@@ -37,6 +37,10 @@ data class Settings(
     val speakers: Boolean = true,
     /** Speakers' addresses typed in, for networks where they can't be found by themselves. */
     val speakerAddresses: List<String> = emptyList(),
+    /** Light, dark, or as the phone is. */
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    /** The phone's wallpaper colours (Android 12 and later) instead of the app's own violet. */
+    val wallpaperColors: Boolean = false,
 ) {
     val signedIn: Boolean get() = server.isNotEmpty() && token != null
 
@@ -51,6 +55,9 @@ data class Settings(
         else -> kbpsWifi
     }
 }
+
+/** Light, dark, or as the phone is. */
+enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark") }
 
 class Prefs(private val context: Context) {
     val settings: Flow<Settings> = context.store.data.map(::read)
@@ -79,6 +86,8 @@ class Prefs(private val context: Context) {
         prefs[LEVELLING] = next.levelling
         prefs[SPEAKERS] = next.speakers
         prefs[SPEAKER_ADDRESSES] = next.speakerAddresses.joinToString("\n")
+        prefs[THEME_MODE] = next.themeMode.name
+        prefs[WALLPAPER_COLORS] = next.wallpaperColors
         next.user?.let { prefs[USER] = ApiJson.encodeToString(User.serializer(), it) }
     }
 
@@ -95,6 +104,8 @@ class Prefs(private val context: Context) {
         levelling = prefs[LEVELLING] ?: true,
         speakers = prefs[SPEAKERS] ?: true,
         speakerAddresses = prefs[SPEAKER_ADDRESSES].orEmpty().lines().map { it.trim() }.filter { it.isNotEmpty() },
+        themeMode = ThemeMode.entries.firstOrNull { it.name == prefs[THEME_MODE] } ?: ThemeMode.SYSTEM,
+        wallpaperColors = prefs[WALLPAPER_COLORS] ?: false,
     )
 
     private companion object {
@@ -110,5 +121,7 @@ class Prefs(private val context: Context) {
         val LEVELLING = booleanPreferencesKey("levelling")
         val SPEAKERS = booleanPreferencesKey("speakers")
         val SPEAKER_ADDRESSES = stringPreferencesKey("speaker_addresses")
+        val THEME_MODE = stringPreferencesKey("theme_mode")
+        val WALLPAPER_COLORS = booleanPreferencesKey("wallpaper_colors")
     }
 }

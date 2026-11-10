@@ -1,6 +1,7 @@
 package com.music.connect.ui
 
 import android.os.SystemClock
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeDown
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
@@ -47,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -105,22 +108,20 @@ fun RemoteMiniPlayer(device: ConnectDevice) {
     var open by remember { mutableStateOf(false) }
     val now = ticking(state.playing)
     val position = remember(now, device) { c.devices.positionOf(device) }
-    Surface(tonalElevation = 3.dp) {
+    // The same floating card as the player here, edged in the web player's violet: this controls another device.
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(CARD_CORNER),
+        shadowElevation = 6.dp,
+        border = BorderStroke(1.5.dp, SitePurple.copy(alpha = 0.55f)),
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
         Column {
-            // A band of purple says this controls another device; it fills as the song plays.
-            LinearProgressIndicator(
-                progress = { if (state.live || state.durationMs <= 0) 1f else (position.toFloat() / state.durationMs).coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().height(3.dp),
-                color = SitePurple,
-                trackColor = SitePurple.copy(alpha = 0.3f),
-                gapSize = 0.dp,
-                drawStopIndicator = {},
-            )
             Row(
-                Modifier.fillMaxWidth().clickable { open = true }.padding(horizontal = 12.dp, vertical = 8.dp).testTag("remote-player"),
+                Modifier.fillMaxWidth().clickable { open = true }.padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 8.dp).testTag("remote-player"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Artwork(track.artworkUrl, 44.dp, corner = 8.dp)
+                Artwork(track.artworkUrl, 44.dp, corner = 12.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
@@ -142,6 +143,15 @@ fun RemoteMiniPlayer(device: ConnectDevice) {
                 }
                 if (!state.live) IconButton(onClick = { c.devices.command(device.id, "next") }) { Icon(Icons.Rounded.SkipNext, "Next") }
             }
+            // A band of violet fills as the song plays there.
+            LinearProgressIndicator(
+                progress = { if (state.live || state.durationMs <= 0) 1f else (position.toFloat() / state.durationMs).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 6.dp).height(3.dp).clip(RoundedCornerShape(50)),
+                color = SitePurple,
+                trackColor = SitePurple.copy(alpha = 0.2f),
+                gapSize = 0.dp,
+                drawStopIndicator = {},
+            )
         }
     }
     if (open) DevicesSheet { open = false }

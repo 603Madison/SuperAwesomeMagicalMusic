@@ -1,6 +1,7 @@
 package com.music.connect.ui
 
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -49,6 +51,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,6 +81,9 @@ class Browse(private val nav: NavHostController) {
 }
 
 val LocalBrowse = staticCompositionLocalOf<Browse?> { null }
+
+/** Back, for pages opened from a tab (null where there's nowhere to go back to). */
+val LocalBack = staticCompositionLocalOf<(() -> Unit)?> { null }
 
 private const val SONGS_AT_FIRST = 5
 
@@ -123,17 +131,9 @@ fun SearchScreen() {
     }
 
     Column(Modifier.fillMaxSize()) {
-        OutlinedTextField(
-            query, { query = it },
-            leadingIcon = { Icon(Icons.Rounded.Search, null) },
-            trailingIcon = { if (busy) CircularProgressIndicator(Modifier.padding(12.dp)) },
-            placeholder = { Text(if (online) "Artists, albums, songs" else "Search your downloads") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(),
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-        )
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
+        ScreenTitle("Search")
+        SearchField(query, { query = it }, if (online) "Artists, albums, songs" else "Search your downloads", busy = busy)
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp)) }
         LazyColumn(Modifier.fillMaxSize()) {
             if (query.isBlank()) {
                 item { Empty("Search all your music", "Artists, albums and songs from your library and every service on your server.", Icons.Rounded.Search) }
@@ -142,7 +142,7 @@ fun SearchScreen() {
                 item { SectionTitle("Downloaded") }
                 if (songs.isEmpty()) item { Empty("No downloads match", "Offline, search looks through your downloads.", Icons.Rounded.CloudOff) }
                 itemsIndexed(songs, key = { i, t -> "o-$i-${t.key}" }) { i, track ->
-                    TrackRow(track, onClick = { player.play(songs, i) }, current = playing.track?.key == track.key, downloaded = true)
+                    CardItem(i, songs.size) { TrackRow(track, onClick = { player.play(songs, i) }, current = playing.track?.key == track.key, downloaded = true) }
                 }
             }
             results?.let { r ->
@@ -160,17 +160,19 @@ fun SearchScreen() {
                     item(key = "songs") { SectionTitle("Songs") }
                     val shown = if (allSongs) songs else songs.take(SONGS_AT_FIRST)
                     itemsIndexed(shown, key = { i, t -> "s-$i-${t.key}" }) { i, track ->
-                        TrackRow(track, onClick = { player.play(songs, i) }, current = playing.track?.key == track.key, downloaded = track.key in downloaded)
+                        CardItem(i, shown.size) {
+                            TrackRow(track, onClick = { player.play(songs, i) }, current = playing.track?.key == track.key, downloaded = track.key in downloaded)
+                        }
                     }
                     if (songs.size > SONGS_AT_FIRST) item(key = "more") {
-                        TextButton(onClick = { allSongs = !allSongs }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                        TextButton(onClick = { allSongs = !allSongs }, modifier = Modifier.padding(horizontal = 12.dp)) {
                             Text(if (allSongs) "Fewer songs" else "All ${songs.size} songs")
                         }
                     }
                 }
                 if (r.artists.isNotEmpty()) item(key = "artists") {
                     SectionTitle("Artists")
-                    LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(r.artists, key = { it.id }) { ArtistTile(it) }
                     }
                 }
@@ -178,7 +180,7 @@ fun SearchScreen() {
                     SectionTitle("Albums")
                     AlbumRow(r.albums)
                 }
-                item { Spacer(Modifier.height(16.dp)) }
+                item { Spacer(Modifier.height(24.dp)) }
             }
         }
     }
@@ -217,6 +219,8 @@ private fun TopResultCard(top: TopResult, songs: List<ApiTrack>) {
             }
         }
     }
+    // The hero card, like the other apps' headline card: the accent's gradient.
+    val hero = Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.tertiaryContainer))
     Card(
         onClick = {
             when {
@@ -225,15 +229,16 @@ private fun TopResultCard(top: TopResult, songs: List<ApiTrack>) {
                 else -> play()
             }
         },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        shape = RoundedCornerShape(CARD_CORNER),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
     ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.background(hero).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Artwork(art, 88.dp, corner = if (top.kind == "artist") 44.dp else 10.dp)
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             FilledIconButton(onClick = ::play, enabled = !starting) {
                 if (starting) CircularProgressIndicator(Modifier.padding(10.dp)) else Icon(Icons.Rounded.PlayArrow, "Play $title")
@@ -257,7 +262,7 @@ private fun ArtistTile(artist: ArtistSummary, size: Dp = 112.dp) {
 
 @Composable
 private fun AlbumRow(albums: List<AlbumSummary>, showArtist: Boolean = true) {
-    LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    LazyRow(contentPadding = PaddingValues(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         items(albums, key = { it.id }) { AlbumTile(it, showArtist) }
     }
 }
@@ -266,8 +271,8 @@ private fun AlbumRow(albums: List<AlbumSummary>, showArtist: Boolean = true) {
 private fun AlbumTile(album: AlbumSummary, showArtist: Boolean, size: Dp = 136.dp) {
     val browse = LocalBrowse.current
     Column(Modifier.width(size + 16.dp).clickable { browse?.album(album.id) }.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Artwork(album.artworkUrl, size)
-        Text(album.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Artwork(album.artworkUrl, size, corner = 16.dp)
+        Text(album.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(
             listOfNotNull(album.year?.toString(), album.artist.takeIf { showArtist }).joinToString(" · ").ifEmpty { "Album" },
             style = MaterialTheme.typography.bodySmall,
@@ -311,8 +316,9 @@ fun ArtistScreen(id: String?, name: String?) {
     }
     val p: ArtistPage = page
     LazyColumn(Modifier.fillMaxSize()) {
+        item { BackBar(LocalBack.current) }
         item {
-            Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Artwork(p.artist.artworkUrl, 168.dp, corner = 84.dp)
                 Text(p.artist.name, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
                 PlayRow(p.topSongs)
@@ -321,13 +327,15 @@ fun ArtistScreen(id: String?, name: String?) {
         if (p.topSongs.isNotEmpty()) {
             item { SectionTitle("Popular") }
             itemsIndexed(p.topSongs, key = { i, t -> "t-$i-${t.key}" }) { i, track ->
-                TrackRow(track, onClick = { player.play(p.topSongs, i) }, current = playing.track?.key == track.key, downloaded = track.key in downloaded)
+                CardItem(i, p.topSongs.size) {
+                    TrackRow(track, onClick = { player.play(p.topSongs, i) }, current = playing.track?.key == track.key, downloaded = track.key in downloaded)
+                }
             }
         }
         if (p.albums.isNotEmpty()) item { SectionTitle("Albums"); AlbumRow(p.albums, showArtist = false) }
         if (p.singles.isNotEmpty()) item { SectionTitle("Singles and EPs"); AlbumRow(p.singles, showArtist = false) }
         if (p.topSongs.isEmpty() && p.albums.isEmpty() && p.singles.isEmpty()) item { Empty("Nothing by them here yet") }
-        item { Spacer(Modifier.height(16.dp)) }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
@@ -346,9 +354,10 @@ fun AlbumScreen(id: String?, title: String?, artist: String?) {
     val p: AlbumPage = page
     val total = p.tracks.sumOf { it.durationMs ?: 0 }
     LazyColumn(Modifier.fillMaxSize()) {
+        item { BackBar(LocalBack.current) }
         item {
-            Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Artwork(p.album.artworkUrl, 200.dp, corner = 14.dp)
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Artwork(p.album.artworkUrl, 220.dp, corner = 24.dp)
                 Spacer(Modifier.height(4.dp))
                 Text(p.album.title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
                 Text(
@@ -365,10 +374,13 @@ fun AlbumScreen(id: String?, title: String?, artist: String?) {
                 PlayRow(p.tracks)
             }
         }
-        itemsIndexed(p.tracks, key = { i, t -> "a-$i-${t.key}" }) { i, track ->
-            TrackRow(track, onClick = { player.play(p.tracks, i) }, current = playing.track?.key == track.key, downloaded = track.key in downloaded)
-        }
         item { Spacer(Modifier.height(16.dp)) }
+        itemsIndexed(p.tracks, key = { i, t -> "a-$i-${t.key}" }) { i, track ->
+            CardItem(i, p.tracks.size) {
+                TrackRow(track, onClick = { player.play(p.tracks, i) }, current = playing.track?.key == track.key, downloaded = track.key in downloaded)
+            }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
@@ -394,7 +406,10 @@ private fun PlayRow(tracks: List<ApiTrack>) {
 @Composable
 private fun Loading(error: String?, title: String) {
     if (error != null) {
-        Empty(title, error, Icons.Rounded.CloudOff)
+        Column {
+            BackBar(LocalBack.current)
+            Empty(title, error, Icons.Rounded.CloudOff)
+        }
     } else {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
     }

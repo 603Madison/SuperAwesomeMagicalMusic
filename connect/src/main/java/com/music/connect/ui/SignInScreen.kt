@@ -56,8 +56,9 @@ fun SignInScreen(finishing: Boolean, error: String?) {
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
 
+    Backdrop {
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(28.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
     ) {
@@ -146,5 +147,6 @@ fun SignInScreen(finishing: Boolean, error: String?) {
             TextButton(onClick = { config = null }) { Text("Use another server") }
             Text("Server ${auth.version}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
     }
 }

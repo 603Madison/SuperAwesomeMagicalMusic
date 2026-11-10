@@ -43,14 +43,16 @@ song (the line being sung is big and bright; click any line to jump there).
 | **An artist's page** | **The web player on a phone** |
 | ![An artist's page with their popular songs](docs/screenshots/web-artist.jpg) | <img src="docs/screenshots/web-phone.jpg" alt="Now Playing on a phone, with its own controls" width="300"> |
 
-The SuperAwesomeMagicalMusic app (for the server): an artist's page, controlling the web player
+The SuperAwesomeMagicalMusic app (for the server), in the same look as the other apps (Lexend,
+rounded cards over a soft gradient, light and dark): an artist's page, controlling the web player
 from the phone (devices work together, like Spotify Connect, and MusicCast speakers join them),
-and favourite stations at the top of Radio.
+favourite stations at the top of Radio, and a playlist in the dark theme.
 
 <p>
-  <img src="docs/screenshots/app-artist.png" alt="The app's artist page" width="250">
-  <img src="docs/screenshots/app-devices.png" alt="The app controlling the web player, with the devices to play on" width="250">
-  <img src="docs/screenshots/app-radio.png" alt="Favourite stations at the top of the app's Radio tab" width="250">
+  <img src="docs/screenshots/app-artist.png" alt="The app's artist page" width="200">
+  <img src="docs/screenshots/app-devices.png" alt="The app controlling the web player, with the devices to play on" width="200">
+  <img src="docs/screenshots/app-radio.png" alt="Favourite stations at the top of the app's Radio tab" width="200">
+  <img src="docs/screenshots/app-playlist-dark.png" alt="A playlist in the dark theme" width="200">
 </p>
 
 The screenshots use a made-up demo library (Velvet Satellites aren't a real band, lol), so the covers
