@@ -232,6 +232,9 @@ pub struct PlaylistSummary {
     pub duration_ms: i64,
     #[serde(default)]
     pub artwork: Vec<String>,
+    /// When it was last played, on any device.
+    #[serde(default)]
+    pub played_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

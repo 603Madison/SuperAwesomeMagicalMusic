@@ -39,12 +39,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.music.connect.BuildConfig
 import com.music.connect.data.Settings
 import com.music.connect.data.SyncWorker
+import com.music.connect.data.Palette
 import com.music.connect.data.ThemeMode
 import com.music.player.quality.NetworkClass
 import kotlinx.coroutines.launch
@@ -64,6 +68,10 @@ fun SettingsScreen() {
       Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Panel("Appearance") {
             Text("Theme", style = MaterialTheme.typography.bodyLarge)
+            ThemeChoice(settings.palette, enabled = !settings.wallpaperColors || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) { palette ->
+                update { it.copy(palette = palette) }
+            }
+            Text("Style", style = MaterialTheme.typography.bodyLarge)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 ThemeMode.entries.forEachIndexed { i, mode ->
                     SegmentedButton(
@@ -77,7 +85,7 @@ fun SettingsScreen() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 ToggleRow(
                     "Wallpaper colours",
-                    "Use your phone's wallpaper colours instead of the app's violet, like your other apps can.",
+                    "Use your phone's wallpaper colours instead of the theme's, like your other apps can.",
                     settings.wallpaperColors,
                 ) { v -> update { it.copy(wallpaperColors = v) } }
             }
@@ -249,5 +257,32 @@ private fun SpeakerSettings(settings: Settings, update: ((Settings) -> Settings)
             },
             dismissButton = { TextButton(onClick = { adding = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/** The themes, each with its two colours; the chosen one is outlined. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ThemeChoice(selected: Palette, enabled: Boolean, onChoose: (Palette) -> Unit) {
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Palette.entries.forEach { palette ->
+            androidx.compose.material3.FilterChip(
+                selected = palette == selected,
+                enabled = enabled,
+                onClick = { onChoose(palette) },
+                label = { Text(palette.label) },
+                leadingIcon = {
+                    androidx.compose.foundation.layout.Box(
+                        Modifier
+                            .size(20.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(palette.swatchA), androidx.compose.ui.graphics.Color(palette.swatchB)))),
+                    )
+                },
+            )
+        }
+    }
+    if (!enabled) {
+        Text("Your wallpaper's colours are in use.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

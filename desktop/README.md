@@ -14,7 +14,11 @@ view, no Chromium: a 5 MB program that starts at once.
 - **The player** along the bottom, with the queue; **media keys and the desktop's media
   controls** (GNOME's, KDE's, the lock screen) through MPRIS, with the song and its cover.
 - What you play counts toward your **history and Wrapped**, live radio included.
-- **Preferences**: the quality cap, and comparing every service for the best copy.
+- **The family's look**: Lexend, rounded cards over a soft glow of the theme, as the web player and
+  the phone app have it, with the same **themes**: Aurora (purple and green, the default), Violet,
+  Ocean and Ember, each light or dark (or as the system is), and **Bold text**.
+- **Preferences**: Appearance (theme, light or dark, bold text), the quality cap, and comparing
+  every service for the best copy.
 - Shortcuts: Ctrl+P play/pause, Ctrl+→ next, Ctrl+← previous, Ctrl+, preferences, Ctrl+Q quit.
 
 ## Installing

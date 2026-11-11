@@ -31,7 +31,8 @@ This repository holds:
   alongside Lite.
 - **SuperAwesomeMagicalMusic for Linux** (`desktop/`): a native desktop app for the server (Rust,
   GTK 4 and libadwaita, GStreamer) for Ubuntu 24.04+ and Fedora 40+: search, playlists, history,
-  SiriusXM and radio, with media keys and the desktop's media controls. See
+  SiriusXM and radio, with media keys and the desktop's media controls, in the same look and
+  themes as the web player and the phone app. See
   [desktop/README.md](desktop/README.md).
 
 Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Android 8.0+ (API 26).

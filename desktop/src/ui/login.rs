@@ -16,19 +16,55 @@ use crate::ui::{Ctx, ctx};
 
 pub fn view() -> gtk::Widget {
     let toolbar = adw::ToolbarView::new();
+    toolbar.add_css_class("page-bg");
+    toolbar.set_top_bar_style(adw::ToolbarStyle::Flat);
     let header = adw::HeaderBar::builder().show_title(false).build();
     toolbar.add_top_bar(&header);
 
-    let form = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(14).build();
-    let status = adw::StatusPage::builder()
+    // A card over the theme's glow, as the web player's sign-in.
+    let card = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(14).build();
+    card.add_css_class("login-card");
+    let logo = gtk::Image::builder()
         .icon_name(crate::APP_ID)
-        .title("SuperAwesomeMagicalMusic")
-        .description("Connect to your server to play your music here.")
+        .pixel_size(72)
+        .halign(gtk::Align::Center)
+        .build();
+    card.append(&logo);
+    let title = gtk::Label::builder()
+        .label("SuperAwesomeMagicalMusic")
+        .wrap(true)
+        .justify(gtk::Justification::Center)
+        .build();
+    title.add_css_class("login-title");
+    card.append(&title);
+    let sub = gtk::Label::builder()
+        .label("Connect to your server to play your music here.")
+        .wrap(true)
+        .justify(gtk::Justification::Center)
+        .build();
+    sub.add_css_class("login-sub");
+    card.append(&sub);
+    let form = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(14)
+        .margin_top(6)
+        .build();
+    card.append(&form);
+    let clamp = adw::Clamp::builder()
+        .maximum_size(440)
+        .child(&card)
+        .valign(gtk::Align::Center)
+        .margin_top(12)
+        .margin_bottom(36)
+        .margin_start(16)
+        .margin_end(16)
+        .build();
+    let scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .child(&clamp)
         .vexpand(true)
         .build();
-    let clamp = adw::Clamp::builder().maximum_size(420).child(&form).build();
-    status.set_child(Some(&clamp));
-    toolbar.set_content(Some(&status));
+    toolbar.set_content(Some(&scroll));
 
     // The server's address.
     let address_group = adw::PreferencesGroup::new();
@@ -49,7 +85,7 @@ pub fn view() -> gtk::Widget {
         .wrap(true)
         .justify(gtk::Justification::Center)
         .build();
-    hint.add_css_class("dim-label");
+    hint.add_css_class("login-sub");
     hint.add_css_class("caption");
 
     // Then how to sign in, once the server says.
@@ -138,7 +174,11 @@ fn build_sign_in(
     while let Some(child) = into.first_child() {
         into.remove(&child);
     }
-    let server = gtk::Label::builder().label(format!("Sign in to {}", config.server_name)).build();
+    let server = gtk::Label::builder()
+        .label(format!("Sign in to {}", config.server_name))
+        .wrap(true)
+        .justify(gtk::Justification::Center)
+        .build();
     server.add_css_class("title-4");
     into.append(&server);
 

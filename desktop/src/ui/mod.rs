@@ -3,6 +3,7 @@
 mod login;
 mod pages;
 mod player_bar;
+pub mod theme;
 pub mod widgets;
 mod window;
 
@@ -36,6 +37,11 @@ thread_local! {
 /// The app's context (on the main thread, once the window exists).
 pub fn ctx() -> Rc<Ctx> {
     CTX.with(|c| c.borrow().clone()).expect("the app's context")
+}
+
+/// The app's context, if the window exists yet.
+pub fn try_ctx() -> Option<Rc<Ctx>> {
+    CTX.with(|c| c.borrow().clone())
 }
 
 impl Ctx {
@@ -132,36 +138,6 @@ impl Ctx {
     }
 }
 
-const STYLE: &str = "
-.artwork { border-radius: 10px; background: alpha(currentColor, 0.08); }
-.artwork.round { border-radius: 9999px; }
-.card-tile { padding: 8px; border-radius: 14px; }
-.player-bar { padding: 8px 14px; border-top: 1px solid alpha(currentColor, 0.12); background: @headerbar_bg_color; }
-.player-bar .title { font-weight: 700; }
-.live-pill { background: #d13a3a; color: white; border-radius: 6px; padding: 1px 7px; font-size: 0.75em; font-weight: 800; }
-.top-result { padding: 16px; border-radius: 16px; background: alpha(currentColor, 0.06); }
-.hero-title { font-size: 2em; font-weight: 800; }
-.sidebar-title { font-weight: 800; font-size: 0.92em; }
-";
-
-fn accent_css(dark: bool) -> String {
-    let (accent, accent_bg) = if dark { ("#c8b6ff", "#6a4fe0") } else { ("#5b3fd1", "#5b3fd1") };
-    format!("@define-color accent_color {accent}; @define-color accent_bg_color {accent_bg}; @define-color accent_fg_color #ffffff;")
-}
-
-fn load_css() {
-    let Some(display) = gdk::Display::default() else { return };
-    let style = gtk::CssProvider::new();
-    style.load_from_string(STYLE);
-    gtk::style_context_add_provider_for_display(&display, &style, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-    // The family's violet, lighter in the dark.
-    let accent = gtk::CssProvider::new();
-    let manager = adw::StyleManager::default();
-    accent.load_from_string(&accent_css(manager.is_dark()));
-    gtk::style_context_add_provider_for_display(&display, &accent, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-    manager.connect_dark_notify(move |m| accent.load_from_string(&accent_css(m.is_dark())));
-}
-
 /// The app's icon, when it isn't installed (run from the build, or the icon theme's cache is old).
 fn register_icon() {
     let Some(display) = gdk::Display::default() else { return };
@@ -183,9 +159,9 @@ pub fn activate(app: &adw::Application) {
         window.present();
         return;
     }
-    load_css();
     register_icon();
     let config = Config::load();
+    theme::apply(&config.palette, &config.style, config.bold_text);
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("SuperAwesomeMagicalMusic")

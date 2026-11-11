@@ -63,6 +63,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -302,7 +305,15 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier, trailing: (@Compos
 /** Everything behind the screens: the theme's gentle gradient. */
 @Composable
 fun Backdrop(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Box(modifier.fillMaxSize().background(LocalBackdrop.current)) { content() }
+    val colors = LocalBackdrop.current
+    Box(
+        modifier.fillMaxSize().drawBehind {
+            drawRect(colors.base)
+            // Two soft glows of the theme at the top, like an aurora.
+            drawRect(Brush.radialGradient(listOf(colors.glowA, Color.Transparent), center = Offset(size.width * 0.1f, -size.height * 0.04f), radius = size.width * 1.05f))
+            drawRect(Brush.radialGradient(listOf(colors.glowB, Color.Transparent), center = Offset(size.width * 0.95f, size.height * 0.02f), radius = size.width * 0.85f))
+        },
+    ) { content() }
 }
 
 /**

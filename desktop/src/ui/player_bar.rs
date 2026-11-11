@@ -16,9 +16,9 @@ pub fn player_bar() -> gtk::Widget {
     bar.add_css_class("player-bar");
 
     // What's playing.
-    let now = gtk::Box::builder().spacing(12).width_request(240).build();
+    let now = gtk::Box::builder().spacing(12).build();
     let art_holder = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    art_holder.append(&artwork(None, 52, false));
+    art_holder.append(&artwork(None, 56, false));
     let text = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .valign(gtk::Align::Center)
@@ -29,14 +29,13 @@ pub fn player_bar() -> gtk::Widget {
         .max_width_chars(28)
         .label("Nothing playing")
         .build();
-    title.add_css_class("title");
+    title.add_css_class("now-title");
     let artist = gtk::Label::builder()
         .xalign(0.0)
         .ellipsize(gtk::pango::EllipsizeMode::End)
         .max_width_chars(28)
         .build();
-    artist.add_css_class("dim-label");
-    artist.add_css_class("caption");
+    artist.add_css_class("now-artist");
     let line = gtk::Box::builder().spacing(8).build();
     line.append(&title);
     let live = gtk::Label::builder()
@@ -56,7 +55,7 @@ pub fn player_bar() -> gtk::Widget {
     let center = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(2)
-        .width_request(320)
+        .width_request(220)
         .build();
     let buttons = gtk::Box::builder().spacing(10).halign(gtk::Align::Center).build();
     let previous = gtk::Button::builder()
@@ -70,9 +69,8 @@ pub fn player_bar() -> gtk::Widget {
         .icon_name("media-playback-start-symbolic")
         .tooltip_text("Play (Ctrl+P)")
         .build();
-    play.add_css_class("circular");
     play.add_css_class("suggested-action");
-    play.set_size_request(42, 42);
+    play.add_css_class("play-button");
     let next = gtk::Button::builder()
         .icon_name("media-skip-forward-symbolic")
         .tooltip_text("Next (Ctrl+→)")
@@ -88,13 +86,13 @@ pub fn player_bar() -> gtk::Widget {
     let progress_row = gtk::Box::builder().spacing(8).build();
     let elapsed = gtk::Label::builder().label("0:00").width_chars(5).xalign(1.0).build();
     elapsed.add_css_class("numeric");
-    elapsed.add_css_class("caption");
+    elapsed.add_css_class("time");
     let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 1.0);
     scale.set_hexpand(true);
     scale.set_draw_value(false);
     let total = gtk::Label::builder().label("0:00").width_chars(5).xalign(0.0).build();
     total.add_css_class("numeric");
-    total.add_css_class("caption");
+    total.add_css_class("time");
     progress_row.append(&elapsed);
     progress_row.append(&scale);
     progress_row.append(&total);
@@ -123,7 +121,7 @@ pub fn player_bar() -> gtk::Widget {
     queue_button.add_css_class("flat");
     let volume_icon = gtk::Image::from_icon_name("audio-volume-high-symbolic");
     let volume = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.01);
-    volume.set_width_request(110);
+    volume.set_width_request(90);
     volume.set_draw_value(false);
     volume.set_value(player.state().volume);
     end.append(&queue_button);
@@ -164,7 +162,7 @@ pub fn player_bar() -> gtk::Widget {
                     while let Some(child) = art_holder.first_child() {
                         art_holder.remove(&child);
                     }
-                    art_holder.append(&artwork(art.as_deref(), 52, false));
+                    art_holder.append(&artwork(art.as_deref(), 56, false));
                     shown_art.replace(Some(art));
                 }
             }

@@ -143,22 +143,36 @@ pub fn duration(ms: i64) -> String {
     }
 }
 
+/// A section's heading, as the web player's.
 pub fn heading(text: &str) -> gtk::Label {
-    let label = gtk::Label::builder()
-        .label(text)
-        .xalign(0.0)
-        .margin_top(18)
-        .margin_bottom(6)
-        .build();
-    label.add_css_class("title-4");
+    let label = gtk::Label::builder().label(text).xalign(0.0).build();
+    label.add_css_class("section-title");
     label
+}
+
+/// A page's large title, with a line under it, as the web player and the phone app head pages.
+pub fn page_title(title: &str, subtitle: &str) -> gtk::Box {
+    let header = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(4)
+        .margin_bottom(8)
+        .build();
+    let name = gtk::Label::builder().label(title).xalign(0.0).build();
+    name.add_css_class("page-title");
+    header.append(&name);
+    if !subtitle.is_empty() {
+        let line = gtk::Label::builder().label(subtitle).xalign(0.0).wrap(true).build();
+        line.add_css_class("page-subtitle");
+        header.append(&line);
+    }
+    header
 }
 
 /// A page's content: scrolls, and keeps to a readable width.
 pub fn scrolled(child: &impl IsA<gtk::Widget>) -> gtk::ScrolledWindow {
     let clamp = adw::Clamp::builder()
-        .maximum_size(1100)
-        .tightening_threshold(900)
+        .maximum_size(1180)
+        .tightening_threshold(1000)
         .child(child)
         .build();
     gtk::ScrolledWindow::builder()
@@ -172,17 +186,20 @@ pub fn page_box() -> gtk::Box {
     gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(6)
-        .margin_top(12)
-        .margin_bottom(24)
-        .margin_start(16)
-        .margin_end(16)
+        .margin_top(4)
+        .margin_bottom(32)
+        .margin_start(28)
+        .margin_end(28)
         .build()
 }
 
-/// A page with a header bar (and a back button when it was opened from another).
+/// A page over the theme's glow, with a flat bar (the back button, when it was opened from
+/// another page); its title is in the page, large.
 pub fn nav_page(title: &str, content: &impl IsA<gtk::Widget>) -> (adw::NavigationPage, adw::HeaderBar) {
-    let header = adw::HeaderBar::new();
+    let header = adw::HeaderBar::builder().show_title(false).build();
     let toolbar = adw::ToolbarView::new();
+    toolbar.add_css_class("page-bg");
+    toolbar.set_top_bar_style(adw::ToolbarStyle::Flat);
     toolbar.add_top_bar(&header);
     toolbar.set_content(Some(content));
     (adw::NavigationPage::builder().title(title).child(&toolbar).build(), header)
@@ -200,13 +217,46 @@ pub fn loading() -> gtk::Widget {
     spinner.upcast()
 }
 
-pub fn status(icon: &str, title: &str, description: &str) -> adw::StatusPage {
-    adw::StatusPage::builder()
-        .icon_name(icon)
-        .title(title)
-        .description(glib::markup_escape_text(description).as_str())
+/// An empty page, as the family's apps show one: a round icon, a title and a line.
+pub fn status(icon: &str, title: &str, description: &str) -> gtk::Box {
+    let empty = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(10)
+        .halign(gtk::Align::Center)
+        .valign(gtk::Align::Center)
         .vexpand(true)
-        .build()
+        .margin_top(48)
+        .margin_bottom(48)
+        .build();
+    let circle = gtk::Box::builder().halign(gtk::Align::Center).build();
+    circle.add_css_class("empty-icon");
+    circle.append(
+        &gtk::Image::builder()
+            .icon_name(icon)
+            .pixel_size(32)
+            .hexpand(true)
+            .vexpand(true)
+            .build(),
+    );
+    empty.append(&circle);
+    let name = gtk::Label::builder()
+        .label(title)
+        .wrap(true)
+        .justify(gtk::Justification::Center)
+        .build();
+    name.add_css_class("empty-title");
+    empty.append(&name);
+    if !description.is_empty() {
+        let line = gtk::Label::builder()
+            .label(description)
+            .wrap(true)
+            .max_width_chars(52)
+            .justify(gtk::Justification::Center)
+            .build();
+        line.add_css_class("empty-text");
+        empty.append(&line);
+    }
+    empty
 }
 
 /// Play and Shuffle, for a list of songs.
@@ -263,11 +313,11 @@ fn track_row(track: &Track, index: usize, numbered: bool, all: Rc<Vec<Track>>) -
             .width_chars(3)
             .xalign(1.0)
             .build();
-        number.add_css_class("dim-label");
+        number.add_css_class("track-number");
         number.add_css_class("numeric");
         row.add_prefix(&number);
     } else {
-        row.add_prefix(&artwork(track.artwork_url.as_deref(), 40, false));
+        row.add_prefix(&artwork(track.artwork_url.as_deref(), 44, false));
     }
     if track.is_missing() {
         row.add_css_class("dim-label");
@@ -334,7 +384,7 @@ pub fn card(art: Option<&str>, size: i32, round: bool, title: &str, subtitle: &s
         .max_width_chars(16)
         .xalign(if round { 0.5 } else { 0.0 })
         .build();
-    name.add_css_class("heading");
+    name.add_css_class("card-title");
     content.append(&name);
     if !subtitle.is_empty() {
         let sub = gtk::Label::builder()
@@ -343,8 +393,7 @@ pub fn card(art: Option<&str>, size: i32, round: bool, title: &str, subtitle: &s
             .max_width_chars(18)
             .xalign(if round { 0.5 } else { 0.0 })
             .build();
-        sub.add_css_class("dim-label");
-        sub.add_css_class("caption");
+        sub.add_css_class("card-sub");
         content.append(&sub);
     }
     let button = gtk::Button::builder().child(&content).build();
@@ -360,8 +409,8 @@ pub fn card_grid() -> gtk::FlowBox {
         .homogeneous(true)
         .min_children_per_line(2)
         .max_children_per_line(8)
-        .column_spacing(6)
-        .row_spacing(6)
+        .column_spacing(8)
+        .row_spacing(8)
         .valign(gtk::Align::Start)
         .build()
 }

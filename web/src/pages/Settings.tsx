@@ -3,7 +3,7 @@ import { Bot, Copy, LogOut, Monitor, Smartphone } from "lucide-react";
 import { api } from "../lib/api";
 import { when } from "../lib/format";
 import { session, useSession } from "../lib/session";
-import { QUALITY_STEPS, qualityLabel, usePrefs } from "../player/prefs";
+import { PALETTES, QUALITY_STEPS, qualityLabel, usePrefs } from "../player/prefs";
 import { SourcesSection } from "../components/Sources";
 import { Button, errorToast, Field, IconButton, PageHeader, Spinner, toast, Toggle, useLoad } from "../components/ui";
 
@@ -73,8 +73,34 @@ function PlaybackSettings() {
 
 function AppearanceSettings() {
   const boldText = usePrefs((p) => p.boldText);
+  const palette = usePrefs((p) => p.palette);
+  const scheme = usePrefs((p) => p.scheme);
   return (
     <div className="form-stack">
+      <Field label="Theme">
+        <div className="theme-picker" role="radiogroup" aria-label="Theme">
+          {PALETTES.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              role="radio"
+              aria-checked={palette === p.id}
+              className={`theme-choice ${palette === p.id ? "is-selected" : ""}`}
+              onClick={() => usePrefs.setState({ palette: p.id })}
+            >
+              <span className="theme-swatch" style={{ background: `linear-gradient(135deg, ${p.swatch[0]} 0 50%, ${p.swatch[1]} 50% 100%)` }} />
+              {p.name}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label="Style">
+        <select value={scheme} onChange={(e) => usePrefs.setState({ scheme: e.target.value as "system" | "light" | "dark" })}>
+          <option value="system">As the system is</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </Field>
       <Toggle label="Bold text" help="All text in Lexend Bold, the way a phone's Bold text setting draws it." checked={boldText} onChange={(boldText) => usePrefs.setState({ boldText })} />
     </div>
   );

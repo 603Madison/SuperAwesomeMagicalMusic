@@ -17,6 +17,8 @@ fn main() -> glib::ExitCode {
     // The window's class matches the .desktop file, so docks show the app's icon for it.
     glib::set_prgname(Some(APP_ID));
     glib::set_application_name("SuperAwesomeMagicalMusic");
+    // Lexend, before any text is drawn.
+    ui::theme::register_fonts();
     if let Err(e) = gst::init() {
         eprintln!("GStreamer couldn't start: {e}");
         return glib::ExitCode::FAILURE;

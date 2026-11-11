@@ -25,12 +25,14 @@ import com.music.connect.playback.PlayerConnection
 import com.music.connect.ui.LocalPlayer
 import com.music.connect.ui.MainScaffold
 import com.music.connect.ui.SignInScreen
+import com.music.connect.data.Palette
 import com.music.connect.data.ThemeMode
 import com.music.connect.ui.theme.ConnectTheme
 import com.music.player.model.SourceType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -77,7 +79,10 @@ class ScreensTest {
     @Test
     fun `playlists, offline, with Bold text on`() = playlistsOffline(ThemeMode.SYSTEM, "-bold", bold = true)
 
-    private fun playlistsOffline(mode: ThemeMode, suffix: String, bold: Boolean = false) {
+    @Test
+    fun `playlists, offline, in the Ocean theme, dark`() = playlistsOffline(ThemeMode.DARK, "-ocean-dark", palette = Palette.OCEAN)
+
+    private fun playlistsOffline(mode: ThemeMode, suffix: String, bold: Boolean = false, palette: Palette = Palette.AURORA) {
         val app = RuntimeEnvironment.getApplication()
         val c = app.container
         runBlocking {
@@ -91,11 +96,12 @@ class ScreensTest {
             c.library.create("Focus")
             c.library.setKeepOffline(c.library.all.first().first { it.name == "Focus" }.id, true)
             // Set either way: the setting is kept between tests.
-            c.prefs.update { it.copy(boldText = bold) }
+            c.prefs.update { it.copy(boldText = bold, palette = palette) }
         }
         val player = PlayerConnection(app) { "https://music.example.com" }
         compose.setContent {
-            ConnectTheme(mode, bold = c.settings.collectAsState().value.boldText) {
+            val settings = c.settings.collectAsState().value
+            ConnectTheme(mode, bold = settings.boldText, palette = settings.palette) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     CompositionLocalProvider(LocalPlayer provides player) { MainScaffold() }
                 }
@@ -115,6 +121,12 @@ class ScreensTest {
         compose.waitForIdle()
         compose.onNodeWithText("Bold text").assertExists()
         save("settings$suffix")
+        // Another theme, chosen in Settings, is kept and drawn at once.
+        compose.onNodeWithText("Ember").performClickSafe()
+        compose.waitUntil(10_000) { c.settings.value.palette == Palette.EMBER }
+        compose.waitForIdle()
+        assertEquals(Palette.EMBER, c.settings.value.palette)
+        save("settings-ember$suffix")
     }
 
     @Test

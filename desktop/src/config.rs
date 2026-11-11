@@ -25,6 +25,12 @@ pub struct Config {
     pub width: i32,
     pub height: i32,
     pub maximized: bool,
+    /// The theme: aurora (the default), violet, ocean or ember.
+    pub palette: String,
+    /// light, dark, or system.
+    pub style: String,
+    /// All text in Lexend Bold.
+    pub bold_text: bool,
 }
 
 impl Default for Config {
@@ -39,6 +45,9 @@ impl Default for Config {
             width: 1180,
             height: 760,
             maximized: false,
+            palette: "aurora".into(),
+            style: "system".into(),
+            bold_text: false,
         }
     }
 }

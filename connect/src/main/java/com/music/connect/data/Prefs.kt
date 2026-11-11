@@ -43,6 +43,8 @@ data class Settings(
     val wallpaperColors: Boolean = false,
     /** All text in Lexend Bold, as the phone's own Bold text setting draws it. */
     val boldText: Boolean = false,
+    /** The colours (unless the wallpaper's are used). */
+    val palette: Palette = Palette.AURORA,
 ) {
     val signedIn: Boolean get() = server.isNotEmpty() && token != null
 
@@ -60,6 +62,14 @@ data class Settings(
 
 /** Light, dark, or as the phone is. */
 enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark") }
+
+/** The themes, as on the web player and the desktop app, with the two colours each shows in Settings. */
+enum class Palette(val label: String, val swatchA: Long, val swatchB: Long) {
+    AURORA("Aurora", 0xFF6A3FD6, 0xFF12A37C),
+    VIOLET("Violet", 0xFF5B3FD1, 0xFF8E3F5C),
+    OCEAN("Ocean", 0xFF1D5FC9, 0xFF0E8FA3),
+    EMBER("Ember", 0xFFB4471A, 0xFF9C3F60),
+}
 
 class Prefs(private val context: Context) {
     val settings: Flow<Settings> = context.store.data.map(::read)
@@ -91,6 +101,7 @@ class Prefs(private val context: Context) {
         prefs[THEME_MODE] = next.themeMode.name
         prefs[WALLPAPER_COLORS] = next.wallpaperColors
         prefs[BOLD_TEXT] = next.boldText
+        prefs[PALETTE] = next.palette.name
         next.user?.let { prefs[USER] = ApiJson.encodeToString(User.serializer(), it) }
     }
 
@@ -110,6 +121,7 @@ class Prefs(private val context: Context) {
         themeMode = ThemeMode.entries.firstOrNull { it.name == prefs[THEME_MODE] } ?: ThemeMode.SYSTEM,
         wallpaperColors = prefs[WALLPAPER_COLORS] ?: false,
         boldText = prefs[BOLD_TEXT] ?: false,
+        palette = Palette.entries.firstOrNull { it.name == prefs[PALETTE] } ?: Palette.AURORA,
     )
 
     private companion object {
@@ -128,5 +140,6 @@ class Prefs(private val context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val WALLPAPER_COLORS = booleanPreferencesKey("wallpaper_colors")
         val BOLD_TEXT = booleanPreferencesKey("bold_text")
+        val PALETTE = stringPreferencesKey("palette")
     }
 }

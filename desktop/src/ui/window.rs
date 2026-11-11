@@ -6,6 +6,9 @@ use std::rc::Rc;
 use adw::prelude::*;
 use gtk::{gio, glib};
 
+use crate::api::{PlaylistSummary, Track};
+use crate::rt::bg;
+use crate::ui::widgets::artwork;
 use crate::ui::{Ctx, ctx, pages, player_bar};
 
 struct Section {
@@ -37,38 +40,100 @@ const SECTIONS: [Section; 4] = [
     },
 ];
 
+thread_local! {
+    /// Fills the sidebar's radio and playlists again (after a change elsewhere).
+    static REFRESH_SIDEBAR: std::cell::RefCell<Option<Rc<dyn Fn()>>> = std::cell::RefCell::new(None);
+}
+
+/// Shows your favourite stations and playlists in the sidebar as they are now.
+pub fn refresh_sidebar() {
+    if let Some(refresh) = REFRESH_SIDEBAR.with(|r| r.borrow().clone()) {
+        refresh();
+    }
+}
+
+/// A row of the sidebar's lists: a small cover and a name.
+fn side_row(art: Option<&str>, name: &str) -> gtk::ListBoxRow {
+    let line = gtk::Box::builder().spacing(10).build();
+    line.append(&artwork(art, 32, false));
+    let label = gtk::Label::builder()
+        .label(name)
+        .xalign(0.0)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .hexpand(true)
+        .build();
+    line.append(&label);
+    gtk::ListBoxRow::builder().child(&line).tooltip_text(name).build()
+}
+
+fn sidebar_heading(text: &str) -> gtk::Label {
+    let label = gtk::Label::builder().label(text.to_uppercase()).xalign(0.0).visible(false).build();
+    label.add_css_class("sidebar-heading");
+    label
+}
+
 /// The music's view, and its navigation (for opening artists, albums and playlists).
 pub fn music_view() -> (gtk::Widget, adw::NavigationView) {
     let nav = adw::NavigationView::new();
     let content = adw::NavigationPage::builder().title("Music").child(&nav).build();
 
-    // The sidebar.
+    // The sidebar, as the web player's: the brand, the sections as pills, your radio, your
+    // playlists, and who's signed in.
+    let column = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Single).build();
-    list.add_css_class("navigation-sidebar");
+    list.add_css_class("nav-list");
     for section in &SECTIONS {
-        let row = gtk::Box::builder()
-            .spacing(12)
-            .margin_top(6)
-            .margin_bottom(6)
-            .margin_start(6)
-            .build();
+        let row = gtk::Box::builder().spacing(14).build();
         row.append(&gtk::Image::from_icon_name(section.icon));
         row.append(&gtk::Label::new(Some(section.title)));
         list.append(&row);
     }
+    column.append(&list);
+    let radio_heading = sidebar_heading("Your radio");
+    let radio_list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
+    radio_list.add_css_class("side-list");
+    column.append(&radio_heading);
+    column.append(&radio_list);
+    let playlists_heading = sidebar_heading("Your playlists");
+    let playlists_list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
+    playlists_list.add_css_class("side-list");
+    column.append(&playlists_heading);
+    column.append(&playlists_list);
+
     let sidebar_toolbar = adw::ToolbarView::new();
-    let sidebar_header = adw::HeaderBar::new();
-    let name = gtk::Label::new(Some("SuperAwesomeMagicalMusic"));
-    name.add_css_class("sidebar-title");
-    sidebar_header.set_title_widget(Some(&name));
+    sidebar_toolbar.add_css_class("sidebar-pane");
+    let sidebar_header = adw::HeaderBar::builder().show_title(false).build();
+    let brand = gtk::Box::builder().spacing(10).margin_start(6).build();
+    let icon = gtk::Image::builder().icon_name(crate::APP_ID).pixel_size(32).build();
+    brand.append(&icon);
+    let name = gtk::Label::builder().label("SuperAwesome\nMagicalMusic").xalign(0.0).build();
+    name.add_css_class("brand-name");
+    brand.append(&name);
+    sidebar_header.pack_start(&brand);
     sidebar_header.pack_end(&main_menu());
     sidebar_toolbar.add_top_bar(&sidebar_header);
     let scroll = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
-        .child(&list)
+        .child(&column)
         .vexpand(true)
         .build();
     sidebar_toolbar.set_content(Some(&scroll));
+    let who = ctx().config.borrow().user.as_ref().map(|u| {
+        if u.display_name.is_empty() {
+            u.username.clone()
+        } else {
+            u.display_name.clone()
+        }
+    });
+    if let Some(who) = who {
+        let user = gtk::Label::builder()
+            .label(who)
+            .xalign(0.0)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .build();
+        user.add_css_class("sidebar-user");
+        sidebar_toolbar.add_bottom_bar(&user);
+    }
     let sidebar = adw::NavigationPage::builder()
         .title("SuperAwesomeMagicalMusic")
         .child(&sidebar_toolbar)
@@ -77,8 +142,8 @@ pub fn music_view() -> (gtk::Widget, adw::NavigationView) {
     let split = adw::NavigationSplitView::builder()
         .sidebar(&sidebar)
         .content(&content)
-        .min_sidebar_width(200.0)
-        .max_sidebar_width(260.0)
+        .min_sidebar_width(220.0)
+        .max_sidebar_width(270.0)
         .vexpand(true)
         .build();
     let split_for_rows = split.clone();
@@ -88,8 +153,63 @@ pub fn music_view() -> (gtk::Widget, adw::NavigationView) {
         if let Some(section) = SECTIONS.get(row.index() as usize) {
             nav_for_rows.replace(&[(section.make)()]);
             split_for_rows.set_show_content(true);
+            refresh_sidebar();
         }
     });
+
+    // Your radio and your playlists: click one to play it, or to open it.
+    let stations: Rc<std::cell::RefCell<Vec<Track>>> = Rc::default();
+    let playlists: Rc<std::cell::RefCell<Vec<PlaylistSummary>>> = Rc::default();
+    let s = stations.clone();
+    radio_list.connect_row_activated(move |_, row| {
+        if let Some(station) = s.borrow().get(row.index() as usize) {
+            ctx().player.play_tracks(vec![station.clone()], 0);
+        }
+    });
+    let (p, split_for_playlists) = (playlists.clone(), split.clone());
+    playlists_list.connect_row_activated(move |_, row| {
+        if let Some(playlist) = p.borrow().get(row.index() as usize) {
+            ctx().open_playlist(&playlist.id, &playlist.name);
+            split_for_playlists.set_show_content(true);
+        }
+    });
+    let refresh = move || {
+        let Some(api) = ctx().api() else { return };
+        let (radio_list, radio_heading, stations) = (radio_list.clone(), radio_heading.clone(), stations.clone());
+        let favourites_api = api.clone();
+        glib::spawn_future_local(async move {
+            let Ok(found) = bg(async move { favourites_api.live_favorites().await }).await else {
+                return;
+            };
+            let live: Vec<Track> = found.into_iter().filter(Track::is_live).collect();
+            clear_list(&radio_list);
+            for station in &live {
+                radio_list.append(&side_row(station.artwork_url.as_deref(), &station.title));
+            }
+            radio_heading.set_visible(!live.is_empty());
+            stations.replace(live);
+        });
+        let (playlists_list, playlists_heading, playlists) = (playlists_list.clone(), playlists_heading.clone(), playlists.clone());
+        glib::spawn_future_local(async move {
+            let Ok(mut found) = bg(async move { api.playlists().await }).await else {
+                return;
+            };
+            // Most recently played first, as on the web.
+            found.sort_by(|a, b| {
+                b.played_at
+                    .unwrap_or(0)
+                    .cmp(&a.played_at.unwrap_or(0))
+                    .then_with(|| a.name.cmp(&b.name))
+            });
+            clear_list(&playlists_list);
+            for playlist in &found {
+                playlists_list.append(&side_row(playlist.artwork.first().map(String::as_str), &playlist.name));
+            }
+            playlists_heading.set_visible(!found.is_empty());
+            playlists.replace(found);
+        });
+    };
+    REFRESH_SIDEBAR.with(|r| r.replace(Some(Rc::new(refresh))));
     list.select_row(list.row_at_index(0).as_ref());
 
     let layout = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
@@ -103,6 +223,12 @@ pub fn music_view() -> (gtk::Widget, adw::NavigationView) {
     window.add_breakpoint(narrow);
 
     (layout.upcast(), nav)
+}
+
+fn clear_list(list: &gtk::ListBox) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
 }
 
 fn main_menu() -> gtk::MenuButton {
@@ -120,10 +246,102 @@ fn main_menu() -> gtk::MenuButton {
         .build()
 }
 
-/// Quality, and the account.
+/// Saves a change to the look, and shows it.
+fn restyle(change: impl FnOnce(&mut crate::config::Config)) {
+    let ctx = crate::ui::ctx();
+    let (palette, style, bold) = {
+        let mut config = ctx.config.borrow_mut();
+        change(&mut config);
+        config.save();
+        (config.palette.clone(), config.style.clone(), config.bold_text)
+    };
+    // Not while the settings are borrowed: turning dark reads them.
+    crate::ui::theme::apply(&palette, &style, bold);
+}
+
+/// The theme (as two-colour swatches), light or dark, and bold text, as on the web and the phone.
+fn appearance(ctx: &Rc<Ctx>) -> adw::PreferencesGroup {
+    let group = adw::PreferencesGroup::builder().title("Appearance").build();
+    let config = ctx.config.borrow();
+
+    let themes = gtk::FlowBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .column_spacing(8)
+        .row_spacing(8)
+        .min_children_per_line(2)
+        .max_children_per_line(4)
+        .margin_top(10)
+        .margin_bottom(10)
+        .margin_start(10)
+        .margin_end(10)
+        .build();
+    let mut first: Option<gtk::ToggleButton> = None;
+    for palette in &crate::ui::theme::PALETTES {
+        let content = gtk::Box::builder().spacing(10).build();
+        let swatch = gtk::Box::builder().valign(gtk::Align::Center).build();
+        swatch.add_css_class("swatch");
+        swatch.add_css_class(&format!("swatch-{}", palette.id));
+        content.append(&swatch);
+        content.append(&gtk::Label::new(Some(palette.name)));
+        let button = gtk::ToggleButton::builder().child(&content).tooltip_text(palette.name).build();
+        button.add_css_class("flat");
+        button.add_css_class("theme-choice");
+        match &first {
+            Some(group) => button.set_group(Some(group)),
+            None => first = Some(button.clone()),
+        }
+        button.set_active(config.palette == palette.id);
+        let id = palette.id;
+        button.connect_toggled(move |b| {
+            if b.is_active() {
+                restyle(|c| c.palette = id.to_string());
+            }
+        });
+        themes.append(&button);
+    }
+    let theme_row = adw::PreferencesRow::builder().activatable(false).build();
+    let theme_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    let theme_title = gtk::Label::builder()
+        .label("Theme")
+        .xalign(0.0)
+        .margin_top(12)
+        .margin_start(12)
+        .build();
+    theme_box.append(&theme_title);
+    theme_box.append(&themes);
+    theme_row.set_child(Some(&theme_box));
+    group.add(&theme_row);
+
+    let styles = ["system", "light", "dark"];
+    let style = adw::ComboRow::builder()
+        .title("Style")
+        .model(&gtk::StringList::new(&["As the system is", "Light", "Dark"]))
+        .selected(styles.iter().position(|s| *s == config.style).unwrap_or(0) as u32)
+        .build();
+    style.connect_selected_notify(move |row| {
+        let chosen = styles.get(row.selected() as usize).copied().unwrap_or("system");
+        restyle(|c| c.style = chosen.to_string());
+    });
+    group.add(&style);
+
+    let bold = adw::SwitchRow::builder()
+        .title("Bold text")
+        .subtitle("All text in Lexend Bold")
+        .active(config.bold_text)
+        .build();
+    bold.connect_active_notify(move |row| {
+        let on = row.is_active();
+        restyle(|c| c.bold_text = on);
+    });
+    group.add(&bold);
+    group
+}
+
+/// The look, quality, and the account.
 pub fn preferences(ctx: &Rc<Ctx>) {
     let dialog = adw::PreferencesDialog::new();
     let page = adw::PreferencesPage::new();
+    page.add(&appearance(ctx));
 
     let playback = adw::PreferencesGroup::builder().title("Playback").build();
     let steps: [u32; 8] = [0, 320, 256, 192, 160, 128, 96, 64];
@@ -140,7 +358,7 @@ pub fn preferences(ctx: &Rc<Ctx>) {
     let model = gtk::StringList::new(&labels.iter().map(String::as_str).collect::<Vec<_>>());
     let quality = adw::ComboRow::builder()
         .title("Quality")
-        .subtitle("Songs above this are converted down on your server, or a smaller copy is picked")
+        .subtitle("Songs above it are made smaller on your server")
         .model(&model)
         .build();
     let current = ctx.config.borrow().kbps;
