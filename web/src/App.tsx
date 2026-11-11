@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { History as HistoryIcon, ListMusic, Radio as RadioIcon, Search as SearchIcon, Settings as SettingsIcon, Shield, Disc3 } from "lucide-react";
+import { History as HistoryIcon, ListMusic, Radio as RadioIcon, Search as SearchIcon, Settings as SettingsIcon, Shield, Disc3, Sparkles } from "lucide-react";
 import { liveKey, session, useSession } from "./lib/session";
 import { favoriteOf, playFavorite } from "./components/Favorite";
 import { usePlayer } from "./player/player";
@@ -15,6 +15,7 @@ import { Search } from "./pages/Search";
 import { AlbumView, ArtistView } from "./pages/Browse";
 import { PlaylistDetail, Playlists } from "./pages/Playlists";
 import { History } from "./pages/History";
+import { Wrapped } from "./pages/Wrapped";
 import { Radio } from "./pages/Radio";
 import { NowPlaying } from "./pages/NowPlaying";
 import { Settings } from "./pages/Settings";
@@ -83,6 +84,7 @@ function Shell() {
         <NavLink to="/radio" className="nav-link"><RadioIcon size={20} /> <span>Radio</span></NavLink>
         <NavLink to="/playlists" end className="nav-link"><ListMusic size={20} /> <span>Playlists</span></NavLink>
         <NavLink to="/history" className="nav-link"><HistoryIcon size={20} /> <span>History</span></NavLink>
+        <NavLink to="/wrapped" className="nav-link nav-wrapped"><Sparkles size={20} /> <span>Wrapped</span></NavLink>
         <NavLink to="/settings" className="nav-link"><SettingsIcon size={20} /> <span>Settings</span></NavLink>
         {user.role === "ADMIN" && <NavLink to="/admin" className="nav-link"><Shield size={20} /> <span>Admin</span></NavLink>}
         {stations.length > 0 && (
@@ -120,6 +122,7 @@ function Shell() {
           <Route path="/playlists" element={<Playlists />} />
           <Route path="/playlists/:id" element={<PlaylistDetail />} />
           <Route path="/history" element={<History />} />
+          <Route path="/wrapped" element={<Wrapped />} />
           <Route path="/settings" element={<Settings />} />
           {user.role === "ADMIN" && <Route path="/admin" element={<Admin />} />}
           <Route path="*" element={<Navigate to="/" replace />} />

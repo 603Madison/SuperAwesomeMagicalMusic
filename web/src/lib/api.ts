@@ -1,6 +1,6 @@
 import type {
   ArtistView, ChannelView, NowView, StationTracks,
-  AdminSettings, AuthConfig, KindsResponse, LidarrRequest, Listen, LyricsView, Playlist, PlaylistSummary,
+  AdminSettings, AuthConfig, KindsResponse, LidarrRequest, Listen, LyricsView, Wrapped, Playlist, PlaylistSummary,
   ResolvedStream, SearchResults, ArtistPage, AlbumPage, ServerSettings, SessionInfo, SourceView, Track, User, OidcSettings,
 } from "./types";
 
@@ -90,6 +90,8 @@ export const api = {
   history: (before?: number) => get<Listen[]>(`/api/history?limit=100${before ? `&before=${before}` : ""}`),
   addListens: (listens: Listen[]) => post<unknown>("/api/history", { listens }),
   clearHistory: () => del<unknown>("/api/history"),
+  wrapped: (year?: number) =>
+    get<Wrapped>(`/api/wrapped?tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}${year ? `&year=${year}` : ""}`),
 
   sourceKinds: () => get<KindsResponse>("/api/sources/kinds"),
   sources: () => get<SourceView[]>("/api/sources"),

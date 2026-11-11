@@ -121,11 +121,18 @@ function resolve(track: Track): Promise<ResolvedStream> {
 let listenedMs = 0;
 let lastTick = 0;
 let reported = false;
+/** Live radio: [listenedMs] when what's on last changed. */
+let liveMark = 0;
 
 function reportListen() {
   const { current, queue, index } = state();
   const item = queue[index];
-  if (!item || reported || current?.live) return;
+  if (!item) return;
+  if (current?.live) {
+    endLiveStretch();
+    return;
+  }
+  if (reported) return;
   const length = (item.track.durationMs ?? 0) || state().duration * 1000;
   // Counted like a scrobble: half the song, or four minutes, but at least 30 seconds.
   const needed = Math.max(30_000, Math.min(length / 2 || 30_000, 240_000));
@@ -135,6 +142,22 @@ function reportListen() {
   api.addListens([{ track, playedAt: Date.now() - listenedMs, listenedMs, client: "web" }]).catch(() => undefined);
 }
 
+/**
+ * Live radio counts too (for Wrapped): what was heard since what's on last changed, at least 30
+ * seconds of it, as a listen of that song, or of the channel or station itself when the song isn't
+ * known (talk, or a station that only sends a title), kept with the channel's name.
+ */
+function endLiveStretch() {
+  const { current, queue, index, liveNow } = state();
+  const item = queue[index];
+  if (!item || !current?.live) return;
+  const ms = Math.round(listenedMs - liveMark);
+  liveMark = listenedMs;
+  if (ms < 30_000) return;
+  const track = liveNow?.song ? asSong(liveNow.song) : item.track;
+  api.addListens([{ track, playedAt: Date.now() - ms, listenedMs: ms, client: "web", station: item.track.title }]).catch(() => undefined);
+}
+
 // ---- Loading and playing ----
 
 async function load(index: number, autoplay: boolean, startAt = 0) {
@@ -142,6 +165,7 @@ async function load(index: number, autoplay: boolean, startAt = 0) {
   if (!item) return;
   reportListen();
   listenedMs = 0;
+  liveMark = 0;
   reported = false;
   const token = ++loadToken;
   audio.pause();
@@ -299,6 +323,7 @@ function heard(now: LiveNow | null) {
     set({ liveNow: { ...now, heardAt: before.heardAt } });
     return;
   }
+  endLiveStretch();
   const history = before ? [before, ...state().liveHistory.filter((h) => h.title !== before.title || h.artist !== before.artist)].slice(0, 50) : state().liveHistory;
   set({ liveNow: now ? { ...now, heardAt: Date.now() } : null, liveHistory: history });
 }

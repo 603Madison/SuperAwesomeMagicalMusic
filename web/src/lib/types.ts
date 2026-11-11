@@ -185,7 +185,43 @@ export interface Listen {
   playedAt: number;
   listenedMs: number;
   client: string;
+  /** The live channel or station it was heard on. */
+  station?: string;
 }
+
+/** A year of listening (see the server's Wrapped). Minutes are listened time. */
+export interface Wrapped {
+  year: number;
+  years: number[];
+  soFar: boolean;
+  listens: number;
+  minutes: number;
+  songs: number;
+  artists: number;
+  albums: number;
+  days: number;
+  topSongs: WrappedSong[];
+  topArtists: WrappedArtist[];
+  topAlbums: WrappedAlbum[];
+  topStations: WrappedShare[];
+  sources: WrappedShare[];
+  devices: WrappedShare[];
+  months: number[];
+  hours: number[];
+  weekdays: number[];
+  biggestDay?: { date: string; minutes: number; listens: number } | null;
+  longestStreak: number;
+  firstSong?: WrappedSong | null;
+  onRepeat?: { track: Track; plays: number; date: string } | null;
+  discoveries: WrappedArtist[];
+  newArtists: number;
+  personality: { name: string; description: string };
+}
+
+export interface WrappedSong { track: Track; plays: number; minutes: number; firstPlayedAt?: number | null }
+export interface WrappedArtist { name: string; plays: number; minutes: number; artworkUrl?: string | null; topSong?: string | null }
+export interface WrappedAlbum { title: string; artist: string; plays: number; minutes: number; artworkUrl?: string | null }
+export interface WrappedShare { name: string; minutes: number }
 
 export interface LyricsView {
   lines: { timeMs?: number; text: string }[];

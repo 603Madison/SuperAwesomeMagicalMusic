@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { History as HistoryIcon } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ChevronRight, History as HistoryIcon, Sparkles } from "lucide-react";
 import { api } from "../lib/api";
 import { when } from "../lib/format";
 import type { Listen } from "../lib/types";
@@ -34,6 +35,13 @@ export function History() {
   return (
     <div className="page">
       <PageHeader title="History" subtitle="What you've listened to, on every device" actions={listens.length > 0 && <Button variant="ghost" onClick={() => setConfirm(true)}>Clear history</Button>} />
+      {listens.length > 0 && (
+        <Link to="/wrapped" className="wrapped-banner">
+          <Sparkles size={22} />
+          <span><strong>Your {new Date().getFullYear()} Wrapped</strong><span>Top songs, artists and stations, and your year's story</span></span>
+          <ChevronRight size={20} />
+        </Link>
+      )}
       {loading && !data && <div className="center-pad"><Spinner /></div>}
       {error && <div className="notice notice-error">{error}</div>}
       {data && !listens.length && <Empty icon={<HistoryIcon size={40} />} title="Nothing yet">Songs show up here once you've listened to a good part of them.</Empty>}
