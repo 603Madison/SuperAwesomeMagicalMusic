@@ -136,6 +136,7 @@ private fun Routes(nav: NavHostController) {
             arguments = listOf(optional("id"), optional("title"), optional("artist")),
         ) { back -> AlbumScreen(back.arguments?.getString("id"), back.arguments?.getString("title"), back.arguments?.getString("artist")) }
         composable("downloads") { DownloadsScreen() }
+        composable("wrapped") { WrappedScreen() }
         composable("settings") { SettingsScreen() }
         composable("player") { PlayerScreen(onClose = { nav.popBackStack() }) }
     }

@@ -26,7 +26,9 @@ This repository holds:
   back; songs and whole playlists download for offline listening; quality is set separately for
   Wi-Fi, mobile data and satellite; Android Auto, voice search and lyrics. Your devices work
   together (play on one, control it from another, move the music between them), and at home your
-  Yamaha MusicCast speakers join them. Installs alongside Lite.
+  Yamaha MusicCast speakers join them. **Wrapped** sums up your year (top songs, artists and
+  stations, when you listen) as a story to tap through, here and in the web player. Installs
+  alongside Lite.
 
 Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Android 8.0+ (API 26).
 

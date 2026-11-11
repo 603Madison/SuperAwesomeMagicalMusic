@@ -107,6 +107,8 @@ class PlaybackService : MediaLibraryService() {
     // Listening, for history.
     private var listening: ApiTrack? = null
     private var listenedMs = 0L
+    /** Live radio: how much had been heard when what's on last changed. */
+    private var liveMark = 0L
     private var playingSince = 0L
     private var startedAt = 0L
 
@@ -425,6 +427,7 @@ class PlaybackService : MediaLibraryService() {
             listening = track
             startedAt = System.currentTimeMillis()
             listenedMs = 0
+            liveMark = 0
             if (player.isPlaying) playingSince = SystemClock.elapsedRealtime()
             loudness.knownGainDb = gains[track.key]
             c.liveNow.value = null
@@ -471,6 +474,7 @@ class PlaybackService : MediaLibraryService() {
         val length = track.durationMs ?: 0
         val needed = maxOf(30_000L, minOf(if (length > 0) length / 2 else 30_000L, 240_000L))
         if (listenedMs >= needed) c.recordListen(track, listenedMs, startedAt)
+        endLiveStretch(track)
         if (track.isStationTrack && track.via != null) {
             val (stationId, trackId) = MediaItems.split(track.sourceId.removePrefix("stationtrack:"))
             val elapsed = listenedMs
@@ -478,6 +482,19 @@ class PlaybackService : MediaLibraryService() {
         }
         listening = null
         listenedMs = 0
+        liveMark = 0
+    }
+
+    /**
+     * Live radio counts too (for Wrapped): what was heard since what's on last changed, at least
+     * 30 seconds of it, as a listen of that song (or of the channel when the song isn't known).
+     */
+    private fun endLiveStretch(track: ApiTrack) {
+        if (!track.isLive) return
+        val played = listenedMs + if (playingSince > 0) SystemClock.elapsedRealtime() - playingSince else 0
+        val ms = played - liveMark
+        liveMark = played
+        if (ms >= 30_000) c.recordLiveListen(track, c.liveNow.value?.song, ms, System.currentTimeMillis() - ms)
     }
 
     /** What's on a live channel or station, for the app and the notification. */
@@ -510,6 +527,8 @@ class PlaybackService : MediaLibraryService() {
                 }
                 if (player.currentMediaItem?.let(MediaItems::track)?.key != track.key) break
                 if (now != c.liveNow.value) {
+                    val before = c.liveNow.value
+                    if (now?.title != before?.title || now?.artist != before?.artist) endLiveStretch(track)
                     c.liveNow.value = now
                     showLive(track, now)
                 }

@@ -2,7 +2,7 @@
 
 Your own music streaming service. The server signs in to your music services once (Jellyfin,
 YouTube Music, Lidarr) and serves them to everyone you let in, with a web player for the
-computer. Each person gets their own playlists and history, and can add their own services.
+computer. Each person gets their own playlists and history (and a yearly **Wrapped** from it), and can add their own services.
 
 - **Accounts**: a local *break-glass* admin made at first start, local accounts, and single
   sign-on with any OpenID Connect provider (Authentik, Keycloak, Authelia, Zitadel…).

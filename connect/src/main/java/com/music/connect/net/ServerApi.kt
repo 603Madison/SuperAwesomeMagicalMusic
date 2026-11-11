@@ -165,8 +165,60 @@ data class PlaylistEntry(val entryId: String, val track: ApiTrack, val addedAt: 
 @Serializable
 data class Playlist(val summary: PlaylistSummary, val entries: List<PlaylistEntry>)
 
+/** A song listened to; [station] is the live channel or station it was heard on, if it was. */
 @Serializable
-data class Listen(val track: ApiTrack, val playedAt: Long, val listenedMs: Long = 0, val client: String = "android")
+data class Listen(val track: ApiTrack, val playedAt: Long, val listenedMs: Long = 0, val client: String = "android", val station: String? = null)
+
+/** A year of listening, from the server (see its Wrapped). Minutes are listened time. */
+@Serializable
+data class Wrapped(
+    val year: Int,
+    val years: List<Int> = emptyList(),
+    val soFar: Boolean = false,
+    val listens: Int = 0,
+    val minutes: Long = 0,
+    val songs: Int = 0,
+    val artists: Int = 0,
+    val albums: Int = 0,
+    val days: Int = 0,
+    val topSongs: List<WrappedSong> = emptyList(),
+    val topArtists: List<WrappedArtist> = emptyList(),
+    val topAlbums: List<WrappedAlbum> = emptyList(),
+    val topStations: List<WrappedShare> = emptyList(),
+    val sources: List<WrappedShare> = emptyList(),
+    val devices: List<WrappedShare> = emptyList(),
+    val months: List<Long> = emptyList(),
+    val hours: List<Long> = emptyList(),
+    val weekdays: List<Long> = emptyList(),
+    val biggestDay: WrappedDay? = null,
+    val longestStreak: Int = 0,
+    val firstSong: WrappedSong? = null,
+    val onRepeat: WrappedRepeat? = null,
+    val discoveries: List<WrappedArtist> = emptyList(),
+    val newArtists: Int = 0,
+    val personality: WrappedPersonality = WrappedPersonality("", ""),
+)
+
+@Serializable
+data class WrappedSong(val track: ApiTrack, val plays: Int, val minutes: Long, val firstPlayedAt: Long? = null)
+
+@Serializable
+data class WrappedArtist(val name: String, val plays: Int, val minutes: Long, val artworkUrl: String? = null, val topSong: String? = null)
+
+@Serializable
+data class WrappedAlbum(val title: String, val artist: String, val plays: Int, val minutes: Long, val artworkUrl: String? = null)
+
+@Serializable
+data class WrappedShare(val name: String, val minutes: Long)
+
+@Serializable
+data class WrappedDay(val date: String, val minutes: Long, val listens: Int)
+
+@Serializable
+data class WrappedRepeat(val track: ApiTrack, val plays: Int, val date: String)
+
+@Serializable
+data class WrappedPersonality(val name: String, val description: String)
 
 @Serializable
 data class SourceView(val id: String, val kind: String, val name: String, val scope: String, val enabled: Boolean, val hidden: Boolean = false)
@@ -288,6 +340,10 @@ class ServerApi(
         post("${base()}/api/history", ApiJson.encodeToString(ListensBody.serializer(), ListensBody(listens)), Unit.serializer())
 
     suspend fun history(): List<Listen> = get("${base()}/api/history?limit=200", ListSerializer(Listen.serializer()))
+
+    /** Wrapped for [year] (this year when null), in the phone's time zone. */
+    suspend fun wrapped(year: Int?, timeZone: String): Wrapped =
+        get("${base()}/api/wrapped?tz=${enc(timeZone)}${year?.let { "&year=$it" }.orEmpty()}", Wrapped.serializer())
 
     suspend fun sources(): List<SourceView> = get("${base()}/api/sources", ListSerializer(SourceView.serializer()))
 

@@ -191,8 +191,20 @@ class Container(val context: Context) {
     /** Keeps a listen to send to the server (now, or when back online). */
     fun recordListen(track: ApiTrack, listenedMs: Long, playedAt: Long) {
         if (!track.isSong && !track.isStationTrack) return
+        keep(Listen(Library.asSong(track), playedAt, listenedMs))
+    }
+
+    /**
+     * Live radio, for Wrapped: [song] as heard on [channel] (a live channel or station), or the
+     * channel itself when the song isn't known (talk, or a station that only sends a title).
+     */
+    fun recordLiveListen(channel: ApiTrack, song: ApiTrack?, listenedMs: Long, playedAt: Long) {
+        if (!channel.isLive) return
+        keep(Listen(song?.let(Library::asSong) ?: channel, playedAt, listenedMs, station = channel.title))
+    }
+
+    private fun keep(listen: Listen) {
         scope.launch {
-            val listen = Listen(Library.asSong(track), playedAt, listenedMs)
             db.listens().add(ListenRow(listen = ApiJson.encodeToString(Listen.serializer(), listen)))
             if (online.value) runCatching { flushListens() }
         }

@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import com.music.connect.net.ApiTrack
+import com.music.connect.net.Listen
 import com.music.connect.net.ServerApi
 import com.music.connect.net.User
 import com.music.connect.playback.PlayerConnection
@@ -38,6 +39,8 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
+import java.time.LocalDate
+import java.time.ZoneId
 
 /** The screens, drawn as they'd look (saved to build/screens for a look), and that they come up. */
 @RunWith(RobolectricTestRunner::class)
@@ -142,6 +145,60 @@ class ScreensTest {
             waitForText("2 songs", substring = true)
             compose.onNodeWithText("Paper Lanterns").assertExists()
             save("album")
+        } finally {
+            server.close()
+        }
+    }
+
+    @Test
+    fun `Wrapped, and its story`() {
+        val server = TestServer()
+        try {
+            val app = RuntimeEnvironment.getApplication()
+            val c = app.container
+            runBlocking {
+                val signedIn = ServerApi(OkHttpClient(), { server.base }, { null }).login(server.base, "maddie", "correct horse", "Test phone")
+                c.prefs.signIn(server.base, signedIn.token!!, signedIn.user, "Home music")
+                c.settings.first { it.token == signedIn.token }
+                // A year's start, in this phone's time zone, and some listening after it.
+                val start = LocalDate.now().withDayOfYear(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                val hour = 3_600_000L
+                val neon = ApiTrack(SourceType.JELLYFIN, "song1", "Neon Tidepool", "Velvet Satellites", "Low Orbit", 200_000)
+                val lanterns = ApiTrack(SourceType.JELLYFIN, "song2", "Paper Lanterns", "Velvet Satellites", "Low Orbit", 214_000)
+                val glass = ApiTrack(SourceType.QOBUZ, "q1", "Glasshouse Summer", "The Marigold Static", "Glasshouse", 187_000)
+                val channel = ApiTrack(SourceType.SIRIUSXM, "channel:xtra:altap", "Alt Nation Advanced Placement", "SiriusXM")
+                val listens = (0 until 9).map { Listen(neon, start + it * 26 * hour + 20 * hour, 200_000) } +
+                    (0 until 5).map { Listen(lanterns, start + it * 30 * hour + 21 * hour, 214_000) } +
+                    (0 until 4).map { Listen(glass, start + it * 50 * hour + 9 * hour, 187_000, client = "web") } +
+                    Listen(channel, start + 5 * 24 * hour + 18 * hour, 1_800_000, station = "Alt Nation Advanced Placement")
+                c.api.addListens(listens)
+            }
+            val player = PlayerConnection(app) { server.base }
+            compose.setContent {
+                ConnectTheme {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        CompositionLocalProvider(LocalPlayer provides player) { MainScaffold() }
+                    }
+                }
+            }
+            // The banner on Search's start opens it.
+            waitForText("Wrapped", substring = true)
+            compose.onAllNodesWithText("Wrapped", substring = true).onFirst().performClick()
+            waitForText("minutes of music", substring = true)
+            compose.onNodeWithText("Play your story").assertExists()
+            compose.onAllNodesWithText("Velvet Satellites").onFirst().assertExists()
+            save("wrapped")
+            // The story: the first slide, then the song of the year, then (left to run) the end.
+            compose.mainClock.autoAdvance = false
+            compose.onNodeWithText("Play your story").performClick()
+            compose.mainClock.advanceTimeBy(1_000)
+            saveWithTopWindow("wrapped-story")
+            compose.mainClock.advanceTimeBy(15_000)
+            compose.onNodeWithText("Your song of the year".uppercase()).assertExists()
+            saveWithTopWindow("wrapped-story-song")
+            compose.mainClock.autoAdvance = true
+            waitForText("Watch again")
+            saveWithTopWindow("wrapped-story-end")
         } finally {
             server.close()
         }

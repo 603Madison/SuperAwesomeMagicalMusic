@@ -77,6 +77,8 @@ class Browse(private val nav: NavHostController) {
 
     fun album(id: String?, title: String? = null, artist: String? = null) = nav.navigate("album?" + params("id" to id, "title" to title, "artist" to artist))
 
+    fun wrapped() = nav.navigate("wrapped")
+
     private fun params(vararg pairs: Pair<String, String?>) = pairs.filter { it.second != null }.joinToString("&") { (k, v) -> "$k=${Uri.encode(v)}" }
 }
 
@@ -136,6 +138,10 @@ fun SearchScreen() {
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp)) }
         LazyColumn(Modifier.fillMaxSize()) {
             if (query.isBlank()) {
+                if (online) item(key = "wrapped") {
+                    val browse = LocalBrowse.current
+                    WrappedBanner { browse?.wrapped() }
+                }
                 item { Empty("Search all your music", "Artists, albums and songs from your library and every service on your server.", Icons.Rounded.Search) }
             }
             offline?.let { songs ->
