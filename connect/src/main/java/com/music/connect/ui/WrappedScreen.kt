@@ -111,7 +111,7 @@ private fun dayName(date: String): String = runCatching { LocalDate.parse(date).
 private fun sourceName(name: String) = when (name) {
     "JELLYFIN" -> "Jellyfin"; "QOBUZ" -> "Qobuz"; "YOUTUBE_MUSIC" -> "YouTube Music"; "SIRIUSXM" -> "SiriusXM"; "RADIO" -> "Radio"; else -> name
 }
-private fun deviceName(name: String) = when (name) { "web" -> "Web player"; "android" -> "Phone app"; else -> name }
+private fun deviceName(name: String) = when (name) { "web" -> "Web player"; "android" -> "Phone app"; "desktop" -> "Desktop app"; else -> name }
 private val MONTHS = listOf("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")
 private val MONTH_NAMES = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
 

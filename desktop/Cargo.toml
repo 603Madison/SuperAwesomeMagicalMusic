@@ -28,3 +28,52 @@ url = "2.5.8"
 lto = "thin"
 codegen-units = 4
 strip = true
+
+# `cargo deb`: the package for Ubuntu (24.04 and later), Debian 13, Mint 22, Pop!_OS 24.04.
+[package.metadata.deb]
+name = "superawesomemagicalmusic"
+maintainer = "SuperAwesomeMagicalMusic <superawesomemagicalmusic@users.noreply.github.com>"
+copyright = "SuperAwesomeMagicalMusic contributors"
+section = "sound"
+priority = "optional"
+extended-description = "Your SuperAwesomeMagicalMusic server on the desktop: your library, YouTube Music, SiriusXM channels and radio, played natively with GTK and GStreamer."
+# The libraries it links (worked out by dpkg-shlibdeps), and GStreamer's plug-ins for HLS, AAC, FLAC and Opus.
+depends = "$auto, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-libav"
+assets = [
+    ["target/release/superawesomemagicalmusic", "usr/bin/", "755"],
+    ["data/io.github._603madison.SuperAwesomeMagicalMusic.desktop", "usr/share/applications/", "644"],
+    ["data/io.github._603madison.SuperAwesomeMagicalMusic.metainfo.xml", "usr/share/metainfo/", "644"],
+    ["data/icons/hicolor/16x16/apps/*", "usr/share/icons/hicolor/16x16/apps/", "644"],
+    ["data/icons/hicolor/24x24/apps/*", "usr/share/icons/hicolor/24x24/apps/", "644"],
+    ["data/icons/hicolor/32x32/apps/*", "usr/share/icons/hicolor/32x32/apps/", "644"],
+    ["data/icons/hicolor/48x48/apps/*", "usr/share/icons/hicolor/48x48/apps/", "644"],
+    ["data/icons/hicolor/64x64/apps/*", "usr/share/icons/hicolor/64x64/apps/", "644"],
+    ["data/icons/hicolor/128x128/apps/*", "usr/share/icons/hicolor/128x128/apps/", "644"],
+    ["data/icons/hicolor/256x256/apps/*", "usr/share/icons/hicolor/256x256/apps/", "644"],
+    ["data/icons/hicolor/512x512/apps/*", "usr/share/icons/hicolor/512x512/apps/", "644"],
+]
+
+# `cargo generate-rpm`: the package for Fedora (40 and later) and others with dnf.
+[package.metadata.generate-rpm]
+name = "superawesomemagicalmusic"
+summary = "Listen to your SuperAwesomeMagicalMusic server"
+assets = [
+    { source = "target/release/superawesomemagicalmusic", dest = "/usr/bin/superawesomemagicalmusic", mode = "755" },
+    { source = "data/io.github._603madison.SuperAwesomeMagicalMusic.desktop", dest = "/usr/share/applications/io.github._603madison.SuperAwesomeMagicalMusic.desktop", mode = "644" },
+    { source = "data/io.github._603madison.SuperAwesomeMagicalMusic.metainfo.xml", dest = "/usr/share/metainfo/io.github._603madison.SuperAwesomeMagicalMusic.metainfo.xml", mode = "644" },
+    { source = "data/icons/hicolor/16x16/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", dest = "/usr/share/icons/hicolor/16x16/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", mode = "644" },
+    { source = "data/icons/hicolor/24x24/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", dest = "/usr/share/icons/hicolor/24x24/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", mode = "644" },
+    { source = "data/icons/hicolor/32x32/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", dest = "/usr/share/icons/hicolor/32x32/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", mode = "644" },
+    { source = "data/icons/hicolor/48x48/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", dest = "/usr/share/icons/hicolor/48x48/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", mode = "644" },
+    { source = "data/icons/hicolor/64x64/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", dest = "/usr/share/icons/hicolor/64x64/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", mode = "644" },
+    { source = "data/icons/hicolor/128x128/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", dest = "/usr/share/icons/hicolor/128x128/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", mode = "644" },
+    { source = "data/icons/hicolor/256x256/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", dest = "/usr/share/icons/hicolor/256x256/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", mode = "644" },
+    { source = "data/icons/hicolor/512x512/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", dest = "/usr/share/icons/hicolor/512x512/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", mode = "644" },
+]
+
+# Besides the libraries it links (found in the binary): GStreamer's plug-ins for HLS, AAC, FLAC and Opus.
+[package.metadata.generate-rpm.requires]
+gstreamer1-plugins-base = "*"
+gstreamer1-plugins-good = "*"
+gstreamer1-plugins-bad-free = "*"
+gstreamer1-plugin-libav = "*"

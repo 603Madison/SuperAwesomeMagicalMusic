@@ -29,6 +29,10 @@ This repository holds:
   Yamaha MusicCast speakers join them. **Wrapped** sums up your year (top songs, artists and
   stations, when you listen) as a story to tap through, here and in the web player. Installs
   alongside Lite.
+- **SuperAwesomeMagicalMusic for Linux** (`desktop/`): a native desktop app for the server (Rust,
+  GTK 4 and libadwaita, GStreamer) for Ubuntu 24.04+ and Fedora 40+: search, playlists, history,
+  SiriusXM and radio, with media keys and the desktop's media controls. See
+  [desktop/README.md](desktop/README.md).
 
 Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Android 8.0+ (API 26).
 
@@ -309,6 +313,11 @@ repository**, or in F-Droid go to Settings › Repositories › **+** and enter
 **From GitHub:** download `SuperAwesomeMagicalMusic-vX.Y.Z.apk` from the repository's **Releases** page and open it on your phone
 (allow installing from your browser or file manager when Android asks). Every release is signed
 with the same key, so new versions install over old ones and keep your settings and downloads.
+
+**On the Linux desktop:** download the package from **Releases**, then
+`sudo apt install ./SuperAwesomeMagicalMusic-Desktop-vX.Y.Z-amd64.deb` (Ubuntu 24.04 and later) or
+`sudo dnf install ./SuperAwesomeMagicalMusic-Desktop-vX.Y.Z-x86_64.rpm` (Fedora 40 and later). See
+[desktop/README.md](desktop/README.md).
 
 ## Building
 

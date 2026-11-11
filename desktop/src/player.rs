@@ -57,7 +57,11 @@ impl State {
         Some(match &self.on_air {
             Some(on) => (
                 on.title.clone(),
-                if on.artist.is_empty() { track.title.clone() } else { on.artist.clone() },
+                if on.artist.is_empty() {
+                    track.title.clone()
+                } else {
+                    on.artist.clone()
+                },
                 on.artwork_url.clone().or_else(|| track.artwork_url.clone()),
             ),
             None => (track.title.clone(), track.artist.clone(), track.artwork_url.clone()),
@@ -69,14 +73,19 @@ impl State {
     }
 }
 
+/// Told of every change in the player.
+type Listener = Rc<dyn Fn(&State)>;
+/// Told when something can't play.
+type ErrorListener = Rc<dyn Fn(&str)>;
+
 pub struct Player {
     playbin: gst::Element,
     state: RefCell<State>,
     api: RefCell<Option<Api>>,
     /// The bitrate cap and whether to compare every service (Settings).
     choices: Cell<(u32, bool)>,
-    listeners: RefCell<Vec<Rc<dyn Fn(&State)>>>,
-    errors: RefCell<Vec<Rc<dyn Fn(&str)>>>,
+    listeners: RefCell<Vec<Listener>>,
+    errors: RefCell<Vec<ErrorListener>>,
     /// Bumped on every load: work for an older load drops its result.
     generation: Cell<u64>,
     listened_ms: Cell<f64>,
@@ -91,25 +100,38 @@ pub struct Player {
 }
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 impl Player {
     pub fn new() -> Rc<Player> {
-        let playbin = gst::ElementFactory::make("playbin3").build().expect("GStreamer's playbin3 (gstreamer1.0-plugins-base)");
+        let playbin = gst::ElementFactory::make("playbin3")
+            .build()
+            .expect("GStreamer's playbin3 (gstreamer1.0-plugins-base)");
         // Audio only.
         let flags = playbin.property_value("flags");
-        if let Ok(flags_class) = glib::FlagsClass::with_type(flags.type_()) {
-            if let Some(builder) = flags_class.builder_with_value(flags) {
-                if let Some(value) = builder.unset_by_nick("video").unset_by_nick("text").build() {
-                    playbin.set_property_from_value("flags", &value);
-                }
-            }
+        if let Some(flags_class) = glib::FlagsClass::with_type(flags.type_())
+            && let Some(builder) = flags_class.builder_with_value(flags)
+            && let Some(value) = builder.unset_by_nick("video").unset_by_nick("text").build()
+        {
+            playbin.set_property_from_value("flags", &value);
+        }
+        // For trying it where there's no sound card: SAMM_AUDIO_SINK="fakesink sync=true".
+        if let Ok(description) = std::env::var("SAMM_AUDIO_SINK")
+            && let Ok(sink) = gst::parse::bin_from_description(&description, true)
+        {
+            playbin.set_property("audio-sink", &sink);
         }
         let cookie = Arc::new(Mutex::new(String::new()));
         let player = Rc::new(Player {
             playbin,
-            state: RefCell::new(State { volume: 0.8, ..Default::default() }),
+            state: RefCell::new(State {
+                volume: 0.8,
+                ..Default::default()
+            }),
             api: RefCell::new(None),
             choices: Cell::new((0, true)),
             listeners: RefCell::new(vec![]),
@@ -131,10 +153,13 @@ impl Player {
             if let Ok(source) = values[1].get::<gst::Element>() {
                 let cookie = cookie_for_source.lock().map(|c| c.clone()).unwrap_or_default();
                 if !cookie.is_empty() && source.has_property("cookies") {
-                    source.set_property("cookies", vec![cookie.as_str()].to_value());
+                    source.set_property("cookies", [cookie.as_str()].to_value());
                 }
                 if source.has_property("user-agent") {
-                    source.set_property("user-agent", concat!("SuperAwesomeMagicalMusic-Desktop/", env!("CARGO_PKG_VERSION")));
+                    source.set_property(
+                        "user-agent",
+                        concat!("SuperAwesomeMagicalMusic-Desktop/", env!("CARGO_PKG_VERSION")),
+                    );
                 }
             }
             None
@@ -167,7 +192,11 @@ impl Player {
 
     pub fn set_api(&self, api: Option<Api>) {
         if let Ok(mut cookie) = self.cookie.lock() {
-            *cookie = api.as_ref().and_then(|a| a.token()).map(|t| format!("samm_session={t}")).unwrap_or_default();
+            *cookie = api
+                .as_ref()
+                .and_then(|a| a.token())
+                .map(|t| format!("samm_session={t}"))
+                .unwrap_or_default();
         }
         if api.is_none() {
             self.stop();
@@ -334,7 +363,10 @@ impl Player {
         {
             let mut state = self.state.borrow_mut();
             let volume = state.volume;
-            *state = State { volume, ..Default::default() };
+            *state = State {
+                volume,
+                ..Default::default()
+            };
         }
         self.notify();
     }
@@ -350,7 +382,9 @@ impl Player {
         self.reported.set(false);
         self.last_tick.set(None);
         let _ = self.playbin.set_state(gst::State::Null);
-        let Some(track) = self.state.borrow().queue.get(index).cloned() else { return };
+        let Some(track) = self.state.borrow().queue.get(index).cloned() else {
+            return;
+        };
         {
             let mut state = self.state.borrow_mut();
             state.index = Some(index);
@@ -367,7 +401,11 @@ impl Player {
         let me = self.clone();
         glib::spawn_future_local(async move {
             let uri = if let Some(live) = track.live_stream() {
-                me.state.borrow_mut().description = if live.kind == LiveKind::Channel { "SiriusXM".into() } else { "Radio".into() };
+                me.state.borrow_mut().description = if live.kind == LiveKind::Channel {
+                    "SiriusXM".into()
+                } else {
+                    "Radio".into()
+                };
                 let played = track.clone();
                 let api_for_played = api.clone();
                 bg(async move { api_for_played.live_played(&played).await }).await.ok();
@@ -386,10 +424,10 @@ impl Player {
                         let mut state = me.state.borrow_mut();
                         state.description = resolved.description.clone();
                         // The copy found may have the cover the request lacked.
-                        if let Some(current) = state.queue.get_mut(index) {
-                            if current.artwork_url.is_none() {
-                                current.artwork_url = resolved.track.artwork_url.clone();
-                            }
+                        if let Some(current) = state.queue.get_mut(index)
+                            && current.artwork_url.is_none()
+                        {
+                            current.artwork_url = resolved.track.artwork_url.clone();
                         }
                         api.url(&resolved.stream_url)
                     }
@@ -400,7 +438,9 @@ impl Player {
                 return;
             }
             me.playbin.set_property("uri", &uri);
-            let _ = me.playbin.set_state(if autoplay { gst::State::Playing } else { gst::State::Paused });
+            let _ = me
+                .playbin
+                .set_state(if autoplay { gst::State::Playing } else { gst::State::Paused });
             me.notify();
             if let Some(live) = track.live_stream() {
                 me.watch_on_air(generation, track, live.kind);
@@ -499,7 +539,8 @@ impl Player {
         }
         let now = Instant::now();
         if let Some(last) = self.last_tick.get() {
-            self.listened_ms.set(self.listened_ms.get() + now.duration_since(last).as_secs_f64().min(2.0) * 1000.0);
+            self.listened_ms
+                .set(self.listened_ms.get() + now.duration_since(last).as_secs_f64().min(2.0) * 1000.0);
         }
         self.last_tick.set(Some(now));
         let position = self.playbin.query_position::<gst::ClockTime>().map(|t| t.seconds_f64());
@@ -536,20 +577,35 @@ impl Player {
                         let via = via.clone();
                         // What's heard is behind the newest of the stream (about three segments).
                         let at = now_ms() - 30_000;
-                        bg(async move { asking.channel_now(&via, &kind, &id, at).await }).await.ok().flatten().map(|now| OnAir {
-                            title: now.title,
-                            artist: now.artist,
-                            artwork_url: now.artwork_url,
-                            song: now.song,
-                        })
+                        bg(async move { asking.channel_now(&via, &kind, &id, at).await })
+                            .await
+                            .ok()
+                            .flatten()
+                            .map(|now| OnAir {
+                                title: now.title,
+                                artist: now.artist,
+                                artwork_url: now.artwork_url,
+                                song: now.song,
+                            })
                     }
                     LiveKind::Radio => {
                         let via = via.clone();
                         let id = track.source_id.trim_start_matches("hls:").to_string();
-                        bg(async move { asking.radio_now(&via, &id).await }).await.ok().flatten().map(|title| match title.split_once(" - ") {
-                            Some((artist, song)) => OnAir { title: song.trim().into(), artist: artist.trim().into(), ..Default::default() },
-                            None => OnAir { title: title.trim().into(), ..Default::default() },
-                        })
+                        bg(async move { asking.radio_now(&via, &id).await })
+                            .await
+                            .ok()
+                            .flatten()
+                            .map(|title| match title.split_once(" - ") {
+                                Some((artist, song)) => OnAir {
+                                    title: song.trim().into(),
+                                    artist: artist.trim().into(),
+                                    ..Default::default()
+                                },
+                                None => OnAir {
+                                    title: title.trim().into(),
+                                    ..Default::default()
+                                },
+                            })
                     }
                 };
                 if player.generation.get() != generation {
@@ -577,7 +633,9 @@ impl Player {
 
     /// The song that was playing, if enough of it was heard (or the live stretch).
     fn report_listen(&self) {
-        let Some(track) = self.state.borrow().current().cloned() else { return };
+        let Some(track) = self.state.borrow().current().cloned() else {
+            return;
+        };
         if track.is_live() {
             return self.end_live_stretch();
         }
@@ -591,22 +649,41 @@ impl Player {
             return;
         }
         self.reported.set(true);
-        self.send_listen(Listen { track: track.as_song(), played_at: now_ms() - listened as i64, listened_ms: listened as i64, client: "desktop".into(), station: None });
+        self.send_listen(Listen {
+            track: track.as_song(),
+            played_at: now_ms() - listened as i64,
+            listened_ms: listened as i64,
+            client: "desktop".into(),
+            station: None,
+        });
     }
 
     /// Live radio: what was heard since what's on last changed, at least 30 seconds of it, as a
     /// listen of that song, or of the channel or station when the song isn't known.
     fn end_live_stretch(&self) {
         let state = self.state.borrow();
-        let Some(channel) = state.current().filter(|t| t.is_live()).cloned() else { return };
+        let Some(channel) = state.current().filter(|t| t.is_live()).cloned() else {
+            return;
+        };
         let ms = self.listened_ms.get() - self.live_mark.get();
         self.live_mark.set(self.listened_ms.get());
         if ms < 30_000.0 {
             return;
         }
-        let track = state.on_air.as_ref().and_then(|o| o.song.as_ref()).map(Track::as_song).unwrap_or_else(|| channel.clone());
+        let track = state
+            .on_air
+            .as_ref()
+            .and_then(|o| o.song.as_ref())
+            .map(Track::as_song)
+            .unwrap_or_else(|| channel.clone());
         drop(state);
-        self.send_listen(Listen { track, played_at: now_ms() - ms as i64, listened_ms: ms as i64, client: "desktop".into(), station: Some(channel.title) });
+        self.send_listen(Listen {
+            track,
+            played_at: now_ms() - ms as i64,
+            listened_ms: ms as i64,
+            client: "desktop".into(),
+            station: Some(channel.title),
+        });
     }
 
     fn send_listen(&self, listen: Listen) {

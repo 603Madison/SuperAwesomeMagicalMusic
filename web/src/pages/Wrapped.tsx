@@ -22,7 +22,7 @@ const SHORT_HOURS = (h: number) => (h === 0 ? "12a" : h === 12 ? "12p" : h < 12 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const sourceName = (name: string) => SOURCE_LABELS[name as SourceType] ?? name;
-const deviceName = (name: string) => (name === "web" ? "Web player" : name === "android" ? "Phone app" : name);
+const deviceName = (name: string) => (name === "web" ? "Web player" : name === "android" ? "Phone app" : name === "desktop" ? "Desktop app" : name);
 const dayName = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 const peakHour = (hours: number[]) => hours.reduce((best, m, h) => (m > hours[best] ? h : best), 0);
 

@@ -59,16 +59,17 @@ impl Config {
         let result = (|| -> std::io::Result<()> {
             fs::create_dir_all(dir())?;
             let path = dir().join("settings.json");
-            let mut file = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&path)?;
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&path)?;
             file.set_permissions(fs::Permissions::from_mode(0o600))?;
             file.write_all(serde_json::to_string_pretty(self).unwrap_or_default().as_bytes())
         })();
         if let Err(e) = result {
             eprintln!("Couldn't save the settings: {e}");
         }
-    }
-
-    pub fn signed_in(&self) -> bool {
-        self.server.is_some() && self.token.is_some()
     }
 }

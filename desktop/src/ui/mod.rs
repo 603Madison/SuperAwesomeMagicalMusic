@@ -3,8 +3,8 @@
 mod login;
 mod pages;
 mod player_bar;
-mod window;
 pub mod widgets;
+mod window;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -18,7 +18,6 @@ use crate::player::Player;
 
 /// The app's one of everything.
 pub struct Ctx {
-    pub app: adw::Application,
     pub window: adw::ApplicationWindow,
     pub toasts: adw::ToastOverlay,
     pub config: RefCell<Config>,
@@ -131,12 +130,6 @@ impl Ctx {
     pub fn open_playlist(&self, id: &str, name: &str) {
         self.push(&pages::playlist_page(id.to_string(), name.to_string()));
     }
-
-    pub fn show_section(&self, page: &adw::NavigationPage) {
-        if let Some(nav) = self.nav.borrow().as_ref() {
-            nav.replace(&[page.clone()]);
-        }
-    }
 }
 
 const STYLE: &str = "
@@ -148,6 +141,7 @@ const STYLE: &str = "
 .live-pill { background: #d13a3a; color: white; border-radius: 6px; padding: 1px 7px; font-size: 0.75em; font-weight: 800; }
 .top-result { padding: 16px; border-radius: 16px; background: alpha(currentColor, 0.06); }
 .hero-title { font-size: 2em; font-weight: 800; }
+.sidebar-title { font-weight: 800; font-size: 0.92em; }
 ";
 
 fn accent_css(dark: bool) -> String {
@@ -168,6 +162,21 @@ fn load_css() {
     manager.connect_dark_notify(move |m| accent.load_from_string(&accent_css(m.is_dark())));
 }
 
+/// The app's icon, when it isn't installed (run from the build, or the icon theme's cache is old).
+fn register_icon() {
+    let Some(display) = gdk::Display::default() else { return };
+    let theme = gtk::IconTheme::for_display(&display);
+    if theme.has_icon(crate::APP_ID) {
+        return;
+    }
+    let dir = glib::user_cache_dir().join("SuperAwesomeMagicalMusic").join("icons");
+    let file = dir.join(format!("{}.png", crate::APP_ID));
+    let png: &[u8] = include_bytes!("../../data/icons/hicolor/256x256/apps/io.github._603madison.SuperAwesomeMagicalMusic.png");
+    if std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&file, png).is_ok() {
+        theme.add_search_path(&dir);
+    }
+}
+
 /// The window (made once; opening the app again brings it up).
 pub fn activate(app: &adw::Application) {
     if let Some(window) = CTX.with(|c| c.borrow().as_ref().map(|c| c.window.clone())) {
@@ -175,6 +184,7 @@ pub fn activate(app: &adw::Application) {
         return;
     }
     load_css();
+    register_icon();
     let config = Config::load();
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -193,8 +203,7 @@ pub fn activate(app: &adw::Application) {
     let player = Player::new();
     player.set_volume(config.volume);
     player.set_choices(config.kbps, config.thorough);
-    let ctx = Rc::new(Ctx {
-        app: app.clone(),
+    let context = Rc::new(Ctx {
         window: window.clone(),
         toasts,
         config: RefCell::new(config),
@@ -203,15 +212,15 @@ pub fn activate(app: &adw::Application) {
         nav: RefCell::new(None),
         pending_browser_sign_in: RefCell::new(None),
     });
-    CTX.with(|c| c.replace(Some(ctx.clone())));
+    CTX.with(|c| c.replace(Some(context.clone())));
 
-    let weak = Rc::downgrade(&ctx);
+    let weak = Rc::downgrade(&context);
     player.on_error(move |message| {
         if let Some(ctx) = weak.upgrade() {
             ctx.toast(message);
         }
     });
-    let server_of = Rc::downgrade(&ctx);
+    let server_of = Rc::downgrade(&context);
     let raise = window.downgrade();
     crate::mpris::start(
         player,
@@ -224,15 +233,15 @@ pub fn activate(app: &adw::Application) {
     );
 
     let (server, token) = {
-        let config = ctx.config.borrow();
+        let config = context.config.borrow();
         (config.server.clone(), config.token.clone())
     };
     match (server, token) {
         (Some(server), Some(token)) => {
-            ctx.set_signed_in(&server, Some(token));
-            ctx.show_music();
+            context.set_signed_in(&server, Some(token));
+            context.show_music();
         }
-        _ => ctx.toasts.set_child(Some(&login::view())),
+        _ => context.toasts.set_child(Some(&login::view())),
     }
 
     window.connect_close_request(move |window| {
@@ -268,8 +277,8 @@ fn install_shortcuts(app: &adw::Application) {
     action("quit", &["<Primary>q"], |c| {
         c.window.close();
     });
-    action("preferences", &["<Primary>comma"], |c| window::preferences(c));
-    action("about", &[], |c| window::about(c));
+    action("preferences", &["<Primary>comma"], window::preferences);
+    action("about", &[], window::about);
     action("sign-out", &[], |c| c.sign_out());
 }
 
@@ -278,11 +287,15 @@ pub fn open_uris(app: &adw::Application, files: &[gio::File]) {
     activate(app);
     for file in files {
         let uri = file.uri().to_string();
-        if let Ok(url) = url::Url::parse(&uri) {
-            if url.scheme() == "sammusic" && url.host_str() == Some("signed-in") {
-                let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
-                login::finish_browser_sign_in(query.get("code").cloned().unwrap_or_default(), query.get("state").cloned().unwrap_or_default());
-            }
+        if let Ok(url) = url::Url::parse(&uri)
+            && url.scheme() == "sammusic"
+            && url.host_str() == Some("signed-in")
+        {
+            let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+            login::finish_browser_sign_in(
+                query.get("code").cloned().unwrap_or_default(),
+                query.get("state").cloned().unwrap_or_default(),
+            );
         }
     }
 }

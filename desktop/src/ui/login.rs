@@ -44,12 +44,20 @@ pub fn view() -> gtk::Widget {
     let next = gtk::Button::builder().label("Continue").halign(gtk::Align::Center).build();
     next.add_css_class("suggested-action");
     next.add_css_class("pill");
-    let hint = gtk::Label::builder().label("The address you open the web player at, like music.example.com.").wrap(true).justify(gtk::Justification::Center).build();
+    let hint = gtk::Label::builder()
+        .label("The address you open the web player at, like music.example.com.")
+        .wrap(true)
+        .justify(gtk::Justification::Center)
+        .build();
     hint.add_css_class("dim-label");
     hint.add_css_class("caption");
 
     // Then how to sign in, once the server says.
-    let sign_in = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(12).visible(false).build();
+    let sign_in = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(12)
+        .visible(false)
+        .build();
 
     form.append(&next);
     form.append(&hint);
@@ -57,7 +65,14 @@ pub fn view() -> gtk::Widget {
     form.append(&error);
 
     let connect = {
-        let (address, next, error, sign_in, hint, address_group) = (address.clone(), next.clone(), error.clone(), sign_in.clone(), hint.clone(), address_group.clone());
+        let (address, next, error, sign_in, hint, address_group) = (
+            address.clone(),
+            next.clone(),
+            error.clone(),
+            sign_in.clone(),
+            hint.clone(),
+            address_group.clone(),
+        );
         move || {
             let typed = address.text().to_string();
             let tries = candidates(&typed);
@@ -68,7 +83,14 @@ pub fn view() -> gtk::Widget {
             next.set_sensitive(false);
             next.set_label("Connecting…");
             error.set_visible(false);
-            let (address, next, error, sign_in, hint, address_group) = (address.clone(), next.clone(), error.clone(), sign_in.clone(), hint.clone(), address_group.clone());
+            let (address, next, error, sign_in, hint, address_group) = (
+                address.clone(),
+                next.clone(),
+                error.clone(),
+                sign_in.clone(),
+                hint.clone(),
+                address_group.clone(),
+            );
             glib::spawn_future_local(async move {
                 let mut last = String::new();
                 for origin in tries {
@@ -104,7 +126,15 @@ fn show_error(label: &gtk::Label, text: &str) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn build_sign_in(into: &gtk::Box, error: &gtk::Label, api: Api, config: AuthConfig, address_group: &adw::PreferencesGroup, next: &gtk::Button, hint: &gtk::Label) {
+fn build_sign_in(
+    into: &gtk::Box,
+    error: &gtk::Label,
+    api: Api,
+    config: AuthConfig,
+    address_group: &adw::PreferencesGroup,
+    next: &gtk::Button,
+    hint: &gtk::Label,
+) {
     while let Some(child) = into.first_child() {
         into.remove(&child);
     }
@@ -113,7 +143,10 @@ fn build_sign_in(into: &gtk::Box, error: &gtk::Label, api: Api, config: AuthConf
     into.append(&server);
 
     if let Some(oidc) = &config.oidc {
-        let browser = gtk::Button::builder().label(format!("Sign in with {}", oidc.label)).halign(gtk::Align::Center).build();
+        let browser = gtk::Button::builder()
+            .label(format!("Sign in with {}", oidc.label))
+            .halign(gtk::Align::Center)
+            .build();
         browser.add_css_class("suggested-action");
         browser.add_css_class("pill");
         let api = api.clone();
@@ -187,7 +220,9 @@ fn start_browser_sign_in(api: &Api, button: &gtk::Button, error: &gtk::Label) {
     let verifier = random_text(32);
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     let state = random_text(16);
-    ctx().pending_browser_sign_in.replace(Some((api.base().to_string(), verifier, state.clone())));
+    ctx()
+        .pending_browser_sign_in
+        .replace(Some((api.base().to_string(), verifier, state.clone())));
     let url = format!(
         "{}/connect-app?challenge={}&state={}&device={}",
         api.base(),

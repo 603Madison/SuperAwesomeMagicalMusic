@@ -51,10 +51,6 @@ fn split_two(value: &str) -> (&str, &str) {
 }
 
 impl Track {
-    pub fn key(&self) -> String {
-        format!("{}|{}:{}", self.via.as_deref().unwrap_or(""), self.source, self.source_id)
-    }
-
     pub fn is_channel(&self) -> bool {
         self.source == "SIRIUSXM" && self.source_id.starts_with("channel:")
     }
@@ -85,11 +81,17 @@ impl Track {
             if kind.is_empty() || id.is_empty() {
                 return None;
             }
-            return Some(LiveStream { path: format!("/api/live/sxm/{via}/channel/{}/{}", enc(kind), enc(id)), kind: LiveKind::Channel });
+            return Some(LiveStream {
+                path: format!("/api/live/sxm/{via}/channel/{}/{}", enc(kind), enc(id)),
+                kind: LiveKind::Channel,
+            });
         }
         if self.is_radio() {
             let id = self.source_id.trim_start_matches("hls:");
-            return Some(LiveStream { path: format!("/api/live/radio/{via}/station/{}/stream", enc(id)), kind: LiveKind::Radio });
+            return Some(LiveStream {
+                path: format!("/api/live/radio/{via}/station/{}/stream", enc(id)),
+                kind: LiveKind::Radio,
+            });
         }
         None
     }
@@ -104,7 +106,11 @@ impl Track {
     pub fn as_song(&self) -> Track {
         if self.is_station_track() {
             let id = self.source_id.rsplit(':').next().unwrap_or_default();
-            return Track { source_id: format!("song:{id}"), via: None, ..self.clone() };
+            return Track {
+                source_id: format!("song:{id}"),
+                via: None,
+                ..self.clone()
+            };
         }
         self.clone()
     }
@@ -132,7 +138,6 @@ pub struct User {
 #[serde(rename_all = "camelCase")]
 pub struct AuthConfig {
     pub server_name: String,
-    pub version: String,
     #[serde(default)]
     pub local_login: bool,
     #[serde(default)]
@@ -170,8 +175,6 @@ pub struct AlbumSummary {
     pub year: Option<i32>,
     #[serde(default)]
     pub artwork_url: Option<String>,
-    #[serde(default)]
-    pub track_count: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -234,7 +237,6 @@ pub struct PlaylistSummary {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistEntry {
-    pub entry_id: String,
     pub track: Track,
 }
 
@@ -252,15 +254,12 @@ pub struct ResolvedStream {
     pub stream_url: String,
     #[serde(default)]
     pub description: String,
-    #[serde(default)]
-    pub gain_db: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SourceView {
     pub id: String,
     pub kind: String,
-    pub name: String,
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
@@ -315,7 +314,9 @@ pub struct Api {
 }
 
 pub fn enc(value: &str) -> String {
-    url::form_urlencoded::byte_serialize(value.as_bytes()).collect::<String>().replace('+', "%20")
+    url::form_urlencoded::byte_serialize(value.as_bytes())
+        .collect::<String>()
+        .replace('+', "%20")
 }
 
 fn client() -> reqwest::Client {
@@ -335,7 +336,11 @@ struct ErrorBody {
 
 impl Api {
     pub fn new(base: &str, token: Option<String>) -> Api {
-        Api { base: base.trim_end_matches('/').to_string(), token, http: client() }
+        Api {
+            base: base.trim_end_matches('/').to_string(),
+            token,
+            http: client(),
+        }
     }
 
     pub fn base(&self) -> &str {
@@ -395,12 +400,20 @@ impl Api {
     }
 
     pub async fn login(&self, username: &str, password: &str, device: &str) -> Result<SignedIn> {
-        self.post("/api/auth/login", json!({ "username": username, "password": password, "app": true, "deviceName": device })).await
+        self.post(
+            "/api/auth/login",
+            json!({ "username": username, "password": password, "app": true, "deviceName": device }),
+        )
+        .await
     }
 
     /// Finishes signing in through the browser: the code it handed back, and this app's secret.
     pub async fn app_token(&self, code: &str, verifier: &str, device: &str) -> Result<SignedIn> {
-        self.post("/api/auth/app/token", json!({ "code": code, "verifier": verifier, "deviceName": device })).await
+        self.post(
+            "/api/auth/app/token",
+            json!({ "code": code, "verifier": verifier, "deviceName": device }),
+        )
+        .await
     }
 
     pub async fn logout(&self) -> Result<serde_json::Value> {
@@ -430,7 +443,11 @@ impl Api {
     pub async fn resolve(&self, track: &Track, kbps: u32, thorough: bool) -> Result<ResolvedStream> {
         // What GStreamer plays here (with its usual plug-ins).
         let codecs = ["opus", "vorbis", "aac", "mp3", "flac", "alac"];
-        self.post("/api/play/resolve", json!({ "track": track, "kbps": kbps, "codecs": codecs, "thorough": thorough })).await
+        self.post(
+            "/api/play/resolve",
+            json!({ "track": track, "kbps": kbps, "codecs": codecs, "thorough": thorough }),
+        )
+        .await
     }
 
     pub async fn playlists(&self) -> Result<Vec<PlaylistSummary>> {
@@ -464,7 +481,13 @@ impl Api {
     }
 
     pub async fn channel_now(&self, source: &str, kind: &str, id: &str, at_ms: i64) -> Result<Option<NowView>> {
-        self.get(&format!("/api/live/sxm/{}/now?type={}&id={}&at={at_ms}", enc(source), enc(kind), enc(id))).await
+        self.get(&format!(
+            "/api/live/sxm/{}/now?type={}&id={}&at={at_ms}",
+            enc(source),
+            enc(kind),
+            enc(id)
+        ))
+        .await
     }
 
     pub async fn radio_search(&self, source: &str, query: &str) -> Result<Vec<Track>> {
@@ -476,7 +499,9 @@ impl Api {
         struct Now {
             title: Option<String>,
         }
-        let now: Option<Now> = self.get(&format!("/api/live/radio/{}/station/{}/now", enc(source), enc(id))).await?;
+        let now: Option<Now> = self
+            .get(&format!("/api/live/radio/{}/station/{}/now", enc(source), enc(id)))
+            .await?;
         Ok(now.and_then(|n| n.title).filter(|t| !t.trim().is_empty()))
     }
 
@@ -485,7 +510,12 @@ impl Api {
     }
 
     pub async fn set_live_favorite(&self, track: &Track, favorite: bool) -> Result<Vec<Track>> {
-        self.send(Method::PUT, "/api/live/favorites", Some(json!({ "track": track, "favorite": favorite }))).await
+        self.send(
+            Method::PUT,
+            "/api/live/favorites",
+            Some(json!({ "track": track, "favorite": favorite })),
+        )
+        .await
     }
 
     pub async fn live_played(&self, track: &Track) -> Result<serde_json::Value> {
@@ -535,7 +565,11 @@ pub fn candidates(typed: &str) -> Vec<String> {
     if text.is_empty() {
         return vec![];
     }
-    let tries = if text.contains("://") { vec![text.to_string()] } else { vec![format!("https://{text}"), format!("http://{text}")] };
+    let tries = if text.contains("://") {
+        vec![text.to_string()]
+    } else {
+        vec![format!("https://{text}"), format!("http://{text}")]
+    };
     tries
         .into_iter()
         .filter_map(|t| url::Url::parse(&t).ok())
@@ -550,24 +584,50 @@ mod tests {
 
     #[test]
     fn addresses_become_origins() {
-        assert_eq!(candidates("music.example.com"), vec!["https://music.example.com", "http://music.example.com"]);
-        assert_eq!(candidates("https://music.example.com/settings?x=1"), vec!["https://music.example.com"]);
+        assert_eq!(
+            candidates("music.example.com"),
+            vec!["https://music.example.com", "http://music.example.com"]
+        );
+        assert_eq!(
+            candidates("https://music.example.com/settings?x=1"),
+            vec!["https://music.example.com"]
+        );
         assert_eq!(candidates("http://127.0.0.1:8099"), vec!["http://127.0.0.1:8099"]);
         assert!(candidates("  ").is_empty());
     }
 
     #[test]
     fn live_streams_are_where_the_web_player_finds_them() {
-        let channel = Track { source: "SIRIUSXM".into(), source_id: "channel:xtra:altap".into(), via: Some("sxm 1".into()), ..Default::default() };
+        let channel = Track {
+            source: "SIRIUSXM".into(),
+            source_id: "channel:xtra:altap".into(),
+            via: Some("sxm 1".into()),
+            ..Default::default()
+        };
         let live = channel.live_stream().unwrap();
         assert_eq!(live.path, "/api/live/sxm/sxm%201/channel/xtra/altap");
         assert_eq!(live.kind, LiveKind::Channel);
         assert_eq!(channel.channel_parts(), Some(("xtra".into(), "altap".into())));
-        let radio = Track { source: "RADIO".into(), source_id: "hls:abc".into(), via: Some("r".into()), ..Default::default() };
+        let radio = Track {
+            source: "RADIO".into(),
+            source_id: "hls:abc".into(),
+            via: Some("r".into()),
+            ..Default::default()
+        };
         assert_eq!(radio.live_stream().unwrap().path, "/api/live/radio/r/station/abc/stream");
-        let song = Track { source: "JELLYFIN".into(), source_id: "s1".into(), via: Some("j".into()), ..Default::default() };
+        let song = Track {
+            source: "JELLYFIN".into(),
+            source_id: "s1".into(),
+            via: Some("j".into()),
+            ..Default::default()
+        };
         assert!(song.live_stream().is_none());
-        let station = Track { source: "SIRIUSXM".into(), source_id: "stationtrack:st1:tr9".into(), via: Some("s".into()), ..Default::default() };
+        let station = Track {
+            source: "SIRIUSXM".into(),
+            source_id: "stationtrack:st1:tr9".into(),
+            via: Some("s".into()),
+            ..Default::default()
+        };
         assert_eq!(station.as_song().source_id, "song:tr9");
     }
 }

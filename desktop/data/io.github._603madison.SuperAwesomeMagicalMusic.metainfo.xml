@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github._603madison.SuperAwesomeMagicalMusic</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>SuperAwesomeMagicalMusic</name>
+  <summary>Listen to your SuperAwesomeMagicalMusic server</summary>
+  <description>
+    <p>
+      Your SuperAwesomeMagicalMusic server on the desktop: your Jellyfin library, YouTube Music,
+      Qobuz, SiriusXM channels and radio, searched together and played natively.
+    </p>
+    <ul>
+      <li>One search for artists, albums and songs, with artist and album pages</li>
+      <li>Your playlists, history and live radio favourites from every device</li>
+      <li>SiriusXM channels and local radio, with what's on</li>
+      <li>Media keys and the desktop's media controls</li>
+      <li>Listening counts toward your Wrapped, live radio included</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github._603madison.SuperAwesomeMagicalMusic.desktop</launchable>
+  <url type="homepage">https://github.com/603Madison/SuperAwesomeMagicalMusic</url>
+  <developer id="io.github._603madison">
+    <name>SuperAwesomeMagicalMusic</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <releases>
+    <release version="1.26.0" date="2026-11-11" />
+  </releases>
+</component>

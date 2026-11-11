@@ -81,7 +81,8 @@ pub fn start(player: Rc<Player>, server: impl Fn() -> Option<String> + 'static, 
             }
             let before = shown.replace(next.clone());
             let m = m.clone();
-            let song_changed = before.title != next.title || before.artist != next.artist || before.art != next.art || before.length_ms != next.length_ms;
+            let song_changed =
+                before.title != next.title || before.artist != next.artist || before.art != next.art || before.length_ms != next.length_ms;
             if song_changed {
                 *track_number.borrow_mut() += 1;
             }
@@ -89,7 +90,9 @@ pub fn start(player: Rc<Player>, server: impl Fn() -> Option<String> + 'static, 
             glib::spawn_future_local(async move {
                 if song_changed {
                     let mut metadata = Metadata::builder()
-                        .trackid(TrackId::try_from(format!("/io/github/superawesomemagicalmusic/track/{number}")).unwrap_or(TrackId::NO_TRACK))
+                        .trackid(
+                            TrackId::try_from(format!("/io/github/superawesomemagicalmusic/track/{number}")).unwrap_or(TrackId::NO_TRACK),
+                        )
                         .title(next.title.clone())
                         .artist([next.artist.clone()]);
                     if next.length_ms > 0 {
@@ -116,7 +119,10 @@ pub fn start(player: Rc<Player>, server: impl Fn() -> Option<String> + 'static, 
 
 fn shown_of(state: &State, server: Option<String>) -> Shown {
     let Some((title, artist, art)) = state.shown() else {
-        return Shown { status: Some(PlaybackStatus::Stopped), ..Default::default() };
+        return Shown {
+            status: Some(PlaybackStatus::Stopped),
+            ..Default::default()
+        };
     };
     let art = art.map(|url| {
         if url.starts_with('/') {
@@ -131,7 +137,11 @@ fn shown_of(state: &State, server: Option<String>) -> Shown {
         artist,
         art,
         length_ms: if state.live() { 0 } else { (state.duration * 1000.0) as i64 },
-        status: Some(if state.playing { PlaybackStatus::Playing } else { PlaybackStatus::Paused }),
+        status: Some(if state.playing {
+            PlaybackStatus::Playing
+        } else {
+            PlaybackStatus::Paused
+        }),
         live: state.live(),
         has_next: state.has_next(),
     }

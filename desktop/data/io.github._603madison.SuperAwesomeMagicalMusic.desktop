@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=SuperAwesomeMagicalMusic
+GenericName=Music Player
+Comment=Listen to your SuperAwesomeMagicalMusic server
+Exec=superawesomemagicalmusic %u
+Icon=io.github._603madison.SuperAwesomeMagicalMusic
+Terminal=false
+Categories=AudioVideo;Audio;Player;GTK;
+Keywords=music;player;radio;siriusxm;jellyfin;streaming;
+StartupNotify=true
+StartupWMClass=io.github._603madison.SuperAwesomeMagicalMusic
+DBusActivatable=false
+SingleMainWindow=true
+# Signing in through the browser comes back as sammusic://signed-in.
+MimeType=x-scheme-handler/sammusic;

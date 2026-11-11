@@ -1,8 +1,8 @@
 name: Release APK
 
 # Builds the signed APK and publishes it as a GitHub release, with notes from
-# release-notes/<version>.md, then lists it in the F-Droid repo and publishes the server's
-# container image to ghcr.io. Start it from the Actions tab ("Run workflow") with the version,
+# release-notes/<version>.md, then lists it in the F-Droid repo, adds the Linux desktop app's
+# packages and publishes the server's container image to ghcr.io. Start it from the Actions tab ("Run workflow") with the version,
 # or push a v* tag. The release's tag is created on the built commit if it doesn't exist yet.
 on:
   push:
@@ -34,6 +34,11 @@ jobs:
           VERSION_NAME=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
           if [ "v$VERSION_NAME" != "$TAG" ]; then
             echo "::error::$TAG doesn't match versionName $VERSION_NAME in app/build.gradle.kts"
+            exit 1
+          fi
+          DESKTOP_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' desktop/Cargo.toml | head -1)
+          if [ "v$DESKTOP_VERSION" != "$TAG" ]; then
+            echo "::error::$TAG doesn't match the desktop app's version $DESKTOP_VERSION in desktop/Cargo.toml"
             exit 1
           fi
           echo "COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
@@ -94,6 +99,47 @@ jobs:
           else
             gh release create "$TAG" "${apks[@]}" --target "$COMMIT" --title "SuperAwesomeMagicalMusic $TAG" --notes-file notes.md
           fi
+
+  # The Linux desktop app (desktop/, Rust with GTK 4 and libadwaita): a .deb for Ubuntu 24.04 and
+  # later (Mint 22, Pop!_OS 24.04, Debian 13) and an .rpm for Fedora 40 and later, added to the
+  # release. Built on Ubuntu 24.04, the oldest it supports, so it runs on everything newer.
+  desktop:
+    needs: release
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+
+      - name: GTK 4, libadwaita and GStreamer to build against
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libgtk-4-dev libadwaita-1-dev libgstreamer1.0-dev libssl-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb,cargo-generate-rpm
+
+      - name: Test and build the packages
+        working-directory: desktop
+        run: |
+          cargo test --release --locked
+          cargo build --release --locked
+          cargo deb --no-build
+          cargo generate-rpm
+          mkdir -p ../out
+          cp target/debian/*.deb "../out/SuperAwesomeMagicalMusic-Desktop-$TAG-amd64.deb"
+          cp target/generate-rpm/*.rpm "../out/SuperAwesomeMagicalMusic-Desktop-$TAG-x86_64.rpm"
+          sha256sum ../out/*
+
+      - name: Add them to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" out/SuperAwesomeMagicalMusic-Desktop-* --clobber
 
   # Lists the new release in the project's F-Droid repo.
   fdroid:
