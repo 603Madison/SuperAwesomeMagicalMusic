@@ -1,0 +1,252 @@
+//! Building blocks: covers loaded from the server (cached), song rows, cards and small helpers.
+
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::OnceLock;
+
+use adw::prelude::*;
+use gtk::{gdk, glib};
+
+use crate::api::Track;
+use crate::rt::bg;
+use crate::ui::ctx;
+
+thread_local! {
+    static COVERS: RefCell<HashMap<String, gdk::Texture>> = RefCell::new(HashMap::new());
+}
+
+fn image_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent(concat!("SuperAwesomeMagicalMusic-Desktop/", env!("CARGO_PKG_VERSION")))
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+            .expect("the image client")
+    })
+}
+
+/// The address of a cover at [px] pixels (the server's signed cover addresses take a size).
+pub fn cover_url(url: &str, px: i32) -> String {
+    if url.starts_with('/') {
+        let base = ctx().api().map(|a| a.base().to_string()).unwrap_or_default();
+        format!("{base}{url}&px={px}")
+    } else {
+        url.to_string()
+    }
+}
+
+/// A cover, [size] pixels square (rounded, or round for artists), with a note until it loads.
+pub fn artwork(url: Option<&str>, size: i32, round: bool) -> gtk::Widget {
+    let frame = gtk::Box::builder().width_request(size).height_request(size).halign(gtk::Align::Center).valign(gtk::Align::Center).build();
+    frame.set_overflow(gtk::Overflow::Hidden);
+    frame.add_css_class("artwork");
+    if round {
+        frame.add_css_class("round");
+    }
+    let placeholder = gtk::Image::builder().icon_name("folder-music-symbolic").pixel_size((size / 3).max(16)).hexpand(true).vexpand(true).build();
+    placeholder.add_css_class("dim-label");
+    frame.append(&placeholder);
+    let Some(url) = url.filter(|u| !u.is_empty()) else { return frame.upcast() };
+    let address = cover_url(url, (size * 2).clamp(64, 1024));
+    let show = {
+        let frame = frame.clone();
+        move |texture: &gdk::Texture| {
+            while let Some(child) = frame.first_child() {
+                frame.remove(&child);
+            }
+            let picture = gtk::Picture::builder().paintable(texture).content_fit(gtk::ContentFit::Cover).can_shrink(true).hexpand(true).vexpand(true).build();
+            frame.append(&picture);
+        }
+    };
+    if let Some(texture) = COVERS.with(|c| c.borrow().get(&address).cloned()) {
+        show(&texture);
+        return frame.upcast();
+    }
+    glib::spawn_future_local(async move {
+        let fetch = address.clone();
+        let bytes = bg(async move {
+            let response = image_client().get(&fetch).send().await.ok()?;
+            if !response.status().is_success() {
+                return None;
+            }
+            response.bytes().await.ok().map(|b| b.to_vec())
+        })
+        .await;
+        let Some(bytes) = bytes else { return };
+        let Ok(texture) = gdk::Texture::from_bytes(&glib::Bytes::from_owned(bytes)) else { return };
+        COVERS.with(|c| {
+            let mut covers = c.borrow_mut();
+            if covers.len() > 600 {
+                covers.clear();
+            }
+            covers.insert(address, texture.clone());
+        });
+        show(&texture);
+    });
+    frame.upcast()
+}
+
+/// 3:20, or 1:02:03.
+pub fn duration(ms: i64) -> String {
+    let total = (ms.max(0) / 1000) as u64;
+    let (h, m, s) = (total / 3600, (total / 60) % 60, total % 60);
+    if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
+}
+
+pub fn heading(text: &str) -> gtk::Label {
+    let label = gtk::Label::builder().label(text).xalign(0.0).margin_top(18).margin_bottom(6).build();
+    label.add_css_class("title-4");
+    label
+}
+
+/// A page's content: scrolls, and keeps to a readable width.
+pub fn scrolled(child: &impl IsA<gtk::Widget>) -> gtk::ScrolledWindow {
+    let clamp = adw::Clamp::builder().maximum_size(1100).tightening_threshold(900).child(child).build();
+    gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).child(&clamp).build()
+}
+
+pub fn page_box() -> gtk::Box {
+    gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).margin_top(12).margin_bottom(24).margin_start(16).margin_end(16).build()
+}
+
+/// A page with a header bar (and a back button when it was opened from another).
+pub fn nav_page(title: &str, content: &impl IsA<gtk::Widget>) -> (adw::NavigationPage, adw::HeaderBar) {
+    let header = adw::HeaderBar::new();
+    let toolbar = adw::ToolbarView::new();
+    toolbar.add_top_bar(&header);
+    toolbar.set_content(Some(content));
+    (adw::NavigationPage::builder().title(title).child(&toolbar).build(), header)
+}
+
+pub fn loading() -> gtk::Widget {
+    let spinner = gtk::Spinner::builder().spinning(true).width_request(32).height_request(32).halign(gtk::Align::Center).valign(gtk::Align::Center).vexpand(true).build();
+    spinner.upcast()
+}
+
+pub fn status(icon: &str, title: &str, description: &str) -> adw::StatusPage {
+    adw::StatusPage::builder().icon_name(icon).title(title).description(glib::markup_escape_text(description).as_str()).vexpand(true).build()
+}
+
+/// Play and Shuffle, for a list of songs.
+pub fn play_buttons(tracks: Rc<Vec<Track>>) -> gtk::Box {
+    let row = gtk::Box::builder().spacing(8).margin_top(6).build();
+    let play = gtk::Button::builder().child(&adw::ButtonContent::builder().icon_name("media-playback-start-symbolic").label("Play").build()).build();
+    play.add_css_class("suggested-action");
+    play.add_css_class("pill");
+    let all = tracks.clone();
+    play.connect_clicked(move |_| ctx().player.play_tracks(all.to_vec(), 0));
+    let shuffle = gtk::Button::builder().child(&adw::ButtonContent::builder().icon_name("media-playlist-shuffle-symbolic").label("Shuffle").build()).build();
+    shuffle.add_css_class("pill");
+    shuffle.connect_clicked(move |_| ctx().player.play_shuffled(tracks.to_vec()));
+    play.set_sensitive(!all.is_empty());
+    shuffle.set_sensitive(!all.is_empty());
+    row.append(&play);
+    row.append(&shuffle);
+    row
+}
+
+/// Songs in a rounded list: click one to play the list from it.
+pub fn track_list(tracks: Rc<Vec<Track>>, numbered: bool) -> gtk::ListBox {
+    let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
+    list.add_css_class("boxed-list");
+    for (index, track) in tracks.iter().enumerate() {
+        list.append(&track_row(track, index, numbered, tracks.clone()));
+    }
+    list
+}
+
+fn track_row(track: &Track, index: usize, numbered: bool, all: Rc<Vec<Track>>) -> adw::ActionRow {
+    let row = adw::ActionRow::builder().title(track.title.as_str()).subtitle(track.subtitle().as_str()).use_markup(false).activatable(!track.is_missing()).build();
+    row.set_title_lines(1);
+    row.set_subtitle_lines(1);
+    if numbered {
+        let number = gtk::Label::builder().label((index + 1).to_string()).width_chars(3).xalign(1.0).build();
+        number.add_css_class("dim-label");
+        number.add_css_class("numeric");
+        row.add_prefix(&number);
+    } else {
+        row.add_prefix(&artwork(track.artwork_url.as_deref(), 40, false));
+    }
+    if track.is_missing() {
+        row.add_css_class("dim-label");
+        row.set_tooltip_text(Some("Not found in any of your sources"));
+    }
+    if let Some(ms) = track.duration_ms.filter(|ms| *ms > 0) {
+        let length = gtk::Label::new(Some(&duration(ms)));
+        length.add_css_class("dim-label");
+        length.add_css_class("numeric");
+        row.add_suffix(&length);
+    }
+    row.add_suffix(&track_menu(track));
+    row.connect_activated(move |_| ctx().player.play_tracks(all.to_vec(), index));
+    row
+}
+
+/// Play next, add to the queue, and the song's artist and album.
+pub fn track_menu(track: &Track) -> gtk::MenuButton {
+    let popover = gtk::Popover::new();
+    let menu = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    let item = |label: &str, action: Box<dyn Fn()>| {
+        let button = gtk::Button::builder().label(label).build();
+        button.add_css_class("flat");
+        if let Some(child) = button.child().and_downcast::<gtk::Label>() {
+            child.set_xalign(0.0);
+        }
+        let popover = popover.clone();
+        button.connect_clicked(move |_| {
+            popover.popdown();
+            action();
+        });
+        menu.append(&button);
+    };
+    let t = track.clone();
+    item("Play next", Box::new(move || ctx().player.play_next(vec![t.clone()])));
+    let t = track.clone();
+    item("Add to queue", Box::new(move || ctx().player.add_to_queue(vec![t.clone()])));
+    if !track.is_live() && !track.artist.is_empty() {
+        let artist = track.artist.clone();
+        item("Go to artist", Box::new(move || ctx().open_artist(None, &artist)));
+        if let Some(album) = track.album.clone().filter(|a| !a.is_empty()) {
+            let artist = track.artist.clone();
+            item("Go to album", Box::new(move || ctx().open_album(None, &album, &artist)));
+        }
+    }
+    popover.set_child(Some(&menu));
+    let button = gtk::MenuButton::builder().icon_name("view-more-symbolic").popover(&popover).valign(gtk::Align::Center).tooltip_text("More").build();
+    button.add_css_class("flat");
+    button
+}
+
+/// A card (cover, title, a line under it) in a grid of them.
+pub fn card(art: Option<&str>, size: i32, round: bool, title: &str, subtitle: &str, on_click: impl Fn() + 'static) -> gtk::Button {
+    let content = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).build();
+    content.append(&artwork(art, size, round));
+    let name = gtk::Label::builder().label(title).ellipsize(gtk::pango::EllipsizeMode::End).max_width_chars(16).xalign(if round { 0.5 } else { 0.0 }).build();
+    name.add_css_class("heading");
+    content.append(&name);
+    if !subtitle.is_empty() {
+        let sub = gtk::Label::builder().label(subtitle).ellipsize(gtk::pango::EllipsizeMode::End).max_width_chars(18).xalign(if round { 0.5 } else { 0.0 }).build();
+        sub.add_css_class("dim-label");
+        sub.add_css_class("caption");
+        content.append(&sub);
+    }
+    let button = gtk::Button::builder().child(&content).build();
+    button.add_css_class("flat");
+    button.add_css_class("card-tile");
+    button.connect_clicked(move |_| on_click());
+    button
+}
+
+pub fn card_grid() -> gtk::FlowBox {
+    gtk::FlowBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .homogeneous(true)
+        .min_children_per_line(2)
+        .max_children_per_line(8)
+        .column_spacing(6)
+        .row_spacing(6)
+        .valign(gtk::Align::Start)
+        .build()
+}

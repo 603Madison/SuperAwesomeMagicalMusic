@@ -29,3 +29,6 @@
 /fdroid/site-out/
 /fdroid/metadata/
 /fdroid/.fdroid*
+
+# The Linux desktop app's build output (desktop/).
+/desktop/target/
