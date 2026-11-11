@@ -124,6 +124,10 @@ object Schema {
             PRIMARY KEY (user_id, key)
         );
         """,
+        // 5: the live channel or station a listen was heard on (for Wrapped's stations).
+        """
+        ALTER TABLE history ADD COLUMN station TEXT;
+        """,
     )
 
     val version: Int get() = migrations.size

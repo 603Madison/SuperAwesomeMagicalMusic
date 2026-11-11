@@ -12,6 +12,7 @@ import com.music.server.auth.authRoutes
 import com.music.server.music.liveRoutes
 import com.music.server.music.musicRoutes
 import com.music.server.playlists.playlistRoutes
+import com.music.server.playlists.wrappedRoutes
 import com.music.server.sources.sourceRoutes
 import io.ktor.http.CacheControl
 import io.ktor.http.ContentType
@@ -98,6 +99,7 @@ fun Application.module(services: Services) {
         musicRoutes(services)
         liveRoutes(services)
         playlistRoutes(services)
+        wrappedRoutes(services)
         connectRoutes(services)
         mcpRoutes(services)
         route("/api/{...}") {
