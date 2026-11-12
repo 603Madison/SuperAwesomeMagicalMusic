@@ -50,8 +50,12 @@ class SiriusXmClientTest {
                     "/playback/play/v1/tuneSource" -> xtraQueue(tuneQueue, sequenceToken = "seq-1")
                     "/playback/play/v1/peek" -> xtraQueue(peekQueue, sequenceToken = "seq-2")
                     "/playback/telemetry/v2/actions" -> json("""{"failedActions":[]}""")
-                    "/playback/signal/v1/feedback" ->
-                        if (rejectFeedback) MockResponse().setResponseCode(500) else MockResponse().setResponseCode(204)
+                    // As SiriusXM does: 400 unless the station is named {"artistStation": id}.
+                    "/playback/signal/v1/feedback" -> when {
+                        rejectFeedback -> MockResponse().setResponseCode(500)
+                        !request.body.clone().readUtf8().contains("\"source\":{\"artistStation\":") -> MockResponse().setResponseCode(400)
+                        else -> MockResponse().setResponseCode(204)
+                    }
                     "/search/v1/search" -> json(searchResponse)
                     "/relationship/v1/container/all-channels" ->
                         json("""{"container":{"sets":[{"items":[{"entity":{"id":"c1","texts":{"title":"Octane"}}}]}]}}""")
@@ -359,7 +363,7 @@ class SiriusXmClientTest {
         assertEquals(com.music.player.sources.siriusxm.SxmThumb.UP, client.thumbs.value["song-1"])
         val feedback = requests.single { it.path == "/playback/signal/v1/feedback" }.body.readUtf8()
         assertTrue(feedback, feedback.contains("\"feedbackType\":\"THUMBS_UP\"") && feedback.contains("\"stationTrack\":\"song-1\""))
-        assertTrue(feedback, feedback.contains("\"type\":\"artist-station\"") && feedback.contains("\"id\":\"st1\""))
+        assertTrue(feedback, feedback.contains("\"source\":{\"artistStation\":\"st1\"}") && feedback.contains("\"contentDeliveryMethod\":\"IP\""))
         val telemetry = requests.last { it.path == "/playback/telemetry/v2/actions" }.body.readUtf8()
         assertTrue(telemetry, telemetry.contains("\"feedback\":{\"thumbsUp\"") && telemetry.contains("\"elapsedTimeMs\":42000"))
 
@@ -370,10 +374,12 @@ class SiriusXmClientTest {
     }
 
     @Test
-    fun `one way of sending a thumb failing is enough for it to count`() = runTest {
+    fun `a thumb SiriusXM refuses doesn't count, even though telemetry took it`() = runTest {
         val client = client()
+        assertTrue(client.rateStationTrack("st1", "song-1", com.music.player.sources.siriusxm.SxmThumb.UP, elapsedMs = 0))
         rejectFeedback = true
-        assertTrue(client.rateStationTrack("st1", "song-1", com.music.player.sources.siriusxm.SxmThumb.DOWN, elapsedMs = 0))
-        assertEquals(com.music.player.sources.siriusxm.SxmThumb.DOWN, client.thumbs.value["song-1"])
+        assertFalse(client.rateStationTrack("st1", "song-1", com.music.player.sources.siriusxm.SxmThumb.DOWN, elapsedMs = 0))
+        // Back to what it was.
+        assertEquals(com.music.player.sources.siriusxm.SxmThumb.UP, client.thumbs.value["song-1"])
     }
 }

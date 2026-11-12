@@ -28,6 +28,7 @@
     <display_length compare="ge">360</display_length>
   </requires>
   <releases>
+    <release version="1.28.1" date="2026-11-12" />
     <release version="1.28.0" date="2026-11-12" />
     <release version="1.27.0" date="2026-11-11" />
     <release version="1.26.0" date="2026-11-11" />

@@ -506,6 +506,8 @@ class SiriusXmClient(
     )
 
     private suspend fun reportProgress(type: String, channelId: String, trackId: String, elapsedMs: Long, start: Boolean) {
+        // SiriusXM refuses progress at 0 ms ("ElapsedTimeMs Cannot be Zero"); the start says it.
+        if (!start && elapsedMs <= 0) return
         runCatching {
             val response = sendTelemetry(if (start) "start" else "progress", telemetryAction(type, channelId, trackId, elapsedMs))
             recordDiagnostics("telemetry ${if (start) "start" else "progress"} $trackId at ${elapsedMs / 1000}s", response.toString())
@@ -514,9 +516,9 @@ class SiriusXmClient(
 
     /**
      * Gives a Pandora station track a thumb up or down (or takes it back with [SxmThumb.NONE]),
-     * which tunes what the station plays next. Sent both ways SiriusXM's web player has sent
-     * thumbs: as a feedback signal and as a telemetry feedback action. Returns whether SiriusXM
-     * took it.
+     * which tunes what the station plays next. Sent as SiriusXM's web player sends it: the
+     * feedback signal (what counts; the station is named `{"artistStation": id}`, which SiriusXM
+     * insists on), and a telemetry action alongside. Returns whether SiriusXM took the signal.
      */
     suspend fun rateStationTrack(stationId: String, trackId: String, thumb: SxmThumb, elapsedMs: Long): Boolean {
         val previous = _thumbs.value[trackId]
@@ -530,10 +532,7 @@ class SiriusXmClient(
                     put("item", buildJsonObject { put("stationTrack", trackId) })
                     put("context", buildJsonObject {
                         put("playback", buildJsonObject {
-                            put("source", buildJsonObject {
-                                put("type", ARTIST_STATION)
-                                put("id", stationId)
-                            })
+                            put("source", buildJsonObject { put("artistStation", stationId) })
                             put("sourceTimestamp", SiriusXmParser.isoUtc(clock()))
                             put("contentDeliveryMethod", "IP")
                         })
@@ -546,7 +545,8 @@ class SiriusXmClient(
             sendTelemetry("feedback", buildJsonObject { put(thumb.telemetryName, telemetryAction(ARTIST_STATION, stationId, trackId, elapsedMs)) })
         }
         recordDiagnostics("telemetry ${thumb.telemetryName} $trackId", telemetry.fold({ it.toString() }, { it.toString() }))
-        val sent = signal.isSuccess || telemetry.isSuccess
+        // Telemetry is only a report of what happened: the thumb counts if the signal was taken.
+        val sent = signal.isSuccess
         if (!sent) setThumb(trackId, previous ?: SxmThumb.NONE)
         return sent
     }

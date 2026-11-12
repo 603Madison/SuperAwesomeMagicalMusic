@@ -1516,7 +1516,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "superawesomemagicalmusic"
-version = "1.28.0"
+version = "1.28.1"
 dependencies = [
  "anyhow",
  "base64",
