@@ -27,6 +27,26 @@ pub struct OnAir {
     pub song: Option<Track>,
 }
 
+/// Playing the queue again at its end, or the one song again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Repeat {
+    #[default]
+    Off,
+    All,
+    One,
+}
+
+impl Repeat {
+    /// The next in Off → All → One → Off, as the web player's button goes.
+    pub fn next(self) -> Repeat {
+        match self {
+            Repeat::Off => Repeat::All,
+            Repeat::All => Repeat::One,
+            Repeat::One => Repeat::Off,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct State {
     pub queue: Vec<Track>,
@@ -40,6 +60,9 @@ pub struct State {
     /// How it's playing ("Jellyfin FLAC", "YouTube Music → Opus 160 kbps").
     pub description: String,
     pub volume: f64,
+    pub repeat: Repeat,
+    /// A sleep timer is set.
+    pub sleeping: bool,
 }
 
 impl State {
@@ -69,8 +92,27 @@ impl State {
     }
 
     pub fn has_next(&self) -> bool {
-        self.index.is_some_and(|i| i + 1 < self.queue.len())
+        self.index.is_some_and(|i| i + 1 < self.queue.len()) || (self.repeat == Repeat::All && !self.queue.is_empty())
     }
+
+    /// What plays after the current song: the next one, or the first again when repeating all.
+    fn following(&self) -> Option<usize> {
+        let i = self.index?;
+        if i + 1 < self.queue.len() {
+            Some(i + 1)
+        } else if self.repeat == Repeat::All && !self.queue.is_empty() {
+            Some(0)
+        } else {
+            None
+        }
+    }
+}
+
+/// When the sleep timer pauses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sleep {
+    Minutes(u32),
+    EndOfSong,
 }
 
 /// Told of every change in the player.
@@ -97,6 +139,9 @@ pub struct Player {
     /// The sign-in as a cookie, for GStreamer's HTTP sources (on its own threads).
     cookie: Arc<Mutex<String>>,
     _bus: RefCell<Option<gst::bus::BusWatchGuard>>,
+    /// The sleep timer: its clock, or pausing at the end of the song.
+    sleep_clock: RefCell<Option<glib::SourceId>>,
+    sleep_at_end: Cell<bool>,
 }
 
 fn now_ms() -> i64 {
@@ -145,6 +190,8 @@ impl Player {
             buffering: Cell::new(false),
             cookie: cookie.clone(),
             _bus: RefCell::new(None),
+            sleep_clock: RefCell::new(None),
+            sleep_at_end: Cell::new(false),
         });
 
         // The sign-in, as the session cookie, on every HTTP request GStreamer makes to the server.
@@ -209,6 +256,11 @@ impl Player {
     }
 
     /// Told of every change (and four times a second while playing, for the position).
+    /// Tells every listener the state again (after a list on screen was rebuilt).
+    pub fn nudge(&self) {
+        self.notify();
+    }
+
     pub fn subscribe(&self, listener: impl Fn(&State) + 'static) {
         self.listeners.borrow_mut().push(Rc::new(listener));
     }
@@ -279,6 +331,52 @@ impl Player {
         self.notify();
     }
 
+    /// Shuffles what's after the current song (as the web player's shuffle button does).
+    pub fn shuffle_upcoming(&self) {
+        {
+            let mut state = self.state.borrow_mut();
+            let at = state.index.map(|i| i + 1).unwrap_or(0).min(state.queue.len());
+            state.queue[at..].shuffle(&mut rand::rng());
+        }
+        self.notify();
+    }
+
+    /// Pauses in some minutes, or at the end of the song; None turns the timer off.
+    pub fn sleep_in(self: &Rc<Self>, when: Option<Sleep>) {
+        if let Some(clock) = self.sleep_clock.borrow_mut().take() {
+            clock.remove();
+        }
+        self.sleep_at_end.set(false);
+        match when {
+            Some(Sleep::Minutes(minutes)) => {
+                let me = Rc::downgrade(self);
+                let clock = glib::timeout_add_seconds_local_once(minutes * 60, move || {
+                    if let Some(me) = me.upgrade() {
+                        me.sleep_clock.replace(None);
+                        me.pause();
+                        me.state.borrow_mut().sleeping = false;
+                        me.notify();
+                    }
+                });
+                self.sleep_clock.replace(Some(clock));
+            }
+            Some(Sleep::EndOfSong) => self.sleep_at_end.set(true),
+            None => {}
+        }
+        self.state.borrow_mut().sleeping = when.is_some();
+        self.notify();
+    }
+
+    pub fn cycle_repeat(&self) {
+        let next = self.state.borrow().repeat.next();
+        self.set_repeat(next);
+    }
+
+    pub fn set_repeat(&self, repeat: Repeat) {
+        self.state.borrow_mut().repeat = repeat;
+        self.notify();
+    }
+
     pub fn jump_to(self: &Rc<Self>, index: usize) {
         if index < self.state.borrow().queue.len() {
             self.load(index, true);
@@ -313,12 +411,9 @@ impl Player {
     }
 
     pub fn next(self: &Rc<Self>) {
-        let (index, len) = {
-            let state = self.state.borrow();
-            (state.index, state.queue.len())
-        };
-        if let Some(i) = index.filter(|i| i + 1 < len) {
-            self.load(i + 1, true);
+        let following = self.state.borrow().following();
+        if let Some(i) = following {
+            self.load(i, true);
         }
     }
 
@@ -362,9 +457,10 @@ impl Player {
         let _ = self.playbin.set_state(gst::State::Null);
         {
             let mut state = self.state.borrow_mut();
-            let volume = state.volume;
+            let (volume, repeat) = (state.volume, state.repeat);
             *state = State {
                 volume,
+                repeat,
                 ..Default::default()
             };
         }
@@ -472,11 +568,27 @@ impl Player {
         use gst::MessageView;
         match message.view() {
             MessageView::Eos(..) => {
-                let (live, has_next) = {
+                let (live, has_next, again) = {
                     let state = self.state.borrow();
-                    (state.live(), state.has_next())
+                    (state.live(), state.has_next(), state.repeat == Repeat::One)
                 };
-                if live {
+                if self.sleep_at_end.replace(false) && !live {
+                    // The sleep timer: stop here.
+                    self.report_listen();
+                    self.reported.set(true);
+                    let mut state = self.state.borrow_mut();
+                    state.playing = false;
+                    state.sleeping = false;
+                    drop(state);
+                    let _ = self.playbin.set_state(gst::State::Null);
+                    self.notify();
+                } else if again && !live {
+                    // Repeat one: the same song from the start.
+                    if let Some(i) = self.state.borrow().index {
+                        let me = self.clone();
+                        glib::idle_add_local_once(move || me.load(i, true));
+                    }
+                } else if live {
                     // A live stream that ended: pick it up again.
                     if let Some(i) = self.state.borrow().index {
                         let me = self.clone();
@@ -711,4 +823,37 @@ fn station_track_path(track: &Track) -> Option<String> {
     let rest = track.source_id.strip_prefix("stationtrack:")?;
     let track_id = rest.split_once(':').map(|(_, t)| t).unwrap_or(rest);
     Some(format!("/api/live/sxm/{}/station-track/{}", enc(via), enc(track_id)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn song(id: &str) -> Track {
+        Track {
+            source: "JELLYFIN".into(),
+            source_id: id.into(),
+            title: id.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn repeat_goes_round_the_queue_and_cycles_like_the_web_player() {
+        let mut state = State {
+            queue: vec![song("a"), song("b")],
+            index: Some(0),
+            ..Default::default()
+        };
+        assert_eq!(state.following(), Some(1));
+        state.index = Some(1);
+        assert_eq!(state.following(), None);
+        assert!(!state.has_next());
+        state.repeat = Repeat::All;
+        assert_eq!(state.following(), Some(0));
+        assert!(state.has_next());
+        assert_eq!(Repeat::Off.next(), Repeat::All);
+        assert_eq!(Repeat::All.next(), Repeat::One);
+        assert_eq!(Repeat::One.next(), Repeat::Off);
+    }
 }

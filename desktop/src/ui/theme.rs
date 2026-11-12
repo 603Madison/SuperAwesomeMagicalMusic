@@ -146,6 +146,11 @@ struct Neutrals {
     faint: &'static str,
     outline: &'static str,
     shade: &'static str,
+    /// The web player's surface-2 (hovered rows, the player bar), surface-3 (the open playlist)
+    /// and surface-4 (grey buttons, badges, the sliders' track).
+    surface2: &'static str,
+    surface3: &'static str,
+    surface4: &'static str,
     glow_strength: (f32, f32),
 }
 
@@ -159,6 +164,9 @@ const DARK: Neutrals = Neutrals {
     faint: "#7d889c",
     outline: "#263349",
     shade: "rgba(0, 0, 0, 0.36)",
+    surface2: "#131d30",
+    surface3: "#1a2539",
+    surface4: "#223047",
     glow_strength: (0.40, 0.28),
 };
 
@@ -172,6 +180,9 @@ const LIGHT: Neutrals = Neutrals {
     faint: "#6b7585",
     outline: "#dde3ec",
     shade: "rgba(17, 24, 39, 0.10)",
+    surface2: "#e8edf5",
+    surface3: "#e1e7f0",
+    surface4: "#d8dfea",
     glow_strength: (0.80, 0.70),
 };
 
@@ -217,6 +228,8 @@ fn css(palette: &Palette, dark: bool, bold: bool) -> String {
 @define-color samm_accent_container {accent_container};
 
 window, dialog, popover, tooltip {{ font-family: "Lexend", "Cantarell", sans-serif; font-weight: {w400}; }}
+/* The web player's 15px (in points, so the desktop's text scaling still applies). */
+window, tooltip {{ font-size: 11.25pt; }}
 .heading, label.title, .title-1, .title-2, .title-3, .title-4, button, .section-title, .card-title {{ font-weight: {w600}; }}
 .subtitle, .card-sub, .meta, .page-subtitle, .empty-text, .login-sub, row.entry label {{ font-weight: {w400}; }}
 {bold_labels}
@@ -233,21 +246,23 @@ window, dialog, popover, tooltip {{ font-family: "Lexend", "Cantarell", sans-ser
 /* The sidebar, as on the web: the brand, then sections as pills, then your radio and playlists. */
 .brand-name {{ font-weight: 700; font-size: 0.95em; line-height: 1.1; }}
 .nav-list {{ background: none; }}
-.nav-list > row {{ border-radius: 999px; margin: 1px 10px; padding: 9px 14px; color: {muted}; }}
+.nav-list > row {{ border-radius: 999px; margin: 1px 10px; padding: 10px 14px; color: {muted}; font-weight: {w500}; }}
 .nav-list > row:hover {{ background: alpha(currentColor, 0.06); color: {text}; }}
 .nav-list > row:selected {{ background: {primary_container}; color: {on_primary_container}; font-weight: {w600}; }}
 .sidebar-heading {{ font-size: 0.72em; font-weight: 700; letter-spacing: 0.08em; color: {faint}; margin: 18px 24px 4px 24px; }}
 .side-list {{ background: none; }}
-.side-list > row {{ border-radius: 12px; margin: 0 10px; padding: 5px 8px; }}
-.side-list > row:hover {{ background: alpha(currentColor, 0.06); }}
+.side-list > row {{ border-radius: 10px; margin: 1px 10px; padding: 6px 10px; color: {muted}; font-size: 0.9em; }}
+.side-list > row:hover {{ background: {surface3}; color: {text}; }}
+.side-list > row:selected {{ background: {surface3}; color: {text}; }}
+.side-list .mosaic, .side-list .artwork {{ border-radius: 8px; }}
 .sidebar-user {{ color: {faint}; font-size: 0.85em; margin: 12px 24px; }}
 
 /* Page titles and headings, as the web player's. */
-.page-title {{ font-size: 2.1em; font-weight: 700; letter-spacing: -0.02em; }}
+.page-title {{ font-size: 2em; font-weight: 700; letter-spacing: -0.02em; }}
 .page-subtitle {{ color: {muted}; }}
-.section-title {{ font-size: 1.2em; font-weight: 700; margin-top: 22px; margin-bottom: 8px; }}
-.eyebrow {{ font-size: 0.75em; font-weight: 700; letter-spacing: 0.12em; color: {accent}; }}
-.hero-title {{ font-size: 2.5em; font-weight: 800; letter-spacing: -0.02em; }}
+.section-title {{ font-size: 1.25em; font-weight: 700; letter-spacing: -0.01em; margin-top: 28px; margin-bottom: 10px; }}
+.eyebrow {{ font-size: 0.75em; font-weight: {w600}; letter-spacing: 0.1em; color: {accent}; }}
+.hero-title {{ font-size: 2.6em; font-weight: 700; letter-spacing: -0.02em; }}
 .meta {{ color: {muted}; }}
 
 /* Lists in rounded cards. */
@@ -255,13 +270,35 @@ window, dialog, popover, tooltip {{ font-family: "Lexend", "Cantarell", sans-ser
 .boxed-list > row:first-child {{ border-top-left-radius: 18px; border-top-right-radius: 18px; }}
 .boxed-list > row:last-child {{ border-bottom-left-radius: 18px; border-bottom-right-radius: 18px; }}
 .boxed-list > row {{ min-height: 56px; }}
-.track-number {{ color: {faint}; }}
+.track-number {{ color: {faint}; font-size: 0.85em; }}
+
+/* Songs, as the web player lists them: on the page, a row lighting up under the pointer, the
+   song that's playing in the theme's colour. */
+.track-list {{ background: none; }}
+.track-list > row {{ border-radius: 12px; padding: 6px 8px; }}
+.track-list > row:hover {{ background: {surface2}; }}
+.track-list > row.current .track-title {{ color: {primary}; }}
+.track-list > row.missing {{ opacity: 0.45; }}
+.track-title {{ font-weight: {w500}; }}
+.track-sub {{ color: {muted}; font-size: 0.86em; }}
+.track-duration {{ color: {faint}; font-size: 0.85em; }}
+.track-play-icon {{ background: rgba(0, 0, 0, 0.5); color: white; border-radius: 10px; opacity: 0; transition: opacity 120ms; }}
+.track-list > row:hover .track-play-icon, .track-list > row.current .track-play-icon {{ opacity: 1; }}
+.badge {{ padding: 2px 9px; border-radius: 999px; font-size: 0.72em; font-weight: {w600}; background: {surface4}; color: {muted}; }}
+
+/* Buttons, as the web player's: pills, grey ("tonal") and text-only in the theme's colour ("ghost"). */
+button.pill, menubutton.pill > button {{ min-height: 40px; padding: 0 18px; border-radius: 999px; font-weight: {w600}; }}
+button.tonal, menubutton.tonal > button {{ background: {surface4}; color: {text}; }}
+button.tonal:hover, menubutton.tonal > button:hover {{ background: mix({surface4}, {primary}, 0.2); }}
+button.ghost {{ background: none; color: {primary}; box-shadow: none; }}
+button.ghost:hover {{ background: alpha({primary}, 0.12); }}
 
 /* Covers, cards and the top result. */
 .artwork {{ border-radius: 12px; background: alpha({primary_container}, 0.6); color: {on_primary_container}; }}
 .artwork.round {{ border-radius: 9999px; }}
 .artwork.hero {{ border-radius: 20px; box-shadow: 0 14px 36px {shade}; }}
 .artwork.hero.round {{ border-radius: 9999px; }}
+.mosaic .artwork {{ border-radius: 0; }}
 .card-tile {{ padding: 10px; border-radius: 16px; background: none; }}
 .card-tile:hover {{ background: alpha(currentColor, 0.06); }}
 .card-sub {{ color: {muted}; font-size: 0.85em; }}
@@ -284,12 +321,18 @@ window, dialog, popover, tooltip {{ font-family: "Lexend", "Cantarell", sans-ser
 .segmented > button:checked {{ background: {primary_container}; color: {on_primary_container}; }}
 
 /* The player along the bottom, as on the web. */
-.player-bar {{ padding: 10px 18px; background: {sidebar}; border-top: 1px solid {outline}; }}
-.player-bar .now-title {{ font-weight: 700; }}
-.player-bar .now-artist {{ color: {muted}; font-size: 0.88em; }}
-.play-button {{ min-width: 46px; min-height: 46px; border-radius: 9999px; padding: 0; }}
-.time {{ color: {faint}; font-size: 0.8em; }}
+.player-bar {{ padding: 12px 18px; background: {surface2}; border-top: 1px solid alpha({outline}, 0.45); }}
+.player-bar .now-title {{ font-weight: {w600}; }}
+.player-bar .now-artist {{ color: {muted}; font-size: 0.86em; }}
+.player-bar .now-detail {{ color: {faint}; font-size: 0.75em; }}
+.player-bar button.on, .player-bar menubutton.on > button {{ color: {primary}; }}
+.play-button {{ min-width: 48px; min-height: 48px; border-radius: 9999px; padding: 0; }}
+.time {{ color: {faint}; font-size: 0.75em; }}
 .live-pill {{ background: {accent_container}; color: {accent}; border-radius: 6px; padding: 1px 7px; font-size: 0.72em; font-weight: 800; }}
+.player-bar scale trough {{ min-height: 5px; border-radius: 999px; background: {surface4}; }}
+.player-bar scale highlight {{ min-height: 5px; border-radius: 999px; background: {primary}; }}
+.player-bar scale slider {{ min-width: 14px; min-height: 14px; margin: -5px; background: {text}; box-shadow: none; border: none; opacity: 0; transition: opacity 120ms; }}
+.player-bar scale:hover slider, .player-bar scale:focus-within slider {{ opacity: 1; }}
 
 /* Signing in: a card over the glow, as on the web. */
 .login-card {{ background: {card}; border-radius: 28px; padding: 34px 32px; box-shadow: 0 12px 40px {shade}; }}
@@ -318,7 +361,11 @@ window, dialog, popover, tooltip {{ font-family: "Lexend", "Cantarell", sans-ser
         faint = n.faint,
         outline = n.outline,
         shade = n.shade,
+        surface2 = n.surface2,
+        surface3 = n.surface3,
+        surface4 = n.surface4,
         w400 = weight(400),
+        w500 = weight(500),
         w600 = weight(600),
         bold_labels = if bold { "label, text, entry { font-weight: 700; }" } else { "" },
     ) + &swatch_css()

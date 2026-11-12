@@ -235,11 +235,16 @@ pub struct PlaylistSummary {
     /// When it was last played, on any device.
     #[serde(default)]
     pub played_at: Option<i64>,
+    /// Goes up with every change (reordering says which it changed).
+    #[serde(default)]
+    pub revision: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistEntry {
+    #[serde(default)]
+    pub entry_id: String,
     pub track: Track,
 }
 
@@ -463,6 +468,55 @@ impl Api {
 
     pub async fn playlist_played(&self, id: &str) -> Result<serde_json::Value> {
         self.post(&format!("/api/playlists/{}/played", enc(id)), json!({})).await
+    }
+
+    pub async fn create_playlist(&self, name: &str, tracks: &[Track]) -> Result<Playlist> {
+        self.post("/api/playlists", json!({ "name": name, "tracks": tracks })).await
+    }
+
+    pub async fn rename_playlist(&self, id: &str, name: &str, description: &str) -> Result<PlaylistSummary> {
+        self.send(
+            Method::PATCH,
+            &format!("/api/playlists/{}", enc(id)),
+            Some(json!({ "name": name, "description": description })),
+        )
+        .await
+    }
+
+    pub async fn delete_playlist(&self, id: &str) -> Result<serde_json::Value> {
+        self.send(Method::DELETE, &format!("/api/playlists/{}", enc(id)), None).await
+    }
+
+    pub async fn add_to_playlist(&self, id: &str, tracks: &[Track]) -> Result<Playlist> {
+        self.post(&format!("/api/playlists/{}/tracks", enc(id)), json!({ "tracks": tracks }))
+            .await
+    }
+
+    pub async fn remove_from_playlist(&self, id: &str, entry_ids: &[String]) -> Result<Playlist> {
+        self.post(&format!("/api/playlists/{}/remove", enc(id)), json!({ "entryIds": entry_ids }))
+            .await
+    }
+
+    pub async fn reorder_playlist(&self, id: &str, revision: i64, entry_ids: &[String]) -> Result<Playlist> {
+        self.send(
+            Method::PUT,
+            &format!("/api/playlists/{}/order", enc(id)),
+            Some(json!({ "revision": revision, "entryIds": entry_ids })),
+        )
+        .await
+    }
+
+    /// The playlist as a CSV file (Exportify's columns), as the server writes it.
+    pub async fn export_playlist(&self, id: &str) -> Result<Vec<u8>> {
+        let mut request = self.http.get(self.url(&format!("/api/playlists/{}/export.csv", enc(id))));
+        if let Some(token) = &self.token {
+            request = request.bearer_auth(token);
+        }
+        let response = request.send().await.map_err(|e| anyhow!(describe(&e)))?;
+        if !response.status().is_success() {
+            bail!("The server answered {}", response.status());
+        }
+        Ok(response.bytes().await?.to_vec())
     }
 
     pub async fn history(&self) -> Result<Vec<Listen>> {

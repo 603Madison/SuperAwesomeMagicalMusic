@@ -8,10 +8,12 @@ view, no Chromium: a 5 MB program that starts at once.
   opens your browser, which hands the sign-in back to the app).
 - **Search** artists, albums and songs from your library and every service on your server, with
   artist and album pages.
-- **Your playlists** and **history**, from every device.
+- **Your playlists** and **history**, from every device. Make, rename, reorder, export (CSV) and
+  delete playlists, and add songs from any song's ⋯ menu, as in the web player.
 - **Radio**: your favourite channels and stations, every SiriusXM channel (with what's on), and
   local and internet radio. Star them to keep them, here and everywhere.
-- **The player** along the bottom, with the queue; **media keys and the desktop's media
+- **The player** along the bottom, as the web player's: shuffle, repeat, the queue, a sleep timer
+  and a star for live stations; **media keys and the desktop's media
   controls** (GNOME's, KDE's, the lock screen) through MPRIS, with the song and its cover.
 - What you play counts toward your **history and Wrapped**, live radio included.
 - **The family's look**: Lexend, rounded cards over a soft glow of the theme, as the web player and

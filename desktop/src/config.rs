@@ -31,6 +31,8 @@ pub struct Config {
     pub style: String,
     /// All text in Lexend Bold.
     pub bold_text: bool,
+    /// Repeat: off, all or one.
+    pub repeat: String,
 }
 
 impl Default for Config {
@@ -48,6 +50,7 @@ impl Default for Config {
             palette: "aurora".into(),
             style: "system".into(),
             bold_text: false,
+            repeat: "off".into(),
         }
     }
 }

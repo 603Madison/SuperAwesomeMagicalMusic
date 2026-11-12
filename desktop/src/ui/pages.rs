@@ -6,13 +6,14 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use adw::prelude::*;
-use gtk::glib;
+use gtk::{gio, glib};
 
-use crate::api::{AlbumSummary, ChannelView, SearchResults, SourceView, TopResult, Track};
+use crate::api::{AlbumSummary, ChannelView, Playlist, PlaylistSummary, SearchResults, SourceView, TopResult, Track};
 use crate::rt::bg;
 use crate::ui::ctx;
 use crate::ui::widgets::{
-    artwork, card, card_grid, duration, heading, nav_page, page_box, page_title, plain_row, play_buttons, scrolled, status, track_list,
+    ListStyle, PlaylistEdit, add_actions, artwork, button, card, card_grid, card_with, duration, heading, mosaic, nav_page, page_box,
+    page_title, plain_row, play_buttons, playlist_menu, scrolled, status, track_list, track_list_styled,
 };
 use crate::ui::window::load_into;
 
@@ -198,10 +199,10 @@ fn album_grid(albums: &[AlbumSummary]) -> gtk::FlowBox {
     grid
 }
 
-/// A page's top, as the web player's: the cover, a small label over the name, a line, and Play.
-fn hero(art: Option<&str>, round: bool, eyebrow: &str, title: &str, line: &str, tracks: Rc<Vec<Track>>) -> gtk::Box {
-    let row = gtk::Box::builder().spacing(28).margin_top(8).margin_bottom(10).build();
-    let cover = artwork(art, 200, round);
+/// A page's top, as the web player's: the cover, a small label over the name, a line, and the
+/// buttons.
+fn hero(cover: gtk::Widget, eyebrow: &str, title: &str, line: &str, buttons: &gtk::Box) -> gtk::Box {
+    let row = gtk::Box::builder().spacing(28).margin_top(8).margin_bottom(18).build();
     cover.add_css_class("hero");
     row.append(&cover);
     let text = gtk::Box::builder()
@@ -226,9 +227,31 @@ fn hero(art: Option<&str>, round: bool, eyebrow: &str, title: &str, line: &str, 
         under.add_css_class("meta");
         text.append(&under);
     }
-    text.append(&play_buttons(tracks));
+    text.append(buttons);
     row.append(&text);
     row
+}
+
+/// "Add to playlist" for a whole list of songs (an artist's popular songs, an album).
+fn add_all_button(tracks: &[Track]) -> gtk::MenuButton {
+    let keepable: Rc<Vec<Track>> = Rc::new(tracks.iter().filter(|t| !t.is_live() && !t.is_missing()).cloned().collect());
+    let group = gio::SimpleActionGroup::new();
+    add_actions(&group, keepable.clone());
+    let content = gtk::Box::builder().spacing(8).build();
+    content.append(&gtk::Image::from_icon_name("list-add-symbolic"));
+    content.append(&gtk::Label::new(Some("Add to playlist")));
+    let button = gtk::MenuButton::builder().child(&content).menu_model(&playlist_menu("all")).build();
+    button.add_css_class("pill");
+    button.add_css_class("tonal");
+    button.insert_action_group("all", Some(&group));
+    button.set_sensitive(!keepable.is_empty());
+    // Your playlists as they are when it opens.
+    button.connect_notify_local(Some("active"), |b, _| {
+        if b.is_active() {
+            b.set_menu_model(Some(&playlist_menu("all")));
+        }
+    });
+    button
 }
 
 // ---- An artist, an album ----
@@ -246,13 +269,16 @@ pub fn artist_page(id: Option<String>, name: String) -> adw::NavigationPage {
                 (0, n) => count(n, "popular song"),
                 (a, _) => count(a, "album"),
             };
+            let buttons = play_buttons(songs.clone());
+            if !songs.is_empty() {
+                buttons.append(&add_all_button(&songs));
+            }
             into.append(&hero(
-                found.artist.artwork_url.as_deref(),
-                true,
+                artwork(found.artist.artwork_url.as_deref(), 200, true),
                 "Artist",
                 &found.artist.name,
                 &line,
-                songs.clone(),
+                &buttons,
             ));
             if !songs.is_empty() {
                 into.append(&heading("Popular"));
@@ -290,13 +316,16 @@ pub fn album_page(id: Option<String>, title: String, artist: String) -> adw::Nav
             if length > 0 {
                 line.push(duration(length));
             }
+            let buttons = play_buttons(tracks.clone());
+            if !tracks.is_empty() {
+                buttons.append(&add_all_button(&tracks));
+            }
             into.append(&hero(
-                found.album.artwork_url.as_deref(),
-                false,
+                artwork(found.album.artwork_url.as_deref(), 200, false),
                 "Album",
                 &found.album.title,
                 &line.join(" · "),
-                tracks.clone(),
+                &buttons,
             ));
             let artist = found.album.artist.clone();
             if !artist.is_empty() {
@@ -345,9 +374,8 @@ pub fn playlists_page() -> adw::NavigationPage {
                     line.push_str(&format!(" · {}", duration(playlist.duration_ms)));
                 }
                 let (id, name) = (playlist.id.clone(), playlist.name.clone());
-                grid.append(&card(
-                    playlist.artwork.first().map(String::as_str),
-                    160,
+                grid.append(&card_with(
+                    &mosaic(&playlist.artwork, 160),
                     false,
                     &playlist.name,
                     &line,
@@ -363,49 +391,210 @@ pub fn playlists_page() -> adw::NavigationPage {
 pub fn playlist_page(id: String, name: String) -> adw::NavigationPage {
     let content = page_box();
     let (page, _) = nav_page(&name, &scrolled(&content));
+    // The sidebar marks the playlist that's open.
+    page.set_widget_name(&format!("playlist:{id}"));
     let Some(api) = ctx().api() else { return page };
-    let played_id = id.clone();
+    let weak = page.downgrade();
     load_into(
         &content,
         async move { bg(async move { api.playlist(&id).await }).await },
-        move |into, playlist| {
-            let tracks: Rc<Vec<Track>> = Rc::new(playlist.entries.iter().map(|e| e.track.clone()).collect());
-            let length: i64 = tracks.iter().filter_map(|t| t.duration_ms).sum();
-            let mut line = count(tracks.len(), "song");
-            if length > 0 {
-                line.push_str(&format!(" · {}", duration(length)));
-            }
-            if !playlist.summary.description.is_empty() {
-                line = format!("{} — {line}", playlist.summary.description);
-            }
-            into.append(&hero(
-                playlist.summary.artwork.first().map(String::as_str),
-                false,
-                "Playlist",
-                &playlist.summary.name,
-                &line,
-                tracks.clone(),
-            ));
-            if tracks.is_empty() {
-                into.append(&status(
-                    "view-list-bullet-symbolic",
-                    "No songs yet",
-                    "Add songs from the web player or the phone app.",
-                ));
-                return;
-            }
-            into.append(&track_list(tracks, true));
-            // Marks it played (the order of playlists elsewhere), quietly.
-            if let Some(api) = ctx().api() {
-                glib::spawn_future_local(async move {
-                    if bg(async move { api.playlist_played(&played_id).await }).await.is_ok() {
-                        crate::ui::window::refresh_sidebar();
-                    }
-                });
-            }
-        },
+        move |into, playlist| show_playlist(into, playlist, weak),
     );
     page
+}
+
+/// A playlist: its mosaic, name and line, its buttons (as the web player's), and its songs.
+fn show_playlist(into: &gtk::Box, playlist: Playlist, page: glib::WeakRef<adw::NavigationPage>) {
+    clear(into);
+    let summary = playlist.summary.clone();
+    if let Some(page) = page.upgrade() {
+        page.set_title(&summary.name);
+    }
+    let tracks: Rc<Vec<Track>> = Rc::new(playlist.entries.iter().map(|e| e.track.clone()).collect());
+    let length: i64 = tracks.iter().filter_map(|t| t.duration_ms).sum();
+    let mut line = count(tracks.len(), "song");
+    if length > 0 {
+        line.push_str(&format!(" · {}", duration(length)));
+    }
+    if !summary.description.is_empty() {
+        line = format!("{} — {line}", summary.description);
+    }
+    // Playing it (on any device) puts it first among your playlists.
+    let played_id = summary.id.clone();
+    let played: Rc<dyn Fn()> = Rc::new(move || {
+        let Some(api) = ctx().api() else { return };
+        let id = played_id.clone();
+        glib::spawn_future_local(async move {
+            if bg(async move { api.playlist_played(&id).await }).await.is_ok() {
+                crate::ui::window::refresh_sidebar();
+            }
+        });
+    });
+
+    let buttons = play_buttons(tracks.clone());
+    let mut child = buttons.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if let Ok(b) = widget.downcast::<gtk::Button>() {
+            let played = played.clone();
+            b.connect_clicked(move |_| played());
+        }
+    }
+    let queue = button(None, "Add to queue", "ghost");
+    queue.set_sensitive(!tracks.is_empty());
+    let t = tracks.clone();
+    queue.connect_clicked(move |_| {
+        ctx().player.add_to_queue(t.iter().filter(|t| !t.is_missing()).cloned().collect());
+        ctx().toast("Added to the queue");
+    });
+    buttons.append(&queue);
+    let rename = button(Some("document-edit-symbolic"), "Rename", "ghost");
+    let (holder, p, s) = (into.clone(), page.clone(), summary.clone());
+    rename.connect_clicked(move |_| rename_playlist(&s, holder.clone(), p.clone()));
+    buttons.append(&rename);
+    let export = button(Some("document-save-symbolic"), "Export CSV", "ghost");
+    export.set_tooltip_text(Some(
+        "Save it as a CSV file (Exportify's columns), for a spreadsheet or another service",
+    ));
+    let s = summary.clone();
+    export.connect_clicked(move |_| export_playlist(&s));
+    buttons.append(&export);
+    let delete = button(Some("user-trash-symbolic"), "Delete", "ghost");
+    let s = summary.clone();
+    delete.connect_clicked(move |_| delete_playlist(&s));
+    buttons.append(&delete);
+
+    into.append(&hero(mosaic(&summary.artwork, 200), "Playlist", &summary.name, &line, &buttons));
+    if tracks.is_empty() {
+        into.append(&status(
+            "view-list-bullet-symbolic",
+            "No songs yet",
+            "Add songs from a song's menu (⋯, then Add to playlist), here, on the web or on your phone.",
+        ));
+        return;
+    }
+    let holder = into.clone();
+    let edit = PlaylistEdit {
+        id: summary.id.clone(),
+        revision: summary.revision,
+        entry_ids: playlist.entries.iter().map(|e| e.entry_id.clone()).collect(),
+        changed: Rc::new(move |playlist| show_playlist(&holder, playlist, page.clone())),
+    };
+    into.append(&track_list_styled(
+        tracks,
+        ListStyle {
+            numbered: true,
+            hide_album: false,
+            playlist: Some(edit),
+            on_play: Some(played),
+        },
+    ));
+}
+
+fn rename_playlist(summary: &PlaylistSummary, holder: gtk::Box, page: glib::WeakRef<adw::NavigationPage>) {
+    let dialog = adw::AlertDialog::new(Some("Rename playlist"), None);
+    let fields = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(10).build();
+    let name = gtk::Entry::builder()
+        .text(&summary.name)
+        .placeholder_text("Name")
+        .activates_default(true)
+        .build();
+    let description = gtk::Entry::builder()
+        .text(&summary.description)
+        .placeholder_text("Description (optional)")
+        .activates_default(true)
+        .build();
+    fields.append(&name);
+    fields.append(&description);
+    dialog.set_extra_child(Some(&fields));
+    dialog.add_responses(&[("cancel", "Cancel"), ("save", "Save")]);
+    dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+    dialog.set_default_response(Some("save"));
+    dialog.set_close_response("cancel");
+    let id = summary.id.clone();
+    dialog.connect_response(None, move |_, response| {
+        let (new_name, new_description) = (name.text().trim().to_string(), description.text().trim().to_string());
+        if response != "save" || new_name.is_empty() {
+            return;
+        }
+        let Some(api) = ctx().api() else { return };
+        let (id, holder, page) = (id.clone(), holder.clone(), page.clone());
+        glib::spawn_future_local(async move {
+            let result = bg(async move {
+                api.rename_playlist(&id, &new_name, &new_description).await?;
+                api.playlist(&id).await
+            })
+            .await;
+            match result {
+                Ok(playlist) => {
+                    show_playlist(&holder, playlist, page);
+                    crate::ui::window::refresh_sidebar();
+                }
+                Err(e) => ctx().failed(&e),
+            }
+        });
+    });
+    dialog.present(Some(&ctx().window));
+}
+
+/// Saves the playlist as a CSV file where you choose (the server writes it, as for the web).
+fn export_playlist(summary: &PlaylistSummary) {
+    let safe: String = summary
+        .name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || " -_.()".contains(c) { c } else { '_' })
+        .collect();
+    let safe = safe.trim();
+    let dialog = gtk::FileDialog::builder()
+        .title("Export playlist")
+        .initial_name(format!("{}.csv", if safe.is_empty() { "playlist" } else { safe }))
+        .build();
+    let id = summary.id.clone();
+    dialog.save(Some(&ctx().window), gio::Cancellable::NONE, move |chosen| {
+        let Some(path) = chosen.ok().and_then(|file| file.path()) else {
+            return;
+        };
+        let Some(api) = ctx().api() else { return };
+        let id = id.clone();
+        glib::spawn_future_local(async move {
+            match bg(async move { api.export_playlist(&id).await }).await {
+                Ok(bytes) => match std::fs::write(&path, bytes) {
+                    Ok(()) => ctx().toast(&format!(
+                        "Saved {}",
+                        path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()
+                    )),
+                    Err(e) => ctx().toast(&format!("Couldn't save it: {e}")),
+                },
+                Err(e) => ctx().failed(&e),
+            }
+        });
+    });
+}
+
+fn delete_playlist(summary: &PlaylistSummary) {
+    let dialog = adw::AlertDialog::new(
+        Some(&format!("Delete “{}”?", summary.name)),
+        Some("It goes from every device. Its songs stay in your library."),
+    );
+    dialog.add_responses(&[("keep", "Keep it"), ("delete", "Delete")]);
+    dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+    dialog.set_close_response("keep");
+    let (id, name) = (summary.id.clone(), summary.name.clone());
+    dialog.connect_response(Some("delete"), move |_, _| {
+        let Some(api) = ctx().api() else { return };
+        let (id, name) = (id.clone(), name.clone());
+        glib::spawn_future_local(async move {
+            match bg(async move { api.delete_playlist(&id).await }).await {
+                Ok(_) => {
+                    ctx().toast(&format!("Deleted “{name}”"));
+                    ctx().back();
+                    crate::ui::window::refresh_sidebar();
+                }
+                Err(e) => ctx().failed(&e),
+            }
+        });
+    });
+    dialog.present(Some(&ctx().window));
 }
 
 // ---- Radio ----

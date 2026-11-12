@@ -125,6 +125,13 @@ impl Ctx {
         }
     }
 
+    /// Back to the page before (after deleting a playlist).
+    pub fn back(&self) {
+        if let Some(nav) = self.nav.borrow().as_ref() {
+            nav.pop();
+        }
+    }
+
     pub fn open_artist(&self, id: Option<&str>, name: &str) {
         self.push(&pages::artist_page(id.map(str::to_string), name.to_string()));
     }
@@ -134,6 +141,16 @@ impl Ctx {
     }
 
     pub fn open_playlist(&self, id: &str, name: &str) {
+        // Already open: nothing to do.
+        let open = self
+            .nav
+            .borrow()
+            .as_ref()
+            .and_then(|nav| nav.visible_page())
+            .map(|p| p.widget_name());
+        if open.as_deref() == Some(format!("playlist:{id}").as_str()) {
+            return;
+        }
         self.push(&pages::playlist_page(id.to_string(), name.to_string()));
     }
 }
@@ -179,6 +196,11 @@ pub fn activate(app: &adw::Application) {
     let player = Player::new();
     player.set_volume(config.volume);
     player.set_choices(config.kbps, config.thorough);
+    player.set_repeat(match config.repeat.as_str() {
+        "all" => crate::player::Repeat::All,
+        "one" => crate::player::Repeat::One,
+        _ => crate::player::Repeat::Off,
+    });
     let context = Rc::new(Ctx {
         window: window.clone(),
         toasts,
@@ -230,7 +252,14 @@ pub fn activate(app: &adw::Application) {
                 config.width = w;
                 config.height = h;
             }
-            config.volume = ctx.player.state().volume;
+            let state = ctx.player.state();
+            config.volume = state.volume;
+            config.repeat = match state.repeat {
+                crate::player::Repeat::Off => "off",
+                crate::player::Repeat::All => "all",
+                crate::player::Repeat::One => "one",
+            }
+            .into();
             config.save();
         }
         ctx.player.shutdown();
