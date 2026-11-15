@@ -124,7 +124,7 @@ class MusicCastSpeaker(
         val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
         http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw SpeakerException("${info.name}: HTTP ${response.code}")
-            val json = Json.parseToJsonElement(response.body!!.string()).jsonObject
+            val json = Json.parseToJsonElement(response.body.string()).jsonObject
             val code = json["response_code"]?.jsonPrimitive?.intOrNull ?: 0
             if (code != 0) throw SpeakerException("${info.name} refused (code $code)")
             json
@@ -142,7 +142,7 @@ class MusicCastSpeaker(
             .post(body.toRequestBody("text/xml; charset=\"utf-8\"".toMediaType()))
             .build()
         http.newCall(request).execute().use { response ->
-            val text = response.body?.string().orEmpty()
+            val text = response.body.string()
             if (!response.isSuccessful) {
                 val error = tag(text, "errorDescription") ?: tag(text, "errorCode") ?: "HTTP ${response.code}"
                 throw SpeakerException("${info.name}: $action failed ($error)")
@@ -167,7 +167,7 @@ class MusicCastSpeaker(
                 val request = Request.Builder().url("http://${hostForUrl(host)}/YamahaExtendedControl/v1/$path").header("User-Agent", USER_AGENT).build()
                 return quick.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) throw SpeakerException("No MusicCast speaker at $host")
-                    Json.parseToJsonElement(response.body!!.string()).jsonObject
+                    Json.parseToJsonElement(response.body.string()).jsonObject
                 }
             }
             val device = json("system/getDeviceInfo")
@@ -176,7 +176,7 @@ class MusicCastSpeaker(
             val name = runCatching { json("system/getNetworkStatus")["network_name"]?.jsonPrimitive?.content }.getOrNull()?.takeIf { it.isNotBlank() } ?: model.ifBlank { "MusicCast speaker" }
             val location = description ?: "http://${hostForUrl(host)}:$UPNP_PORT/MediaRenderer/desc.xml"
             val transport = runCatching {
-                val xml = quick.newCall(Request.Builder().url(location).header("User-Agent", USER_AGENT).build()).execute().use { it.body?.string().orEmpty() }
+                val xml = quick.newCall(Request.Builder().url(location).header("User-Agent", USER_AGENT).build()).execute().use { it.body.string() }
                 transportUrl(xml, location)
             }.getOrNull() ?: "http://${hostForUrl(host)}:$UPNP_PORT/AVTransport/ctrl"
             SpeakerInfo(deviceId = id, name = name, model = model, host = host, transportUrl = transport)

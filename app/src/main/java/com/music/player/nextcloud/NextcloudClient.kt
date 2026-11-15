@@ -46,7 +46,7 @@ class NextcloudClient(private val http: OkHttpClient) {
             .build()
         val body = http.call(request) {
             if (!it.isSuccessful) throw HttpException(it.code, "Nextcloud didn't start a sign-in (HTTP ${it.code}); check the server URL")
-            it.body?.string().orEmpty()
+            it.body.string()
         }
         val json = AppJson.parseToJsonElement(body).jsonObject
         val poll = json["poll"]?.jsonObject ?: throw IOException("Unexpected answer from Nextcloud")
@@ -68,7 +68,7 @@ class NextcloudClient(private val http: OkHttpClient) {
                 response.code == 404 -> null
                 !response.isSuccessful -> throw HttpException(response.code, "Nextcloud sign-in failed: HTTP ${response.code}")
                 else -> {
-                    val json = AppJson.parseToJsonElement(response.body?.string().orEmpty()).jsonObject
+                    val json = AppJson.parseToJsonElement(response.body.string()).jsonObject
                     LoginCredentials(
                         server = json["server"]?.jsonPrimitive?.content ?: throw IOException("Nextcloud sent no server"),
                         loginName = json["loginName"]?.jsonPrimitive?.content ?: throw IOException("Nextcloud sent no login name"),
@@ -89,7 +89,7 @@ class NextcloudClient(private val http: OkHttpClient) {
             .build()
         val body = request(config, url, "GET", null) {
             if (!it.isSuccessful) throw HttpException(it.code, describe(it.code))
-            it.body?.string().orEmpty()
+            it.body.string()
         }
         val data = AppJson.parseToJsonElement(body).jsonObject["ocs"]?.jsonObject?.get("data")?.jsonObject
         return data?.get("id")?.jsonPrimitive?.content ?: config.username
@@ -112,14 +112,14 @@ class NextcloudClient(private val http: OkHttpClient) {
             when {
                 it.code == 404 -> emptyList()
                 !it.isSuccessful -> throw HttpException(it.code, describe(it.code))
-                else -> parseMultiStatus(it.body?.string().orEmpty())
+                else -> parseMultiStatus(it.body.string())
             }
         }
 
     suspend fun download(config: NextcloudConfig, name: String): Pair<String, String?> =
         request(config, file(config, name), "GET", null) {
             if (!it.isSuccessful) throw HttpException(it.code, describe(it.code))
-            it.body?.string().orEmpty() to normalizeEtag(it.header("ETag") ?: it.header("OC-ETag"))
+            it.body.string() to normalizeEtag(it.header("ETag") ?: it.header("OC-ETag"))
         }
 
     /** Uploads [content] and returns the new ETag when the server reports one. */

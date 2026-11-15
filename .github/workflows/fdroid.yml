@@ -29,9 +29,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -95,7 +95,7 @@ jobs:
           git push --force --quiet "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
           echo "Published $(ls repo/*.apk | wc -l) APKs to the gh-pages branch"
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: env.PAGES_MODE == 'workflow'
         with:
           path: ${{ env.SITE }}
@@ -103,4 +103,4 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deploy
         if: env.PAGES_MODE == 'workflow'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

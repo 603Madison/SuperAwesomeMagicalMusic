@@ -28,7 +28,7 @@ class YouTubeMediaRequestsTest {
         val url = "http://rr3---sn-abc.googlevideo.com:${server.port}/videoplayback?id=x&itag=140"
         http.newCall(Request.Builder().url(url).header("Range", "bytes=100-").build()).execute().use {
             assertEquals(206, it.code)
-            assertEquals("audio", it.body?.string())
+            assertEquals("audio", it.body.string())
         }
         val seen = server.takeRequest()
         assertEquals("POST", seen.method)

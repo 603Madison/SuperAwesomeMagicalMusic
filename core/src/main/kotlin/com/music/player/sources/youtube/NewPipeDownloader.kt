@@ -27,7 +27,7 @@ class NewPipeDownloader(private val client: OkHttpClient) : Downloader() {
                 response.code,
                 response.message,
                 response.headers.toMultimap(),
-                response.body?.string(),
+                response.body.string(),
                 response.request.url.toString(),
             )
         }

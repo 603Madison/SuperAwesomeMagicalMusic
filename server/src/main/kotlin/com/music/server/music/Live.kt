@@ -84,7 +84,7 @@ class LiveProxy(http: OkHttpClient, private val box: SecretBox, private val cloc
                     CoreLog.w(TAG, "Playlist ${url.toHttpUrlOrNull()?.host}/…/${url.substringBefore('?').substringAfterLast('/')}: HTTP ${response.code}")
                     throw ApiError.upstream("The stream answered HTTP ${response.code}")
                 }
-                val body = response.body?.byteStream()?.use { it.readNBytes(MAX_PLAYLIST_BYTES) } ?: ByteArray(0)
+                val body = response.body.byteStream().use { it.readNBytes(MAX_PLAYLIST_BYTES) }
                 String(body) to response.request.url.toString()
             }
         } catch (e: IOException) {
@@ -107,7 +107,7 @@ class LiveProxy(http: OkHttpClient, private val box: SecretBox, private val cloc
         if (response.code != 200 && response.code != 206) {
             CoreLog.w(TAG, "Relaying $name: HTTP ${response.code} after $waited ms")
         } else {
-            CoreLog.i(TAG, "Relaying $name: HTTP ${response.code} after $waited ms, ${response.body?.contentLength()?.takeIf { it >= 0 }?.let { "${it / 1024} KB" } ?: "size unknown"}")
+            CoreLog.i(TAG, "Relaying $name: HTTP ${response.code} after $waited ms, ${response.body.contentLength().takeIf { it >= 0 }?.let { "${it / 1024} KB" } ?: "size unknown"}")
         }
         var handedOff = false
         try {

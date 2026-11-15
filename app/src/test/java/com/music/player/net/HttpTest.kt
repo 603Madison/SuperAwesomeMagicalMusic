@@ -21,7 +21,7 @@ class HttpTest {
                 .header("X-Api-Key", "lidarr-key")
                 .header("X-User-Auth-Token", "qobuz-token")
                 .build()
-            Http.createClient().newCall(request).execute().use { assertEquals("sign in", it.body!!.string()) }
+            Http.createClient().newCall(request).execute().use { assertEquals("sign in", it.body.string()) }
 
             assertEquals("lidarr-key", home.takeRequest().getHeader("X-Api-Key"))
             val redirected = elsewhere.takeRequest()

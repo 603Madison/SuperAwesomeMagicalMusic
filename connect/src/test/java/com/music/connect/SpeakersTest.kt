@@ -67,7 +67,7 @@ private class FakeSpeaker(private val http: OkHttpClient) : SpeakerControl {
         positionMs = 0
         given.add(url to metadata)
         // Like a speaker: it fetches the song itself (without signing in to anything).
-        thread { runCatching { http.newCall(Request.Builder().url(url).build()).execute().use { fetched.add(it.body!!.bytes()) } } }
+        thread { runCatching { http.newCall(Request.Builder().url(url).build()).execute().use { fetched.add(it.body.bytes()) } } }
     }
     override suspend fun play() { state = "PLAYING" }
     override suspend fun pause() { state = "PAUSED_PLAYBACK" }

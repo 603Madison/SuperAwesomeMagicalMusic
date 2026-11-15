@@ -98,7 +98,7 @@ class Downloads(
         http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw ServerException(response.code, "The server answered HTTP ${response.code}")
             val append = resumeFrom > 0 && response.code == 206
-            val body = response.body ?: throw IOException("Nothing came back")
+            val body = response.body
             java.io.FileOutputStream(part, append).use { out -> body.byteStream().use { it.copyTo(out, 64 * 1024) } }
         }
         val extension = resolved.extension.ifBlank { "audio" }.filter { it.isLetterOrDigit() }.take(5)
