@@ -26,7 +26,11 @@ browser = "1.8.0"
 ktor = "3.3.3"
 sqliteJdbc = "3.50.3.0"
 nimbusJoseJwt = "10.5"
-logback = "1.5.20"
+logback = "1.5.38"
+# Security floors for libraries that come in transitively (Ktor 3.3 brings Netty 4.2.7).
+netty = "4.2.20.Final"
+# AndroidX/Media3 bring Guava 33.3.
+guava = "33.7.2-android"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -84,6 +88,8 @@ ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref 
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqliteJdbc" }
 nimbus-jose-jwt = { module = "com.nimbusds:nimbus-jose-jwt", version.ref = "nimbusJoseJwt" }
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
+netty-bom = { module = "io.netty:netty-bom", version.ref = "netty" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 [plugins]

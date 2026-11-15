@@ -16,8 +16,8 @@ android {
         applicationId = "com.music.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 53
-        versionName = "1.28.2"
+        versionCode = 54
+        versionName = "1.28.3"
     }
 
     // Release APKs are signed with one permanent key, so each release installs as an update over
@@ -88,6 +88,10 @@ ksp {
 }
 
 dependencies {
+    // Guava with its security fix (CVE-2026-102554), over the older one AndroidX libraries ask for.
+    constraints {
+        implementation(libs.guava) { because("CVE-2026-102554") }
+    }
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     implementation(libs.androidx.core.ktx)

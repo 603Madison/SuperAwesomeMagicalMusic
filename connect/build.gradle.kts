@@ -83,6 +83,10 @@ ksp {
 }
 
 dependencies {
+    // Guava with its security fix (CVE-2026-102554), over the older one AndroidX libraries ask for.
+    constraints {
+        implementation(libs.guava) { because("CVE-2026-102554") }
+    }
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(project(":core"))
 
