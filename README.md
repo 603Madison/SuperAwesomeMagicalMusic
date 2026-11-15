@@ -1,5 +1,9 @@
 # SuperAwesomeMagicalMusic
 
+<p align="center">
+  <a href="https://fdroid.link/#https://603madison.github.io/SuperAwesomeMagicalMusic/repo?fingerprint=ED2C0523BC9120F63952EAE882FA4C0FBD3153967130C0A4ADF1AF98D07B5283"><img alt="Add to F-Droid" src="https://img.shields.io/badge/Add_to-F--Droid-1976D2?style=for-the-badge&amp;logo=fdroid&amp;logoColor=white" height="40"></a>
+</p>
+
 Music for self-hosters. It plays from your **Jellyfin** library first and fills the gaps from
 **YouTube Music**. It also plays **SiriusXM** live radio and Pandora artist stations,
 and songs you hear there can be saved to a playlist. Songs Jellyfin doesn't have get their artist
@@ -304,8 +308,9 @@ Plain-HTTP server URLs are allowed, because home servers often run without TLS o
 
 ## Installing
 
-**With F-Droid** (gets updates automatically): add the app's own F-Droid repository. Open
-https://603madison.github.io/SuperAwesomeMagicalMusic/ on your phone and tap **Add the
+**With F-Droid** (gets updates automatically): add the app's own F-Droid repository. On your
+phone, tap **Add to F-Droid** at the top of this page (it opens F-Droid with the repository
+filled in), or open https://603madison.github.io/SuperAwesomeMagicalMusic/ and tap **Add the
 repository**, or in F-Droid go to Settings › Repositories › **+** and enter
 `https://603madison.github.io/SuperAwesomeMagicalMusic/repo` with the fingerprint
 `ED2C0523BC9120F63952EAE882FA4C0FBD3153967130C0A4ADF1AF98D07B5283`. See
