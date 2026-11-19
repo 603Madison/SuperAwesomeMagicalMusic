@@ -181,6 +181,30 @@ in the room. Everything it recognises is kept under **Recently heard**.
   recognition). It's only asked about what your library didn't recognise, and Listen then finds
   the song on your sources to play.
 
+### Now Playing: recognised by itself
+
+Like Pixel phones' Now Playing: turn it on in the phone app (**Settings › Listen**, or on the
+Listen screen) and the phone recognises music playing around you without being asked. The song
+shows in a quiet notification, on the lock screen too, and joins **Recently heard** everywhere.
+
+- **How it works.** Every minute or so (30 seconds to 5 minutes, your choice) the phone listens
+  for three seconds. If that sounds like music, it listens for seven more.
+- **What leaves the phone.** It works out the fingerprints on the phone and sends only those to
+  your server, which looks for them in your library. The sound never leaves the phone, and
+  fingerprints can't be turned back into it.
+- **When it rests.**
+  - After recognising a song, it waits until the song should be over.
+  - It listens less and less often while it hears music it doesn't know.
+  - It doesn't listen while the phone plays music itself, during calls, in battery saver, or when
+    the battery is low.
+- **After a restart.** Android only lets an app use the microphone in the background once you've
+  opened it or tapped its notification. After the phone restarts, a notification offers to carry
+  on.
+- **It recognises songs in your library only.** AudD needs the sound itself, so it's left to
+  **Listen**.
+- **Reusable.** It's a separate Android library (`nowplaying/`), so another app (or a phone's own
+  system) can host it. The host only says how fingerprints are recognised (`NowPlayingHost`).
+
 ### Android Auto
 
 The app appears as a media source in Android Auto (and to the system, Android Automotive, the
