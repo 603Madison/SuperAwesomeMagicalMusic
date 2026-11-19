@@ -83,6 +83,16 @@ class SourceSetup(private val http: OkHttpClient) {
             emptyList(),
         ),
         KindSpec(
+            SourceKind.TUNER, "FM tuner",
+            "Local FM and HD Radio stations, from a SuperAwesomeMagicalMusic tuner (a Raspberry Pi with RTL-SDR dongles) on your network, " +
+                "with what's playing. They're listed with the other radio stations; one that's also online plays from the tuner while it's clear, " +
+                "and from the internet while it's static.",
+            listOf(
+                FieldSpec("serverUrl", "Tuner address", "url", required = true, help = "e.g. http://raspberrypi.local:5004"),
+                FieldSpec("token", "Token", "password", secret = true, help = "The tuner's TUNER_TOKEN, if it has one"),
+            ),
+        ),
+        KindSpec(
             SourceKind.AUDD, "AudD",
             "For Listen: recognises songs that aren't in your library, from what the microphone hears. " +
                 "Your own library is always tried first; only then is the recording sent to AudD.",
@@ -153,6 +163,13 @@ class SourceSetup(private val http: OkHttpClient) {
                 if (channels == 0) throw ApiError.badRequest("SiriusXM signed in but listed no channels")
                 buildJsonObject { put("username", username) } to buildJsonObject { put("password", password) }
             }
+            SourceKind.TUNER -> {
+                val serverUrl = url(required("serverUrl", "The tuner's address"))
+                val token = text("token") ?: previous?.secret("token")?.ifEmpty { null }
+                val status = service("The tuner") { com.music.server.tuner.TunerClient(http, serverUrl, token).status() }
+                if (status.tuners.isEmpty()) throw ApiError.badRequest("The tuner answered, but has no dongles")
+                buildJsonObject { put("serverUrl", serverUrl) } to buildJsonObject { token?.let { put("token", it) } }
+            }
             SourceKind.AUDD -> {
                 val token = text("apiToken") ?: previous?.secret("apiToken")?.ifEmpty { null } ?: throw ApiError.badRequest("The API token is needed")
                 service("AudD") { com.music.server.listen.AudD(http).check(token) }
@@ -185,6 +202,13 @@ class SourceSetup(private val http: OkHttpClient) {
         SourceKind.RADIO -> {
             val found = service("Radio Browser") { registry.radio.search("jazz", limit = 5) }
             "Working: Radio Browser answered with ${found.size} stations"
+        }
+        SourceKind.TUNER -> {
+            val client = registry.tuner(source)!!
+            val status = service("The tuner") { client.status() }
+            val stations = service("The tuner") { client.stations(maxAgeMs = 0) }
+            "Working: ${status.tuners.size} tuner${if (status.tuners.size == 1) "" else "s"} and ${stations.size} station${if (stations.size == 1) "" else "s"}" +
+                if (stations.isEmpty()) " (scan for stations on the tuner's page)" else ""
         }
         SourceKind.AUDD -> {
             service("AudD") { com.music.server.listen.AudD(registry.http).check(source.secret("apiToken")) }
@@ -252,6 +276,7 @@ class SourceRegistry(
 
     private val instances = ConcurrentHashMap<String, Pair<Long, MusicSource>>()
     private val siriusXmClients = ConcurrentHashMap<String, Pair<Long, SiriusXmClient>>()
+    private val tuners = ConcurrentHashMap<String, Pair<Long, com.music.server.tuner.TunerClient>>()
     private val youtube by lazy { YouTubeMusicSource(http) }
 
     /** Radio Browser's directory, the same for everyone. */
@@ -269,6 +294,15 @@ class SourceRegistry(
             saveSession = { store.saveState(source.id, it) },
         )
         siriusXmClients[source.id] = source.updatedAt to client
+        return client
+    }
+
+    /** The client for a tuner source (see tuner/ in this repository). */
+    fun tuner(source: StoredSource): com.music.server.tuner.TunerClient? {
+        if (source.kind != SourceKind.TUNER) return null
+        tuners[source.id]?.let { (at, client) -> if (at == source.updatedAt) return client }
+        val client = com.music.server.tuner.TunerClient(clientFor(source), source.setting("serverUrl").orEmpty(), source.secret("token").ifEmpty { null })
+        tuners[source.id] = source.updatedAt to client
         return client
     }
 
@@ -293,7 +327,7 @@ class SourceRegistry(
             QobuzSource(clientFor(source)) { config }
         }
         SourceKind.YOUTUBE_MUSIC -> youtube
-        SourceKind.LIDARR, SourceKind.SIRIUSXM, SourceKind.RADIO, SourceKind.AUDD -> null
+        SourceKind.LIDARR, SourceKind.SIRIUSXM, SourceKind.RADIO, SourceKind.TUNER, SourceKind.AUDD -> null
     }
 
     fun jellyfin(source: StoredSource): JellyfinSource? = music(source) as? JellyfinSource
@@ -311,6 +345,7 @@ class SourceRegistry(
     fun forget(id: String) {
         instances.remove(id)
         siriusXmClients.remove(id)
+        tuners.remove(id)
     }
 
     private fun cached(source: StoredSource, make: () -> MusicSource): MusicSource {

@@ -16,6 +16,10 @@ computer. Each person gets their own playlists and history (and a yearly **Wrapp
   stations through SiriusXM, each person with their own SiriusXM account; and tens of thousands of
   local and internet stations from Radio Browser, by name or near you, with song titles shown.
   Everything streams through the server, so it works from anywhere the server is reachable.
+- **Local FM and HD Radio**: add a [tuner](../tuner/README.md) (a Raspberry Pi with RTL-SDR
+  dongles) under Sources as an *FM tuner*, and the stations it hears are listed with the others,
+  with what's on from the broadcast. A station that's also online plays from the tuner while it
+  comes in clearly and from the internet while it's static, switching by itself.
 - **Lidarr**: artists of songs played from outside the library are added for you.
 
 ## Run it

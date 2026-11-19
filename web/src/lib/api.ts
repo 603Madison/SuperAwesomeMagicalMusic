@@ -4,6 +4,7 @@ import type {
   ResolvedStream, SearchResults, ArtistPage, AlbumPage, ServerSettings, SessionInfo, SourceView, Track, User, OidcSettings,
   DeviceRequest,
 } from "./types";
+import { rememberRadioNow, type RadioNow } from "./radioNow";
 
 /** An error from the server, with a message meant for people. */
 export class ApiError extends Error {
@@ -159,7 +160,12 @@ export const api = {
     get<PersonalNow>(`/api/radio/personal/${q(id)}/now?tz=${q(tz)}${listener ? `&listener=${q(listener)}&pos=${Math.round(positionMs ?? 0)}` : ""}`),
   personalSkip: (id: string, key?: string) => post<{ retune?: boolean }>(`/api/radio/personal/${q(id)}/skip${key ? `?key=${q(key)}` : ""}`, {}),
   personalThumb: (id: string, key: string, thumb: "UP" | "DOWN" | "NONE") => post<unknown>(`/api/radio/personal/${q(id)}/thumb`, { key, thumb }),
-  radioNow: (src: string, id: string) => get<{ title?: string }>(`/api/live/radio/${q(src)}/station/${q(id)}/now`),
+  radioNow: (src: string, id: string) =>
+    get<RadioNow>(`/api/live/radio/${q(src)}/station/${q(id)}/now`).then((now) => {
+      // A tuner station says more than its title (the cover, the song for its lyrics): kept for the pages that show it.
+      rememberRadioNow(`${src}|${id}`, now);
+      return now;
+    }),
 
   users: () => get<User[]>("/api/admin/users"),
   createUser: (username: string, displayName: string, password: string, role: string) =>

@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tuner</title>
+<style>
+  :root {
+    --bg: #f6f4fb; --card: #ffffff; --text: #1d1b26; --muted: #6b6878; --line: #e4e0ef;
+    --accent: #6d4ce0; --good: #2f9e62; --fair: #d79b1c; --poor: #d0453f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14121b; --card: #1e1b29; --text: #ece9f6; --muted: #a29eb4; --line: #2f2b3d; --accent: #a58bff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 120px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 28px 0 10px; }
+  .muted { color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .row { display: flex; align-items: center; gap: 12px; }
+  .grow { flex: 1; min-width: 0; }
+  button { font: inherit; border: 0; border-radius: 999px; padding: 8px 16px; background: var(--accent); color: #fff; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; cursor: default; }
+  .tuners { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+  .tuner .state { font-weight: 600; text-transform: capitalize; }
+  .error { color: var(--poor); font-size: 13px; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+  .bar > div { height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+  ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  .station { display: flex; align-items: center; gap: 12px; }
+  .logo { width: 48px; height: 48px; border-radius: 10px; background: var(--line); display: grid; place-items: center; font-weight: 700; font-size: 13px; overflow: hidden; flex: none; }
+  .logo img { width: 100%; height: 100%; object-fit: cover; }
+  .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; background: var(--line); margin-left: 6px; vertical-align: 2px; }
+  .signal { display: flex; align-items: flex-end; gap: 2px; height: 18px; flex: none; }
+  .signal span { width: 4px; background: var(--line); border-radius: 1px; }
+  .signal.good span.on { background: var(--good); } .signal.fair span.on { background: var(--fair); } .signal.poor span.on { background: var(--poor); }
+  .play { width: 40px; height: 40px; padding: 0; flex: none; font-size: 16px; }
+  .player { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line); padding: 10px 16px; }
+  .player .inner { max-width: 860px; margin: 0 auto; }
+  .art { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: var(--line); flex: none; }
+  form.add { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  input { font: inherit; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Tuner</h1>
+  <div class="muted" id="about">Loading…</div>
+
+  <h2>Tuners</h2>
+  <div class="tuners" id="tuners"></div>
+
+  <h2>Scan</h2>
+  <div class="card">
+    <div class="row">
+      <div class="grow"><div id="scanMessage">…</div><div class="muted" id="scanWhen"></div></div>
+      <button id="scanButton">Scan for stations</button>
+      <button id="cancelButton" class="ghost hidden">Cancel</button>
+    </div>
+    <div class="bar" id="scanBar"><div></div></div>
+    <form class="add" id="addForm">
+      <input id="addFrequency" placeholder="Add by frequency, e.g. 97.1" aria-label="Frequency" size="22">
+      <input id="addHd" placeholder="HD program (optional)" aria-label="HD program" size="18">
+      <button class="ghost" type="submit">Add</button>
+    </form>
+  </div>
+
+  <h2>Stations</h2>
+  <ol id="stations"></ol>
+  <p class="muted hidden" id="empty">No stations yet: scan for them.</p>
+</main>
+
+<div class="player hidden" id="player">
+  <div class="inner row">
+    <img class="art" id="playerArt" alt="">
+    <div class="grow">
+      <div class="name" id="playerName"></div>
+      <div class="sub" id="playerNow"></div>
+      <div class="sub" id="playerSignal"></div>
+    </div>
+    <button id="stopButton" class="ghost">Stop</button>
+  </div>
+  <audio id="audio" preload="none"></audio>
+</div>
+
+<script>
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let token = "";
+  try { token = localStorage.getItem("tunerToken") || ""; } catch (e) { /* private window */ }
+  let playing = null;
+  let stations = [];
+
+  const withToken = (url) => token ? url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token) : url;
+
+  async function api(path, options = {}) {
+    const headers = Object.assign({}, options.headers || {});
+    if (token) headers.Authorization = "Bearer " + token;
+    if (options.body) headers["Content-Type"] = "application/json";
+    const res = await fetch(path, Object.assign({}, options, { headers }));
+    if (res.status === 401) {
+      const given = prompt("This tuner needs its token (TUNER_TOKEN):");
+      if (given) {
+        token = given.trim();
+        try { localStorage.setItem("tunerToken", token); } catch (e) { /* fine */ }
+        return api(path, options);
+      }
+      throw new Error("The tuner needs its token");
+    }
+    if (!res.ok) {
+      let message = "The tuner answered " + res.status;
+      try { message = (await res.json()).error || message; } catch (e) { /* not JSON */ }
+      throw new Error(message);
+    }
+    return res.status === 204 ? null : res.json();
+  }
+
+  function el(tag, attrs, ...children) {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (k === "class") node.className = v; else if (k.startsWith("on")) node.addEventListener(k.slice(2), v); else node.setAttribute(k, v);
+    }
+    for (const c of children) if (c != null) node.append(c);
+    return node;
+  }
+
+  function bars(signal) {
+    const score = signal ? signal.score : null;
+    const level = score == null ? "" : score >= 0.6 ? "good" : score >= 0.35 ? "fair" : "poor";
+    const on = score == null ? 0 : Math.max(1, Math.round(score * 5));
+    const box = el("div", { class: "signal " + level, title: signal ? signal.detail + " (" + Math.round(score * 100) + "%)" : "Not measured yet" });
+    for (let i = 0; i < 5; i++) box.append(el("span", { class: i < on ? "on" : "", style: "height:" + (6 + i * 3) + "px" }));
+    return box;
+  }
+
+  function nowText(s) {
+    const n = s.now || {};
+    if (n.title && n.artist) return n.artist + " · " + n.title;
+    return n.title || n.radiotext || n.slogan || s.genre || "";
+  }
+
+  function renderStations() {
+    const list = $("stations");
+    list.replaceChildren();
+    $("empty").classList.toggle("hidden", stations.length > 0);
+    for (const s of stations) {
+      const logo = el("div", { class: "logo" }, s.logoUrl ? el("img", { src: withToken(s.logoUrl), alt: "" }) : (s.callLetters || s.frequency));
+      const badge = s.hd ? el("span", { class: "badge" }, "HD" + s.hdProgram) : el("span", { class: "badge" }, "FM");
+      const text = el("div", { class: "grow" },
+        el("div", { class: "name" }, s.name, badge),
+        el("div", { class: "sub" }, s.frequency + " MHz" + (s.playing ? " · on air" + (s.listeners ? " · " + s.listeners + " listening" : "") : "") + (nowText(s) ? " · " + nowText(s) : "")));
+      const isPlaying = playing && playing.id === s.id;
+      const button = el("button", { class: "play", title: isPlaying ? "Stop" : "Play " + s.name, onclick: () => isPlaying ? stop() : play(s) }, isPlaying ? "■" : "▶");
+      const remove = s.manual ? el("button", { class: "ghost", title: "Remove", onclick: () => removeStation(s) }, "✕") : null;
+      list.append(el("li", { class: "card station" }, logo, text, bars(s.signal), button, remove));
+    }
+    if (playing) {
+      const s = stations.find((x) => x.id === playing.id);
+      if (s) {
+        $("playerName").textContent = s.name + " · " + s.frequency + (s.hd ? " HD" + s.hdProgram : " FM");
+        $("playerNow").textContent = nowText(s);
+        $("playerSignal").textContent = s.signal ? s.signal.detail : "Measuring the signal…";
+        const art = s.artUrl || s.logoUrl;
+        $("playerArt").classList.toggle("hidden", !art);
+        if (art && $("playerArt").dataset.src !== art) { $("playerArt").src = withToken(art); $("playerArt").dataset.src = art; }
+      }
+    }
+  }
+
+  function renderStatus(status) {
+    $("title").textContent = status.name;
+    $("about").textContent = "Version " + status.version + " · " + (status.region === "US" ? "Americas band plan (75 µs)" : "International band plan (50 µs)") + " · " + status.stations + " stations";
+    const box = $("tuners");
+    box.replaceChildren();
+    for (const t of status.tuners) {
+      box.append(el("div", { class: "card tuner" },
+        el("div", { class: "state" }, "Tuner " + (t.index + 1) + ": " + t.state),
+        el("div", { class: "muted" }, "Dongle " + t.device + (t.tuning ? " · " + t.tuning : "") + (t.listeners ? " · " + t.listeners + " listening" : "")),
+        t.error ? el("div", { class: "error" }, t.error) : null));
+    }
+    const scan = status.scan;
+    $("scanMessage").textContent = scan.message;
+    $("scanWhen").textContent = scan.running ? (scan.total ? "Checked " + scan.checked + " of " + scan.total + ", found " + scan.found : "") :
+      status.scannedAt ? "Last scanned " + new Date(status.scannedAt).toLocaleString() : "";
+    $("scanButton").disabled = scan.running;
+    $("cancelButton").classList.toggle("hidden", !scan.running);
+    $("scanBar").firstElementChild.style.width = scan.running ? (scan.total ? Math.round(100 * scan.checked / scan.total) : 5) + "%" : "0";
+  }
+
+  async function refresh() {
+    try {
+      const [status, list] = await Promise.all([api("/api/status"), api("/api/stations")]);
+      stations = list;
+      renderStatus(status);
+      renderStations();
+    } catch (e) {
+      $("about").textContent = e.message;
+    }
+  }
+
+  function play(s) {
+    playing = s;
+    const audio = $("audio");
+    audio.src = withToken(s.streamUrl);
+    audio.play().catch((e) => alert("Couldn't play: " + e.message));
+    $("player").classList.remove("hidden");
+    renderStations();
+    setTimeout(refresh, 1500);
+  }
+
+  function stop() {
+    const audio = $("audio");
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+    playing = null;
+    $("player").classList.add("hidden");
+    renderStations();
+  }
+
+  $("audio").addEventListener("error", () => {
+    if (!playing) return;
+    // The stream answers with why (all tuners busy…) as JSON; ask again to show it.
+    api(playing.streamUrl.replace(/\/stream$/, "")).then(() => alert("The station stopped playing. All tuners may be busy, or the dongle stopped.")).catch((e) => alert(e.message));
+    stop();
+  });
+
+  async function removeStation(s) {
+    try { await api("/api/stations/" + encodeURIComponent(s.id), { method: "DELETE" }); refresh(); } catch (e) { alert(e.message); }
+  }
+
+  $("scanButton").addEventListener("click", async () => {
+    if (stations.length && !confirm("Scan again? It takes a few minutes, and one tuner is busy while it runs.")) return;
+    try { renderStatus(Object.assign({}, await api("/api/status"), { scan: await api("/api/scan", { method: "POST" }) })); } catch (e) { alert(e.message); }
+  });
+  $("cancelButton").addEventListener("click", async () => { try { await api("/api/scan", { method: "DELETE" }); refresh(); } catch (e) { alert(e.message); } });
+  $("stopButton").addEventListener("click", stop);
+  $("addForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const frequency = $("addFrequency").value.trim();
+    if (!frequency) return;
+    const hd = parseInt($("addHd").value.trim().replace(/^hd/i, ""), 10);
+    try {
+      await api("/api/stations", { method: "POST", body: JSON.stringify(Number.isFinite(hd) ? { frequency, hdProgram: hd } : { frequency }) });
+      $("addFrequency").value = ""; $("addHd").value = "";
+      refresh();
+    } catch (err) { alert(err.message); }
+  });
+
+  refresh();
+  setInterval(refresh, 4000);
+</script>
+</body>
+</html>

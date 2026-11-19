@@ -42,7 +42,7 @@ class Artwork(private val box: SecretBox) {
     /** The server's address for [url] (an upstream image), or [url] itself if it's already one. */
     fun wrap(url: String?): String? {
         if (url.isNullOrBlank()) return null
-        if (url.startsWith(PATH) || url.startsWith(LOCAL_ART)) return url
+        if (url.startsWith(PATH) || url.startsWith(LOCAL_ART) || url.startsWith(TUNER_ART)) return url
         if (!url.startsWith("https://") && !url.startsWith("http://")) return null
         return "$PATH?u=${url.encodeURLParameter()}&s=${box.sign(url)}"
     }
@@ -54,8 +54,8 @@ class Artwork(private val box: SecretBox) {
      */
     fun unwrap(url: String?): String? {
         if (url.isNullOrBlank()) return null
-        // The server's own images (personal stations' logos) stay as they are.
-        if (url.startsWith(LOCAL_ART)) return url
+        // The server's own images (personal stations' logos, tuner stations' logos) stay as they are.
+        if (url.startsWith(LOCAL_ART) || url.startsWith(TUNER_ART)) return url
         if (!url.startsWith(PATH)) return null
         val query = url.substringAfter('?', "")
         val params = query.split('&').mapNotNull { part ->
@@ -79,6 +79,9 @@ class Artwork(private val box: SecretBox) {
 
         /** The server's own images, served as they are. */
         const val LOCAL_ART = "/api/radio/art?"
+
+        /** A tuner's logos and covers, through the server. */
+        const val TUNER_ART = "/api/live/tuner/"
 
         fun sized(upstream: String, px: Int?): String = if (px == null) upstream else ArtworkUrls.sized(upstream, px)
     }
