@@ -1,7 +1,7 @@
 // The server's API, as the web player sees it (see server/src/main/kotlin).
 
 export type SourceType = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "SIRIUSXM" | "RADIO";
-export type SourceKind = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "LIDARR" | "SIRIUSXM" | "RADIO";
+export type SourceKind = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "LIDARR" | "SIRIUSXM" | "RADIO" | "TUNER";
 export type Role = "ADMIN" | "USER";
 
 export interface Track {

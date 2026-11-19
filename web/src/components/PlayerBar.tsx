@@ -12,6 +12,7 @@ import { connect, positionOf, useConnect, useRemote, type Device } from "../play
 import { Artwork } from "./Artwork";
 import { favoriteOf, FavoriteButton } from "./Favorite";
 import { IconButton, Menu, type MenuItem } from "./ui";
+import { signalLabel, useRadioDetail, useRadioSignal } from "../lib/radioNow";
 
 export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; onToggleQueue: () => void }) {
   const item = usePlayer((s) => s.queue[s.index]);
@@ -21,14 +22,17 @@ export function PlayerBar({ queueOpen, onToggleQueue }: { queueOpen: boolean; on
   const error = usePlayer((s) => s.error);
   const repeat = usePlayer((s) => s.repeat);
   const sleepAt = usePlayer((s) => s.sleepAt);
-  const liveNow = usePlayer((s) => s.liveNow);
+  const heardNow = usePlayer((s) => s.liveNow);
   const navigate = useNavigate();
   const base = current?.track ?? item?.track;
+  const liveNow = useRadioDetail(heardNow, base);
+  // A station on the tuner and online: which copy is playing.
+  const via = signalLabel(useRadioSignal(base));
   // The channel or station playing, or the Pandora station this song is from.
   const favorite = favoriteOf(base);
   // On live radio, the song on now (when the channel says), with the channel underneath.
   const track = base && liveNow ? { ...base, title: liveNow.title || base.title, artist: liveNow.artist || base.title, artworkUrl: liveNow.artworkUrl ?? base.artworkUrl } : base;
-  const detail = error ?? (current?.live ? (liveNow ? base?.title : current.description) : current?.description) ?? (buffering ? "Finding the best copy…" : "");
+  const detail = error ?? (current?.live ? ([liveNow ? base?.title : current.description, via].filter(Boolean).join(" · ")) : current?.description) ?? (buffering ? "Finding the best copy…" : "");
   // Another of the person's devices playing (and not this one): the bar controls it instead.
   const remote = useRemote();
   if (remote) return <RemoteBar device={remote} queueOpen={queueOpen} onToggleQueue={onToggleQueue} />;

@@ -16,7 +16,9 @@ export function Radio() {
   const sources = useLoad(() => api.sources(), []);
   const usable = (sources.data ?? []).filter((s) => s.enabled && !s.hidden);
   const siriusXm = usable.filter((s) => s.kind === "SIRIUSXM");
-  const radio = usable.find((s) => s.kind === "RADIO");
+  // Radio Browser's directory (with the person's tuner stations in it), or a tuner on its own.
+  const radio = usable.find((s) => s.kind === "RADIO") ?? usable.find((s) => s.kind === "TUNER");
+  const tuner = usable.some((s) => s.kind === "TUNER");
   const [tab, setTab] = useState<Tab | null>(null);
   const [sxmId, setSxmId] = useState<string | null>(null);
   const shown: Tab = tab ?? (siriusXm.length ? "sxm" : "radio");
@@ -47,7 +49,7 @@ export function Radio() {
       )}
       {shown === "sxm" && sxm && <Channels source={sxm} />}
       {shown === "pandora" && sxm && <Stations source={sxm} />}
-      {shown === "radio" && (radio ? <RadioStations source={radio} /> : <Empty title="Radio is off">An admin can add the Radio source in Admin › Shared sources.</Empty>)}
+      {shown === "radio" && (radio ? <RadioStations source={radio} tuner={tuner} /> : <Empty title="Radio is off">An admin can add the Radio source in Admin › Shared sources.</Empty>)}
     </div>
   );
 }
@@ -262,7 +264,14 @@ function StationHeart({ source, artist }: { source: SourceView; artist: ArtistVi
   );
 }
 
-function RadioStations({ source }: { source: SourceView }) {
+/** A station on the person's tuner: "FM", "HD2"… (it plays from the tuner, or online while the tuner can't hear it well). */
+function tunerBadge(station: Track): string | null {
+  if (!station.sourceId.startsWith("tuner:")) return null;
+  const hd = station.sourceId.match(/-hd(\d)/);
+  return hd ? `HD${hd[1]}` : "FM";
+}
+
+function RadioStations({ source, tuner }: { source: SourceView; tuner: boolean }) {
   const country = (navigator.language.split("-")[1] ?? "").toUpperCase() || undefined;
   const [query, setQuery] = useState("");
   const [label, setLabel] = useState(country ? `Popular in ${regionName(country)}` : "Popular");
@@ -309,13 +318,14 @@ function RadioStations({ source }: { source: SourceView }) {
               <div className="track-title">{s.title}</div>
               <div className="track-sub">{s.artist}{s.album ? <span className="track-album"> · {s.album}</span> : null}</div>
             </div>
-            <span className="badge track-source">{s.sourceId.startsWith("hls:") ? "HLS" : "Live"}</span>
+            <span className="badge track-source" title={tunerBadge(s) ? "On your tuner" : undefined}>{tunerBadge(s) ?? (s.sourceId.startsWith("hls:") ? "HLS" : "Live")}</span>
             <span />
             <span />
           </li>
         ))}
       </ol>
-      <p className="muted small">Stations from <a href="https://www.radio-browser.info/" target="_blank" rel="noreferrer">Radio Browser</a>, a free, open directory.</p>
+      {source.kind === "RADIO" && <p className="muted small">Stations from <a href="https://www.radio-browser.info/" target="_blank" rel="noreferrer">Radio Browser</a>, a free, open directory.</p>}
+      {tuner && <p className="muted small">Stations marked FM or HD are on your tuner. One that's also online plays from the tuner while it comes in clearly, and from the internet while it's static.</p>}
     </>
   );
 }

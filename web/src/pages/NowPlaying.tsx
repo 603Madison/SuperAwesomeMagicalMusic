@@ -15,6 +15,7 @@ import { TrackMenu } from "../components/TrackList";
 import { Button, IconButton, Spinner } from "../components/ui";
 import { TrackInfo } from "../components/TrackInfo";
 import { StationThumbs } from "../components/Thumbs";
+import { useRadioDetail } from "../lib/radioNow";
 
 /**
  * What's playing, made to be looked at: the cover large and still, the room washed in its
@@ -25,7 +26,7 @@ export function NowPlaying() {
   const current = usePlayer((s) => s.current);
   const buffering = usePlayer((s) => s.buffering);
   const playing = usePlayer((s) => s.playing);
-  const liveNow = usePlayer((s) => s.liveNow);
+  const heardNow = usePlayer((s) => s.liveNow);
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   // Wide windows show the cover beside the lyrics or queue; narrow ones show one at a time.
@@ -42,6 +43,8 @@ export function NowPlaying() {
   const [info, setInfo] = useState(false);
 
   const base = current?.track ?? item?.track;
+  // A tuner station also says the song's cover and the song itself (for its lyrics).
+  const liveNow = useRadioDetail(heardNow, base);
   // The channel or station playing, or the Pandora station this song is from.
   const favorite = favoriteOf(base);
   const live = !!current?.live;
