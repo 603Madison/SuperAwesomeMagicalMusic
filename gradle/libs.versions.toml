@@ -22,6 +22,9 @@ junit = "4.13.2"
 robolectric = "4.18"
 androidxMedia = "1.8.0"
 browser = "1.10.0"
+# Mini (flip phones): classic views, and QR codes for its sign-in.
+recyclerview = "1.4.0"
+zxing = "3.5.3"
 # Server
 ktor = "3.6.1"
 sqliteJdbc = "3.54.1.0"
@@ -72,6 +75,8 @@ robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectr
 # The media browser Android Auto uses, to test the library the way the car connects to it.
 androidx-media = { module = "androidx.media:media", version.ref = "androidxMedia" }
 androidx-browser = { module = "androidx.browser:browser", version.ref = "browser" }
+androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version.ref = "recyclerview" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 

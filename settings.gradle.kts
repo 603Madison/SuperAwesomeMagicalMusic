@@ -34,3 +34,5 @@ rootProject.name = "SuperAwesomeMagicalMusic"
 // without them (SAMM_SERVER_ONLY=1).
 include(":core", ":server")
 if (System.getenv("SAMM_SERVER_ONLY") == null) include(":app", ":connect")
+// mini: the server's app for flip phones (D-pad, small screens, sign-in with a code).
+if (System.getenv("SAMM_SERVER_ONLY") == null) include(":mini")
