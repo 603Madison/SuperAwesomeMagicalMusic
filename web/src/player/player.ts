@@ -185,6 +185,9 @@ async function load(index: number, autoplay: boolean, startAt = 0) {
     if (token !== loadToken) return;
     let src = resolved.streamUrl;
     offset = 0;
+    // One of the person's own stations: tuned in with an id, so the server can say what this player hears.
+    personalListener = live?.kind === "personal" ? Math.random().toString(36).slice(2, 12) : null;
+    if (personalListener) src += `&listener=${personalListener}`;
     if (startAt > 0 && !resolved.seekable && !resolved.live) {
       src += `&start=${startAt.toFixed(1)}`;
       offset = startAt;
@@ -319,8 +322,25 @@ function onLiveStart(track: Track) {
     void moreFromStation();
   }
   void pollLive();
-  livePoll = window.setInterval(() => void pollLive(), live.kind === "station-track" ? 30_000 : live.kind === "personal" ? 5_000 : 10_000);
+  livePoll = window.setInterval(() => void pollLive(), live.kind === "station-track" ? 30_000 : live.kind === "personal" ? 3_000 : 10_000);
 }
+
+/** The id this player tuned in to one of the person's own stations with (see load). */
+let personalListener: string | null = null;
+let caughtUpAt = 0;
+
+/**
+ * A player can fall behind a station (each stall while loading leaves it further behind, as the
+ * station goes on): far behind, it tunes in again, to hear what's on now.
+ */
+function catchUp(info: PersonalNow) {
+  const { playing, index } = state();
+  if (!playing || audio.paused || (info.behindMs ?? 0) < MAX_BEHIND_MS || Date.now() - caughtUpAt < 60_000) return;
+  caughtUpAt = Date.now();
+  void load(index, true);
+}
+
+const MAX_BEHIND_MS = 25_000;
 
 // ---- One of the person's own stations: its clock, and its DJ ----
 
@@ -355,7 +375,7 @@ function personalHeard(track: Track, info: PersonalNow) {
 function say(text: string, at: number) {
   const wait = at - Date.now();
   // Too late to say over the song's start (tuned in after it): it's left unsaid.
-  if (wait < -10_000) return;
+  if (wait < -6_000) return;
   djTimers.push(window.setTimeout(() => speak(text), Math.max(0, wait)));
 }
 
@@ -445,9 +465,10 @@ async function pollLive() {
       if (state().queue[state().index]?.track !== track) return;
       heard(now ? { title: now.title, artist: now.artist, album: now.album, artworkUrl: now.artworkUrl, song: now.song, startMs: now.startMs, durationMs: now.durationMs } : null);
     } else if (live.kind === "personal") {
-      const info = await api.personalNow(track.sourceId, timeZone());
+      const info = await api.personalNow(track.sourceId, timeZone(), personalListener ?? undefined, audio.currentTime * 1000);
       if (state().queue[state().index]?.track !== track) return;
       personalHeard(track, info);
+      catchUp(info);
     } else if (live.kind === "radio") {
       const { title } = await api.radioNow(track.via!, track.sourceId.replace(/^hls:/, ""));
       if (state().queue[state().index]?.track !== track) return;
@@ -798,6 +819,13 @@ export const player = {
     pausing = true;
     audio.pause();
     quiet();
+    // One of the person's own stations: let go of it (the station stops sending, and goes off
+    // the air once nobody's listening); playing again tunes in to what's on then.
+    if (isPersonal(state().queue[state().index]?.track)) {
+      audio.removeAttribute("src");
+      audio.load();
+      set({ current: null, playing: false, buffering: false });
+    }
   },
 
   toggle() {
@@ -810,7 +838,11 @@ export const player = {
     const track = state().queue[state().index]?.track;
     if (track && isPersonal(track)) {
       quiet();
-      api.personalSkip(track.sourceId).then(() => setTimeout(() => void pollLive(), 1500), () => undefined);
+      api.personalSkip(track.sourceId, state().personal?.songKey).then((result) => {
+        // Behind the station: tuned in again, to hear the next song now.
+        if (result?.retune && state().queue[state().index]?.track === track) void load(state().index, true);
+        else setTimeout(() => void pollLive(), 1500);
+      }, () => undefined);
       return;
     }
     const next = nextIndex();

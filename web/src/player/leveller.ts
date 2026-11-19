@@ -1,5 +1,5 @@
 /**
- * Evens out loudness between songs from different services, like the Lite app does. A song whose
+ * Evens out loudness between songs from different services, like the Standalone app does. A song whose
  * source knows its loudness (Jellyfin's normalization gain) gets that fixed gain. Anything else
  * is levelled by ear: a slowly moving measure of how loud the music is (silence doesn't count)
  * sets the gain, which moves by at most a couple of dB a second. A limiter stops boosts clipping.

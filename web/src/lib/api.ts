@@ -151,8 +151,10 @@ export const api = {
   listenHeard: () => get<Heard[]>("/api/listen/heard"),
   forgetHeard: (id: string) => del<unknown>(`/api/listen/heard/${q(id)}`),
   personalStations: () => get<PersonalStation[]>("/api/radio/personal"),
-  personalNow: (id: string, tz: string) => get<PersonalNow>(`/api/radio/personal/${q(id)}/now?tz=${q(tz)}`),
-  personalSkip: (id: string) => post<unknown>(`/api/radio/personal/${q(id)}/skip`, {}),
+  /** What's on, as heard by the player that tuned in as [listener] and has played [positionMs] of it. */
+  personalNow: (id: string, tz: string, listener?: string, positionMs?: number) =>
+    get<PersonalNow>(`/api/radio/personal/${q(id)}/now?tz=${q(tz)}${listener ? `&listener=${q(listener)}&pos=${Math.round(positionMs ?? 0)}` : ""}`),
+  personalSkip: (id: string, key?: string) => post<{ retune?: boolean }>(`/api/radio/personal/${q(id)}/skip${key ? `?key=${q(key)}` : ""}`, {}),
   personalThumb: (id: string, key: string, thumb: "UP" | "DOWN" | "NONE") => post<unknown>(`/api/radio/personal/${q(id)}/thumb`, { key, thumb }),
   radioNow: (src: string, id: string) => get<{ title?: string }>(`/api/live/radio/${q(src)}/station/${q(id)}/now`),
 

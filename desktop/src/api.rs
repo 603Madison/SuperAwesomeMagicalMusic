@@ -112,7 +112,8 @@ impl Track {
         }
         if self.is_personal() {
             return Some(LiveStream {
-                path: format!("/api/live/radio/{via}/station/{}/stream?tz={}", enc(&self.source_id), enc(&time_zone())),
+                // Tuned in with this app's listener id, so the server can say what's heard here.
+                path: format!("/api/live/radio/{via}/station/{}/stream?tz={}&listener={}", enc(&self.source_id), enc(&time_zone()), listener_id()),
                 kind: LiveKind::Personal,
             });
         }
@@ -425,10 +426,30 @@ pub struct DjLine {
     pub text: String,
 }
 
+/// This app's id when it tunes in to one of the person's own stations (new each time it starts).
+pub fn listener_id() -> &'static str {
+    static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ID.get_or_init(|| {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        format!("d{:x}{:x}", nanos, std::process::id())
+    })
+}
+
+/// What a skip on one of the person's own stations says: `retune` when this player is behind the station.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkipResult {
+    #[serde(default)]
+    pub retune: bool,
+}
+
 /// What's on one of the person's own stations, what's next, its thumbs and its DJ.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PersonalNow {
+    /// How far behind the station this player's stream is (when it said where it is).
+    #[serde(default)]
+    pub behind_ms: Option<i64>,
     #[serde(default)]
     pub now: Option<NowView>,
     #[serde(default)]
@@ -730,14 +751,16 @@ impl Api {
         self.get("/api/radio/personal").await
     }
 
-    pub async fn personal_now(&self, id: &str) -> Result<PersonalNow> {
-        self.get(&format!("/api/radio/personal/{}/now?tz={}", enc(id), enc(&time_zone()))).await
+    /// What's on, as heard here: [position_ms] into the stream this app tuned in to.
+    pub async fn personal_now(&self, id: &str, position_ms: Option<i64>) -> Result<PersonalNow> {
+        let heard = position_ms.map(|p| format!("&listener={}&pos={}", listener_id(), p.max(0))).unwrap_or_default();
+        self.get(&format!("/api/radio/personal/{}/now?tz={}{heard}", enc(id), enc(&time_zone()))).await
     }
 
-    pub async fn personal_skip(&self, id: &str) -> Result<()> {
-        self.send::<serde_json::Value>(Method::POST, &format!("/api/radio/personal/{}/skip", enc(id)), Some(json!({})))
-            .await
-            .map(|_| ())
+    /// Skips what's on ([heard]: the song heard here; behind the station, it says to tune in again).
+    pub async fn personal_skip(&self, id: &str, heard: Option<&str>) -> Result<SkipResult> {
+        let key = heard.map(|k| format!("?key={}", enc(k))).unwrap_or_default();
+        self.send::<SkipResult>(Method::POST, &format!("/api/radio/personal/{}/skip{key}", enc(id)), Some(json!({}))).await
     }
 
     pub async fn personal_thumb(&self, id: &str, key: &str, thumb: &str) -> Result<()> {
@@ -885,6 +908,7 @@ mod tests {
         let stream = mine.live_stream().unwrap();
         assert_eq!(stream.kind, LiveKind::Personal);
         assert!(stream.path.starts_with("/api/live/radio/personal/station/mine/stream?tz="), "{}", stream.path);
+        assert!(stream.path.ends_with(&format!("&listener={}", listener_id())), "{}", stream.path);
         assert!(!time_zone().is_empty());
         let song = Track {
             source: "JELLYFIN".into(),

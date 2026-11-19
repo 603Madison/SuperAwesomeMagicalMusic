@@ -84,7 +84,8 @@ object MediaItems {
                 "/api/live/sxm/${enc(via)}/station-track/${enc(trackId)}" to false
             }
             // One of the person's own stations: the server's broadcast, the DJ's time checks in their time zone.
-            track.isPersonal -> "/api/live/radio/${enc(via)}/station/${enc(track.sourceId)}/stream?tz=${enc(java.util.TimeZone.getDefault().id)}" to false
+            // Tuned in with this app's listener id, so the server can say what the phone hears.
+            track.isPersonal -> "/api/live/radio/${enc(via)}/station/${enc(track.sourceId)}/stream?tz=${enc(java.util.TimeZone.getDefault().id)}&listener=$listenerId" to false
             track.isRadio -> {
                 val hls = track.sourceId.startsWith("hls:")
                 "/api/live/radio/${enc(via)}/station/${enc(track.sourceId.removePrefix("hls:"))}/stream" to hls
@@ -92,6 +93,12 @@ object MediaItems {
             else -> null
         }
     }
+
+    /** This app's id when it tunes in to one of the person's own stations (new each time the app starts). */
+    val listenerId: String = java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+
+    /** A live stream the server sends as it goes (not HLS): it can't be picked up part way, only tuned in to again. */
+    fun isLiveRadioStream(uri: Uri?): Boolean = uri?.path?.contains("/api/live/radio/") == true
 
     /** "a:b:c" as ("a", "b:c"). */
     fun split(value: String): Pair<String, String> {

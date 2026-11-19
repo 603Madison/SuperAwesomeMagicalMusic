@@ -148,7 +148,7 @@ class RadioTest {
     private fun ffmpegAvailable() = runCatching { ProcessBuilder("ffmpeg", "-version").start().waitFor(10, TimeUnit.SECONDS) }.getOrDefault(false)
 
     /** A tone of [ms] at [hz], as a song would decode (made as it's read). */
-    private class Tone(ms: Long, private val hz: Double) : PcmSource {
+    private class Tone(ms: Long, private val hz: Double, override val startMs: Long = 0) : PcmSource {
         private val frames = Pcm.framesOf(ms)
         private var frame = 0L
         override fun read(into: ByteArray, offset: Int, length: Int): Int {
@@ -175,9 +175,9 @@ class RadioTest {
         val aired = mutableListOf<String>()
         val programme = object : Programme {
             override suspend fun nextSong(scheduled: List<Candidate>) = songs[picked++ % songs.size]
-            override suspend fun open(song: Candidate, fromMs: Long): PcmSource {
+            override suspend fun open(song: Candidate, fromMs: Long, exact: Boolean): PcmSource {
                 if (song.key == "k3") throw java.io.IOException("not available")
-                return Tone(90_000 - fromMs, 220.0 + song.key.last().digitToInt() * 110)
+                return Tone(90_000 - fromMs, 220.0 + song.key.last().digitToInt() * 110, fromMs)
             }
             override fun encoder(): Process = ProcessBuilder(
                 "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:0",
@@ -191,7 +191,7 @@ class RadioTest {
         val transmitter = Transmitter("u1", StationKind.MINE, "Test Radio", programme)
         transmitter.start()
         try {
-            val (_, first) = transmitter.subscribe()
+            val (_, first) = transmitter.subscribe("one")
             val (_, second) = transmitter.subscribe()
             var bytes = 0
             withTimeout(15_000) {
@@ -207,6 +207,11 @@ class RadioTest {
             val before = transmitter.current!!.song.key
             // Joined mid-song: it started before it went on the air.
             assertTrue(transmitter.current!!.startMs < transmitter.startedAt)
+            // A listener that says where it is is told what it hears; one it doesn't know isn't.
+            val heard = transmitter.heardAt("one", 1_000)
+            assertNotNull(heard)
+            assertEquals(before, transmitter.songsFrom(heard!!).first().song.key)
+            assertEquals(null, transmitter.heardAt("nobody", 1_000))
             assertEquals(3, transmitter.lined.size)
             transmitter.skip()
             withTimeout(15_000) {
@@ -223,6 +228,42 @@ class RadioTest {
             transmitter.unsubscribe(first)
             transmitter.unsubscribe(second)
             assertNotNull(transmitter.idleSince)
+        } finally {
+            transmitter.stop()
+        }
+    }
+
+    @Test
+    fun `a song the source stops sending part way through is picked up where it stopped`() = runBlocking {
+        assumeTrue("ffmpeg isn't installed", ffmpegAvailable())
+        val songs = (1..4).map { Candidate("k$it", "a$it", song("Song $it", "Artist $it").copy(durationMs = 60_000), 1.0, Rotation.POWER, null) }
+        var picked = 0
+        val opens = java.util.Collections.synchronizedList(mutableListOf<Triple<String, Long, Boolean>>())
+        val programme = object : Programme {
+            override suspend fun nextSong(scheduled: List<Candidate>) = songs[picked++ % songs.size]
+            override suspend fun open(song: Candidate, fromMs: Long, exact: Boolean): PcmSource {
+                opens += Triple(song.key, fromMs, exact)
+                // The first time, the service drops it three seconds in.
+                val length = if (opens.count { it.first == song.key } == 1) 3_000L else 60_000 - fromMs
+                return Tone(length, 330.0, fromMs)
+            }
+            override fun encoder(): Process = ProcessBuilder(
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:0",
+                "-c:a", "aac", "-b:a", "128k", "-f", "adts", "pipe:1",
+            ).start()
+            override fun aired(now: Transmitter.OnAir, before: Transmitter.OnAir?, coming: List<Candidate>, atMs: Long, skipped: Boolean): DjLine? = null
+        }
+        val transmitter = Transmitter("u1", StationKind.MINE, "Test Radio", programme)
+        transmitter.start()
+        try {
+            val (_, listener) = transmitter.subscribe()
+            withTimeout(15_000) { while (opens.size < 2) listener.frames.receive() }
+            val first = opens[0]
+            val again = opens[1]
+            assertEquals(first.first, again.first)
+            assertTrue("picked up at exactly where it stopped", again.third)
+            assertTrue("picked up at ${again.second}, stopped at ${first.second + 3_000}", kotlin.math.abs(again.second - (first.second + 3_000)) < 200)
+            assertEquals(first.first, transmitter.current!!.song.key)
         } finally {
             transmitter.stop()
         }

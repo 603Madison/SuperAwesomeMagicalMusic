@@ -16,14 +16,14 @@ when the request doesn't mention one:
    **Release APK** workflow (`.github/workflows/release.yml`, workflow_dispatch) on the branch
    with `version: vX.Y.Z`. It runs the tests, builds the signed APK, creates the tag and publishes
    the GitHub release with both apps attached (`SuperAwesomeMagicalMusic-vX.Y.Z.apk`, the app that
-   signs in to the server, from `connect/`; `SuperAwesomeMagicalMusic-Lite-vX.Y.Z.apk`, from `app/`), then (its `fdroid`
+   signs in to the server, from `connect/`; `SuperAwesomeMagicalMusic-Standalone-vX.Y.Z.apk`, from `app/`), then (its `fdroid`
    job) republishes the F-Droid repo on GitHub Pages (see `fdroid/README.md`) and (its `image`
    job) pushes the server's container image to `ghcr.io/603madison/superawesomemagicalmusic`,
    and (its `desktop` job) adds the Linux desktop app's packages
    (`SuperAwesomeMagicalMusic-Desktop-vX.Y.Z-amd64.deb` and `-x86_64.rpm`).
    Check that all four jobs succeed. (Claude sessions can't push tags; pushing a `v*` tag also triggers the workflow.)
 4. Copy `connect/build/outputs/apk/release/connect-release.apk` to `SuperAwesomeMagicalMusic-vX.Y.Z.apk` and
-   `app/build/outputs/apk/release/app-release.apk` to `SuperAwesomeMagicalMusic-Lite-vX.Y.Z.apk` in the
+   `app/build/outputs/apk/release/app-release.apk` to `SuperAwesomeMagicalMusic-Standalone-vX.Y.Z.apk` in the
    scratchpad and send them to the owner in chat, and the desktop packages too when `desktop/`
    changed (`desktop/target/debian/*.deb` and `desktop/target/generate-rpm/*.rpm`, renamed like the
    release's).

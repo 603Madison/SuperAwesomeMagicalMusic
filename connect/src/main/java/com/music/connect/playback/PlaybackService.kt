@@ -129,7 +129,7 @@ class PlaybackService : MediaLibraryService() {
                 DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(loudness)).build()
         }
         player = ExoPlayer.Builder(this, renderers)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSources))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSources).setLoadErrorHandlingPolicy(LiveRadioErrors()))
             // On satellite the link comes and goes: load well ahead while it's there.
             .setLoadControl(BufferControl(bufferAheadMs = { if (c.network.state.value.networkClass == NetworkClass.SATELLITE) 10 * 60_000L else 2 * 60_000L }))
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
@@ -444,7 +444,21 @@ class PlaybackService : MediaLibraryService() {
             queueStore.save(player)
         }
 
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            // One of the person's own stations ended (the server let go of it): tuned in again.
+            if (playbackState == Player.STATE_ENDED && player.playWhenReady && player.currentMediaItem?.let(MediaItems::track)?.isPersonal == true) retune("it ended")
+        }
+
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            // One of the person's own stations, paused a while: let go of it, so the station stops
+            // sending (and goes off the air once nobody listens). Playing again tunes in to what's on.
+            letGo?.cancel()
+            if (!isPlaying && !player.playWhenReady && player.currentMediaItem?.let(MediaItems::track)?.isPersonal == true) {
+                letGo = scope.launch {
+                    delay(LET_GO_MS)
+                    if (!player.playWhenReady) player.stop()
+                }
+            }
             if (isPlaying) {
                 playingSince = SystemClock.elapsedRealtime()
             } else if (playingSince > 0) {
@@ -459,6 +473,8 @@ class PlaybackService : MediaLibraryService() {
         override fun onPlayerError(error: PlaybackException) {
             val track = player.currentMediaItem?.let(MediaItems::track)
             Log.w(TAG, "Couldn't play ${track?.title}", error)
+            // Live radio from the server can't be picked up where it dropped: tuned in again instead.
+            if (MediaItems.isLiveRadioStream(player.currentMediaItem?.localConfiguration?.uri) && retune("it dropped (${error.errorCodeName})")) return
             // A YouTube Music song from the server: YouTube may still give it to the phone.
             if (fallBackToYouTube("failed (${error.errorCodeName})")) {
                 player.play()
@@ -466,7 +482,7 @@ class PlaybackService : MediaLibraryService() {
             }
             val cause = generateSequence(error as Throwable) { it.cause }.firstOrNull { it is IOException }
             c.tell(cause?.message?.takeIf { it.isNotBlank() } ?: "Couldn't play \"${track?.title ?: "this"}\"")
-            // Skip what can't be played, as the Lite app does.
+            // Skip what can't be played, as the Standalone app does.
             if (player.hasNextMediaItem()) {
                 player.seekToNextMediaItem()
                 player.prepare()
@@ -557,9 +573,13 @@ class PlaybackService : MediaLibraryService() {
      */
     private suspend fun watchPersonal(track: ApiTrack) {
         var welcomed = false
+        var caughtUpAt = 0L
         val zone = java.util.TimeZone.getDefault().id
         while (currentCoroutineContext().isActive) {
-            val info = withContext(Dispatchers.IO) { runCatching { c.api.personalNow(track.sourceId, zone) }.getOrNull() }
+            // Where this phone is in its stream (read here, on the player's thread): the server says what that is.
+            val listener = player.currentMediaItem?.localConfiguration?.uri?.getQueryParameter("listener")
+            val position = player.currentPosition
+            val info = withContext(Dispatchers.IO) { runCatching { c.api.personalNow(track.sourceId, zone, listener, position) }.getOrNull() }
             if (player.currentMediaItem?.let(MediaItems::track)?.key != track.key) break
             if (info != null) {
                 val offset = info.serverTime - System.currentTimeMillis()
@@ -576,15 +596,50 @@ class PlaybackService : MediaLibraryService() {
                     info.dj?.let { line -> dj.say(line.id, line.text, line.atMs - offset + info.heardDelayMs) }
                 }
                 welcomed = true
+                // Far behind the station (each stall while loading leaves it further behind): tuned in again.
+                val clock = SystemClock.elapsedRealtime()
+                if (player.isPlaying && (info.behindMs ?: 0) > MAX_BEHIND_MS && clock - caughtUpAt > 60_000) {
+                    caughtUpAt = clock
+                    retune("it was ${(info.behindMs ?: 0) / 1000}s behind the station")
+                }
             }
-            delay(5_000)
+            delay(3_000)
         }
     }
 
-    /** Skips the song on one of the person's own stations (the station moves on; the stream goes on). */
+    /**
+     * Skips the song on one of the person's own stations (the station moves on; the stream goes
+     * on). A phone behind the station tunes in again, to hear the next song now.
+     */
     private fun skipPersonal(track: ApiTrack) {
         dj.quiet()
-        c.scope.launch { runCatching { c.api.personalSkip(track.sourceId) }.onFailure { c.tell(it.message ?: "The station didn't skip") } }
+        val heard = c.personalNow.value?.songKey
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { c.api.personalSkip(track.sourceId, heard) } }
+                .onSuccess { if (it.retune && player.currentMediaItem?.let(MediaItems::track)?.key == track.key) retune("it was behind the station") }
+                .onFailure { c.tell(it.message ?: "The station didn't skip") }
+        }
+    }
+
+    private var letGo: Job? = null
+    private val retunes = ArrayDeque<Long>()
+
+    /**
+     * Tunes in to the live stream playing again: a fresh connection, from what's on now. Not
+     * more than a few times a couple of minutes (then it's left to fail as it would).
+     */
+    private fun retune(why: String): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        while (retunes.isNotEmpty() && now - retunes.first() > 120_000) retunes.removeFirst()
+        if (retunes.size >= 4) return false
+        retunes.addLast(now)
+        Log.i(TAG, "Tuning in again: $why")
+        dj.quiet()
+        player.stop()
+        player.seekToDefaultPosition()
+        player.prepare()
+        player.play()
+        return true
     }
 
     /**
@@ -604,6 +659,15 @@ class PlaybackService : MediaLibraryService() {
 
         override fun seekToNext() {
             personal()?.let(::skipPersonal) ?: super.seekToNext()
+        }
+
+        // Let go of while paused (see onIsPlayingChanged): playing again tunes in to what's on now.
+        override fun play() {
+            if (personal() != null && playbackState == Player.STATE_IDLE) {
+                seekToDefaultPosition()
+                prepare()
+            }
+            super.play()
         }
 
         override fun seekToNextMediaItem() {
@@ -637,7 +701,23 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /**
+     * Live radio from the server isn't retried part way: a retry would ask for the stream from
+     * where it dropped, which a live stream can't do (the player would wait, silent, for as much
+     * of it as it had already played). It's tuned in to again instead (see retune).
+     */
+    private class LiveRadioErrors : androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy() {
+        override fun getRetryDelayMsFor(loadErrorInfo: androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy.LoadErrorInfo): Long =
+            if (MediaItems.isLiveRadioStream(loadErrorInfo.loadEventInfo.dataSpec.uri)) C.TIME_UNSET else super.getRetryDelayMsFor(loadErrorInfo)
+    }
+
     private companion object {
+        /** How long one of the person's own stations stays connected while paused. */
+        const val LET_GO_MS = 15_000L
+
+        /** How far behind the station the phone may fall before it tunes in again. */
+        const val MAX_BEHIND_MS = 25_000L
+
         const val TAG = "PlaybackService"
 
         /** How long a stream fetched ahead stays chosen, whatever the network does meanwhile. */

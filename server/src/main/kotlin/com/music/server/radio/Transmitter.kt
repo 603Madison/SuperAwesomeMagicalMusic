@@ -72,6 +72,27 @@ object Pcm {
 /** A song decoding to [Pcm]: read until -1. */
 interface PcmSource : Closeable {
     fun read(into: ByteArray, offset: Int, length: Int): Int
+
+    /** Where in the song its audio starts (it may not have been able to start where asked). */
+    val startMs: Long get() = 0
+}
+
+/** [source] with [head] (already read from it) put back in front. */
+private class Primed(private val source: PcmSource, private val head: ByteArray, private var headLength: Int) : PcmSource {
+    private var at = 0
+    override val startMs: Long get() = source.startMs
+
+    override fun read(into: ByteArray, offset: Int, length: Int): Int {
+        if (at < headLength) {
+            val n = minOf(length, headLength - at)
+            System.arraycopy(head, at, into, offset, n)
+            at += n
+            return n
+        }
+        return source.read(into, offset, length)
+    }
+
+    override fun close() = source.close()
 }
 
 /** What a [Transmitter] plays: where the songs come from, how they decode, and what's said. */
@@ -82,8 +103,11 @@ interface Programme {
      */
     suspend fun nextSong(scheduled: List<Candidate>): Candidate?
 
-    /** Starts decoding [song] from [fromMs] into its audio; throws if it can't be played. */
-    suspend fun open(song: Candidate, fromMs: Long): PcmSource
+    /**
+     * Starts decoding [song] from [fromMs] into its audio; throws if it can't be played. Unless
+     * [exact], it may start from the beginning instead where seeking would be slow.
+     */
+    suspend fun open(song: Candidate, fromMs: Long, exact: Boolean = false): PcmSource
 
     /** An encoder taking [Pcm] in and giving ADTS AAC out. */
     fun encoder(): Process
@@ -106,8 +130,11 @@ class Transmitter(
     private val clock: () -> Long = System::currentTimeMillis,
     private val random: kotlin.random.Random = kotlin.random.Random.Default,
 ) {
-    /** A song on the air: it started (on the air) at [startMs], counting any part of it skipped by tuning in. */
-    data class OnAir(val song: Candidate, val startMs: Long, val durationMs: Long)
+    /**
+     * A song on the air: it started (on the air) at [startMs], counting any part of it skipped
+     * by tuning in; it was actually heard from [airedAt] until [endedAt] (once it's over).
+     */
+    data class OnAir(val song: Candidate, val startMs: Long, val durationMs: Long, val airedAt: Long = startMs, val endedAt: Long? = null)
 
     @Volatile var current: OnAir? = null
         private set
@@ -133,6 +160,14 @@ class Transmitter(
         val frames = Channel<ByteArray>(LISTENER_FRAMES)
     }
 
+    /** Where each listener's stream began (the on-air time of its first frame), by the id it tuned in with. */
+    private val listenerStarts = object : LinkedHashMap<String, Long>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?) = size > 64
+    }
+
+    /** The on-air time of the next frame out of the encoder. */
+    @Volatile private var nextFrameAt = 0L
+
     private val listeners = CopyOnWriteArraySet<Listener>()
     private val ring = ArrayDeque<Pair<Long, ByteArray>>()
     private val ringLock = Any()
@@ -143,15 +178,43 @@ class Transmitter(
 
     val listenerCount: Int get() = listeners.size
 
-    /** Tunes in: the last moments (to start at once), and the station from here on. */
-    fun subscribe(): Pair<List<ByteArray>, Listener> = synchronized(ringLock) {
+    /**
+     * Tunes in: the last moments (to start at once), and the station from here on. With [id],
+     * where the stream begins is kept, so [heardAt] can say what that listener hears.
+     */
+    fun subscribe(id: String? = null): Pair<List<ByteArray>, Listener> = synchronized(ringLock) {
         val from = clock() - BURST_MS
-        val burst = ring.filter { it.first >= from }.map { it.second }
+        val kept = ring.filter { it.first >= from }
+        val burst = kept.map { it.second }
+        if (id != null) synchronized(listenerStarts) { listenerStarts[id] = kept.firstOrNull()?.first ?: nextFrameAt }
         val listener = Listener()
         listeners += listener
         idleSince = null
         burst to listener
     }
+
+    /**
+     * The on-air time a listener (by the id it tuned in with) hears, [positionMs] into its stream
+     * (its player's position), or null if it isn't known or doesn't make sense.
+     */
+    fun heardAt(id: String, positionMs: Long): Long? {
+        val start = synchronized(listenerStarts) { listenerStarts[id] } ?: return null
+        val heard = start + positionMs
+        // Ahead of what's been sent, or more than a little while behind: not this stream's position.
+        return heard.takeIf { positionMs >= 0 && it <= clock() + LEAD_MS + 2_000 && it >= clock() - MAX_BEHIND_MS }
+    }
+
+    /** What was on the air at [at]: the song then, and the ones after it (oldest first). */
+    fun songsFrom(at: Long): List<OnAir> {
+        val all = synchronized(recentSongs) { recentSongs.toList() + listOfNotNull(current) }
+        val index = all.indexOfLast { it.airedAt <= at }.coerceAtLeast(0)
+        return all.drop(index)
+    }
+
+    /** The DJ's line over [songKey], if there was one. */
+    fun djFor(songKey: String): DjLine? = synchronized(djLines) { djLines.lastOrNull { it.songKey == songKey } }
+
+    private val djLines = ArrayDeque<DjLine>()
 
     fun unsubscribe(listener: Listener) {
         listeners -= listener
@@ -187,6 +250,7 @@ class Transmitter(
         if (running) return
         running = true
         startedAt = clock()
+        nextFrameAt = startedAt
         idleSince = clock()
         playoutThread = thread(name = "radio-${kind.id}", isDaemon = true) {
             try {
@@ -206,19 +270,47 @@ class Transmitter(
         playoutThread?.interrupt()
     }
 
-    /** A song being played: its decoder, and how far into it the station is. */
-    private class Playing(val song: Candidate, val source: PcmSource, val durationMs: Long, val fromMs: Long, var decodedBytes: Long = 0) {
-        val positionMs: Long get() = fromMs + decodedBytes / (Pcm.RATE * Pcm.BYTES_PER_FRAME / 1000)
+    /**
+     * A song being played: its decoder, and how far into it the station is. It began at
+     * [fromMs]; its decoder (replaced if it's picked up again) started at [baseMs].
+     */
+    private class Playing(val song: Candidate, var source: PcmSource, val durationMs: Long, val fromMs: Long, var decodedBytes: Long = 0) {
+        var baseMs: Long = fromMs
+        var resumes = 0
+        val positionMs: Long get() = baseMs + decodedBytes / (Pcm.RATE * Pcm.BYTES_PER_FRAME / 1000)
+
+        /** It stopped well before its end (the service dropped it, say), so it's worth picking up again. */
+        fun endedEarly(): Boolean = durationMs > 0 && positionMs < durationMs - RESUME_SLACK_MS && resumes < MAX_RESUMES
     }
 
-    /** The next song opening (resolving and starting its decoder) on its own thread. */
-    private inner class Opening(val song: Candidate, val fromMs: Long) {
+    /**
+     * A song opening (resolving it and starting its decoder, up to its first audio) on its own
+     * thread. One that takes too long is given up on: its decoder is closed, which also ends a
+     * read waiting on it.
+     */
+    private inner class Opening(val song: Candidate, val fromMs: Long, val exact: Boolean = false) {
+        @Volatile private var opened: PcmSource? = null
+        @Volatile private var abandoned = false
         @Volatile var source: PcmSource? = null
         @Volatile var error: Exception? = null
+        private val began = System.nanoTime()
         private val worker = thread(isDaemon = true, name = "radio-${kind.id}-open") {
             try {
-                source = runBlocking { withTimeoutOrNull(OPEN_TIMEOUT_MS) { programme.open(song, fromMs) } }
+                val decoder = runBlocking { withTimeoutOrNull(OPEN_TIMEOUT_MS) { programme.open(song, fromMs, exact) } }
                     ?: throw IOException("It took too long to start")
+                opened = decoder
+                if (abandoned) {
+                    decoder.close()
+                    return@thread
+                }
+                // Its first audio: a song that won't play is known now (not mid-air).
+                val head = ByteArray(CHUNK_BYTES)
+                val n = decoder.read(head, 0, head.size)
+                if (n <= 0) {
+                    decoder.close()
+                    throw IOException("It sent nothing to play")
+                }
+                source = Primed(decoder, head, n)
             } catch (e: Exception) {
                 error = e
             }
@@ -228,22 +320,35 @@ class Transmitter(
         /** Waits for it, keeping the air filled (quietly) meanwhile. Null if it can't play. */
         fun await(pipe: OutputStream): PcmSource? {
             while (!done && running) {
+                if ((System.nanoTime() - began) / 1_000_000 > OPEN_TIMEOUT_MS + FIRST_AUDIO_MS) {
+                    error = IOException("It took too long to start")
+                    abandon()
+                    break
+                }
                 if (aheadMs() < LEAD_MS / 2) send(pipe, SILENCE, 0, SILENCE.size) else worker.join(50)
             }
             if (!running) {
-                source?.close()
+                abandon()
                 return null
             }
-            error?.let { CoreLog.w(TAG, "$name couldn't play ${song.track.artist} – ${song.track.title}: ${it.message}") }
+            error?.let {
+                CoreLog.w(TAG, "$name couldn't play ${song.track.artist} – ${song.track.title}: ${it.message}")
+                abandon()
+                return null
+            }
             return source
         }
 
-        fun cancel() {
+        /** Gives up on it: whatever it opened is closed (now, or as soon as it's opened). */
+        private fun abandon() {
+            abandoned = true
             thread(isDaemon = true) {
-                worker.join(OPEN_TIMEOUT_MS + 1_000)
-                source?.close()
+                runCatching { opened?.close() }
+                runCatching { source?.close() }
             }
         }
+
+        fun cancel() = abandon()
     }
 
     private var t0 = 0L
@@ -256,6 +361,7 @@ class Transmitter(
         val reader = thread(name = "radio-${kind.id}-out", isDaemon = true) { distribute(encoder.inputStream) }
         val pipe = BufferedOutputStream(encoder.outputStream, 64 * 1024)
         t0 = clock()
+        nextFrameAt = t0
         writtenFrames = 0
         var playing: Playing? = null
         var opening: Opening? = null
@@ -271,6 +377,21 @@ class Transmitter(
                 if (opening == null && song.durationMs > 0 && song.positionMs >= song.durationMs - PREOPEN_MS) opening = next(joinMidSong = false)
                 val skipped = skipRequested
                 val read = if (skipped) -1 else readFully(song.source, chunk)
+                if (read <= 0 && !skipped && song.endedEarly()) {
+                    // It stopped short of its end: what's held goes out, and it's picked up where it stopped.
+                    song.resumes++
+                    CoreLog.w(TAG, "$name lost ${song.song.track.artist} – ${song.song.track.title} at ${song.positionMs / 1000}s of ${song.durationMs / 1000}s; picking it up again")
+                    runCatching { song.source.close() }
+                    send(pipe, window, 0, held)
+                    held = 0
+                    val again = Opening(song.song, song.positionMs, exact = true).await(pipe)
+                    if (again != null) {
+                        song.source = again
+                        song.baseMs = again.startMs
+                        song.decodedBytes = 0
+                        continue
+                    }
+                }
                 if (read <= 0) {
                     // The end (or a skip): its last moments (silence cut) crossfade into the next song.
                     skipRequested = false
@@ -332,7 +453,7 @@ class Transmitter(
                 next = next(joinMidSong = false)
                 continue
             }
-            val playing = Playing(next.song, source, next.song.track.durationMs ?: 0L, next.fromMs)
+            val playing = Playing(next.song, source, next.song.track.durationMs ?: 0L, source.startMs)
             if (!crossfade) return begin(playing, pipe, ending)
             val head = ByteArray(outgoing.size)
             val got = readFully(source, head)
@@ -366,19 +487,30 @@ class Transmitter(
     /** Starts [playing] (for the first song: waits for it to open, from [opening]). */
     private fun begin(opening: Opening, pipe: OutputStream, before: Playing?): Playing? {
         val source = opening.await(pipe) ?: return null
-        return begin(Playing(opening.song, source, opening.song.track.durationMs ?: 0L, opening.fromMs), pipe, before)
+        return begin(Playing(opening.song, source, opening.song.track.durationMs ?: 0L, source.startMs), pipe, before)
     }
 
     /** [playing] goes on the air now: what's on, what was, and what the DJ says. */
     private fun begin(playing: Playing, pipe: OutputStream, before: Playing?): Playing {
-        val onAir = OnAir(playing.song, onAirAt(writtenFrames) - playing.fromMs, playing.durationMs)
-        val previous = current
-        current = onAir
+        val at = onAirAt(writtenFrames)
+        val onAir = OnAir(playing.song, at - playing.fromMs, playing.durationMs, airedAt = at)
+        val previous = current?.copy(endedAt = at)
         if (openingSong?.key == playing.song.key) openingSong = null
-        previous?.let { synchronized(recentSongs) { recentSongs.addLast(it); while (recentSongs.size > RECENT) recentSongs.removeFirst() } }
+        // What was on moves to what's been played, as what's on changes (so between them, it's always one or the other).
+        synchronized(recentSongs) {
+            previous?.let { recentSongs.addLast(it); while (recentSongs.size > RECENT) recentSongs.removeFirst() }
+            current = onAir
+        }
         val skipped = before != null && endedBySkip
         endedBySkip = false
-        dj = runCatching { programme.aired(onAir, if (before != null) previous else null, lined, onAirAt(writtenFrames), skipped) }.getOrNull() ?: dj
+        val line = runCatching { programme.aired(onAir, if (before != null) previous else null, lined, at, skipped) }.getOrNull()
+        if (line != null) {
+            dj = line
+            synchronized(djLines) {
+                djLines.addLast(line)
+                while (djLines.size > RECENT) djLines.removeFirst()
+            }
+        }
         return playing
     }
 
@@ -468,6 +600,7 @@ class Transmitter(
                 data.readFully(frame, 7, length - 7)
                 val onAir = t0 + frames * AAC_FRAME_SAMPLES * 1000 / Pcm.RATE
                 frames++
+                nextFrameAt = t0 + frames * AAC_FRAME_SAMPLES * 1000 / Pcm.RATE
                 synchronized(ringLock) {
                     ring.addLast(onAir to frame)
                     val keepFrom = clock() - BURST_MS
@@ -503,7 +636,17 @@ class Transmitter(
         private val SILENCE = ByteArray(Pcm.bytesOf(100))
         private const val OPEN_ATTEMPTS = 6
         private const val PREOPEN_MS = 20_000L
-        private const val OPEN_TIMEOUT_MS = 20_000L
+        private const val OPEN_TIMEOUT_MS = 15_000L
+
+        /** How long after opening a song its first audio may take. */
+        private const val FIRST_AUDIO_MS = 10_000L
+
+        /** A song that stops more than this before its end is picked up again (this many times at most). */
+        private const val RESUME_SLACK_MS = 15_000L
+        private const val MAX_RESUMES = 2
+
+        /** How far behind the station a listener's stream can be and still be followed. */
+        private const val MAX_BEHIND_MS = 15 * 60_000L
         private const val LINED_UP = 3
         private const val RECENT = 12
         private const val LISTENER_FRAMES = 3_000

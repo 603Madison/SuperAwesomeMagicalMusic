@@ -32,3 +32,4 @@
 
 # The Linux desktop app's build output (desktop/).
 /desktop/target/
+/.claude/worktrees/

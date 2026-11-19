@@ -17,6 +17,9 @@ use rand::seq::SliceRandom;
 use crate::api::{Api, Listen, LiveKind, PersonalNow, Track, enc};
 use crate::rt::bg;
 
+/// How far behind one of the person's own stations the player may fall before it tunes in again.
+const MAX_BEHIND_MS: i64 = 25_000;
+
 /// What's on a live channel or station.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct OnAir {
@@ -137,6 +140,8 @@ pub struct Player {
     generation: Cell<u64>,
     listened_ms: Cell<f64>,
     last_tick: Cell<Option<Instant>>,
+    /// When this player last tuned in again to catch up with one of the person's own stations.
+    caught_up: Cell<Option<Instant>>,
     reported: Cell<bool>,
     live_mark: Cell<f64>,
     failures: Cell<u32>,
@@ -197,6 +202,7 @@ impl Player {
             generation: Cell::new(0),
             listened_ms: Cell::new(0.0),
             last_tick: Cell::new(None),
+            caught_up: Cell::new(None),
             reported: Cell::new(false),
             live_mark: Cell::new(0.0),
             failures: Cell::new(0),
@@ -437,9 +443,19 @@ impl Player {
         if let Some(id) = personal {
             let Some(api) = self.api.borrow().clone() else { return };
             let me = self.clone();
+            let heard = self.state.borrow().personal.as_ref().and_then(|p| p.song_key.clone());
+            let generation = self.generation.get();
             glib::spawn_future_local(async move {
-                if let Err(e) = bg(async move { api.personal_skip(&id).await }).await {
-                    me.tell_error(&format!("The station didn't skip: {e}"));
+                match bg(async move { api.personal_skip(&id, heard.as_deref()).await }).await {
+                    // Behind the station: tuned in again, to hear the next song now.
+                    Ok(result) if result.retune && me.generation.get() == generation => {
+                        let index = me.state.borrow().index;
+                        if let Some(index) = index {
+                            me.load(index, true);
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => me.tell_error(&format!("The station didn't skip: {e}")),
                 }
             });
             return;
@@ -800,8 +816,21 @@ impl Player {
                 let on_air = match kind {
                     LiveKind::Personal => {
                         let id = track.source_id.clone();
-                        let info = bg(async move { asking.personal_now(&id).await }).await.ok();
+                        // Where this player is in its stream: the server says what that is.
+                        let position = player.playbin.query_position::<gst::ClockTime>().map(|t| t.mseconds() as i64);
+                        let info = bg(async move { asking.personal_now(&id, position).await }).await.ok();
                         if player.generation.get() != generation {
+                            return;
+                        }
+                        // Far behind the station (each stall while loading leaves it further behind): tuned in again.
+                        let behind = info.as_ref().and_then(|i| i.behind_ms).unwrap_or(0);
+                        let playing = player.state.borrow().playing;
+                        if playing && behind > MAX_BEHIND_MS && player.caught_up.get().is_none_or(|at| at.elapsed() > Duration::from_secs(60)) {
+                            player.caught_up.set(Some(Instant::now()));
+                            let index = player.state.borrow().index;
+                            if let Some(index) = index {
+                                player.load(index, true);
+                            }
                             return;
                         }
                         let on_air = info.as_ref().and_then(|i| i.now.clone()).map(|now| OnAir {
@@ -874,7 +903,7 @@ impl Player {
                 drop(player);
                 let every = match kind {
                     LiveKind::Channel => 15,
-                    LiveKind::Personal => 5,
+                    LiveKind::Personal => 3,
                     LiveKind::Radio => 20,
                 };
                 glib::timeout_future(Duration::from_secs(every)).await;

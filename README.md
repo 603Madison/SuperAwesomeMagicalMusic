@@ -15,7 +15,7 @@ such as authentik works) and are kept there. Works in **Android Auto**.
 
 This repository holds:
 
-- **SuperAwesomeMagicalMusic Lite** (`app/`): the standalone Android app described below. It talks
+- **SuperAwesomeMagicalMusic Standalone** (`app/`, called Lite before 1.30.1): the Android app described below, which works on its own. It talks
   to every service itself; no server needed.
 - **The server** (`server/`, with the **web player** in `web/`): your own streaming service in
   Docker or Podman. Accounts (local, or single sign-on such as Authentik), sources shared by the
@@ -32,7 +32,7 @@ This repository holds:
   together (play on one, control it from another, move the music between them), and at home your
   Yamaha MusicCast speakers join them. **Wrapped** sums up your year (top songs, artists and
   stations, when you listen) as a story to tap through, here and in the web player. Installs
-  alongside Lite.
+  alongside Standalone.
 - **SuperAwesomeMagicalMusic for Linux** (`desktop/`): a native desktop app for the server (Rust,
   GTK 4 and libadwaita, GStreamer) for Ubuntu 24.04+ and Fedora 40+: search, playlists, history,
   SiriusXM and radio, with media keys and the desktop's media controls, in the same look and

@@ -323,7 +323,18 @@ data class PersonalNow(
     /** The server's clock, and how far behind it the station is heard. */
     val serverTime: Long = 0,
     val heardDelayMs: Long = 3_000,
-)
+    /** How far behind the station this phone's stream is (when it said where it is). */
+    val behindMs: Long? = null,
+    /** When this phone got it (its own clock), to work out where the song is since. */
+    @kotlinx.serialization.Transient val receivedAt: Long = 0,
+) {
+    /** How far into the song heard now this phone is. */
+    fun songPositionMs(now: Long = System.currentTimeMillis()): Long? =
+        this.now?.let { song -> (serverTime + (now - receivedAt) - heardDelayMs - song.startMs).coerceAtLeast(0) }
+}
+
+@Serializable
+data class SkipResult(val ok: Boolean = true, val retune: Boolean = false)
 
 @Serializable
 private data class StationThumbBody(val key: String, val thumb: String)
@@ -496,10 +507,16 @@ class ServerApi(
 
     suspend fun personalStations(): List<PersonalStation> = get("${base()}/api/radio/personal", ListSerializer(PersonalStation.serializer()))
 
-    suspend fun personalNow(id: String, zone: String): PersonalNow =
-        get("${base()}/api/radio/personal/${enc(id)}/now?tz=${enc(zone)}", PersonalNow.serializer())
+    /** What's on, as heard by the stream tuned in as [listener] that has played [positionMs] of it. */
+    suspend fun personalNow(id: String, zone: String, listener: String? = null, positionMs: Long = 0): PersonalNow =
+        get(
+            "${base()}/api/radio/personal/${enc(id)}/now?tz=${enc(zone)}" + (listener?.let { "&listener=${enc(it)}&pos=$positionMs" } ?: ""),
+            PersonalNow.serializer(),
+        ).copy(receivedAt = System.currentTimeMillis())
 
-    suspend fun personalSkip(id: String) = post("${base()}/api/radio/personal/${enc(id)}/skip", "{}", Unit.serializer())
+    /** Skips what's on ([heard]: the song this phone hears; behind the station, it's told to tune in again). */
+    suspend fun personalSkip(id: String, heard: String? = null): SkipResult =
+        post("${base()}/api/radio/personal/${enc(id)}/skip" + (heard?.let { "?key=${enc(it)}" } ?: ""), "{}", SkipResult.serializer())
 
     suspend fun personalThumb(id: String, key: String, thumb: String) = post(
         "${base()}/api/radio/personal/${enc(id)}/thumb",

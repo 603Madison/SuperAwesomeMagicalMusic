@@ -7,7 +7,7 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-// One version for the whole project: the Lite app's.
+// One version for the whole project: the Standalone app's.
 val appGradle = rootProject.file("app/build.gradle.kts").readText()
 val sammVersionName = Regex("versionName = \"([^\"]+)\"").find(appGradle)!!.groupValues[1]
 val sammVersionCode = Regex("versionCode = (\\d+)").find(appGradle)!!.groupValues[1].toInt()
@@ -17,7 +17,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        // A separate app from Lite, so both can be installed.
+        // A separate app from Standalone, so both can be installed.
         applicationId = "com.music.connect"
         minSdk = 26
         targetSdk = 36
@@ -25,7 +25,7 @@ android {
         versionName = sammVersionName
     }
 
-    // Signed with the same permanent key as Lite (see app/build.gradle.kts).
+    // Signed with the same permanent key as Standalone (see app/build.gradle.kts).
     val localKey = rootProject.file("keystore/release.properties").takeIf { it.exists() }
         ?.let { file -> Properties().apply { file.inputStream().use(::load) } }
     fun signingValue(property: String, env: String): String? = localKey?.getProperty(property) ?: System.getenv(env)

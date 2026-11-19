@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds this project's F-Droid repo in fdroid/repo from the newest GitHub releases: both apps,
-# SuperAwesomeMagicalMusic Lite (com.music.player) and SuperAwesomeMagicalMusic (com.music.connect).
+# SuperAwesomeMagicalMusic Standalone (com.music.player) and SuperAwesomeMagicalMusic (com.music.connect).
 #
 #   fdroid/build-repo.sh [releases]     (default: the 5 newest)
 #

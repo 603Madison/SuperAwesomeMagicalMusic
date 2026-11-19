@@ -1,7 +1,7 @@
 # F-Droid repository
 
 Both apps, SuperAwesomeMagicalMusic (for the server, `com.music.connect`) and SuperAwesomeMagicalMusic
-Lite (standalone, `com.music.player`), are in the project's own F-Droid repository, published to
+Standalone (works on its own, `com.music.player`), are in the project's own F-Droid repository, published to
 GitHub Pages:
 
 - Address: `https://603madison.github.io/SuperAwesomeMagicalMusic/repo`
@@ -18,7 +18,7 @@ from the Actions tab. It:
 
 1. downloads the newest releases' APKs (`build-repo.sh`),
 2. builds each app's store listing from its fastlane metadata (`fastlane/metadata/android/en-US`
-   for Lite, `connect/fastlane/metadata/android/en-US` for the server app: name, descriptions,
+   for Standalone, `connect/fastlane/metadata/android/en-US` for the server app: name, descriptions,
    icon, screenshots) and `app-metadata.yml` / `app-metadata-connect.yml` (licence, links,
    anti-features), turning each release's notes into its "What's new" (`changelog.py`),
 3. runs `fdroid update`, which signs the index with the app's signing key (the

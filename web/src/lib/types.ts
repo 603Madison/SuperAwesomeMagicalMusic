@@ -317,6 +317,8 @@ export interface PersonalNow {
   /** The server's clock, and how far behind it the station is heard. */
   serverTime: number;
   heardDelayMs: number;
+  /** How far behind the station this player's stream is (when it said where it is). */
+  behindMs?: number;
 }
 
 export interface ArtistView {

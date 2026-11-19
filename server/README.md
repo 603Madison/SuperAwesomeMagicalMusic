@@ -9,7 +9,7 @@ computer. Each person gets their own playlists and history (and a yearly **Wrapp
 - **Sources**: admins share sources with everyone (the house Jellyfin, a Lidarr); people add
   their own (their own Jellyfin, for one) and can switch shared ones off for themselves.
   Saved sign-ins are encrypted.
-- **Playback**: like the Lite app, songs play from your Jellyfin library when it has them, else
+- **Playback**: like the Standalone app, songs play from your Jellyfin library when it has them, else
   the best copy on a streaming service within your quality setting. ffmpeg converts on the server
   only when needed (over your bitrate cap, or a format the browser can't play).
 - **Live radio**: SiriusXM channels (with what's on now, and Xtra channels) and Pandora artist

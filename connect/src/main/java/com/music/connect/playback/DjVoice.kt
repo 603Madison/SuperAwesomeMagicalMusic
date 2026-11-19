@@ -55,7 +55,8 @@ class DjVoice(context: Context, private val player: Player, private val scope: C
         if (!said.add(id)) return
         while (said.size > 100) said.remove(said.first())
         val wait = atMs - System.currentTimeMillis()
-        if (wait < -10_000) return
+        // Too late to say over the start of the song: left unsaid, rather than talking over the middle of it.
+        if (wait < -6_000) return
         waiting += scope.launch {
             delay(wait.coerceAtLeast(0))
             if (ready && player.isPlaying) tts.speak(text, TextToSpeech.QUEUE_ADD, null, id)

@@ -5,7 +5,7 @@ import com.music.player.sources.TrackMatcher
 
 /**
  * Something found on one of several sources. [via] names the source (the server's saved-source id,
- * or the Lite app's source type); [library] is whether that source is a music library (Jellyfin),
+ * or the Standalone app's source type); [library] is whether that source is a music library (Jellyfin),
  * whose copy is preferred.
  */
 data class Found<T>(val via: String, val library: Boolean, val item: T)

@@ -22,7 +22,7 @@ class SourceAnswer(val source: BrowseSource, val songs: Result<List<Track>>, val
 }
 
 /**
- * Searching and browsing several sources as one catalog, for the server and the Lite app alike.
+ * Searching and browsing several sources as one catalog, for the server and the Standalone app alike.
  * Every source is asked at once; one that fails or takes longer than [timeoutMs] is left out
  * (and reported to [onError]) rather than holding up the rest.
  */

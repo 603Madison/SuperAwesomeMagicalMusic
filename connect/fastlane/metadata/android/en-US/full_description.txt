@@ -18,4 +18,4 @@
 
 <p>Works in Android Auto (playlists, downloads, radio and search) and with headsets and the system's media controls.</p>
 
-<p>Needs a SuperAwesomeMagicalMusic server. For an app that works on its own with no server, see SuperAwesomeMagicalMusic Lite.</p>
+<p>Needs a SuperAwesomeMagicalMusic server. For an app that works on its own with no server, see SuperAwesomeMagicalMusic Standalone.</p>

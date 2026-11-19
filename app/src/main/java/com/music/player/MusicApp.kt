@@ -16,7 +16,7 @@ class MusicApp : Application(), SingletonImageLoader.Factory, Configuration.Prov
     override fun onCreate() {
         super.onCreate()
         // The shared services (the core module) log through Android's log and say who they are.
-        AppInfo.name = "SuperAwesomeMagicalMusic-Lite"
+        AppInfo.name = "SuperAwesomeMagicalMusic-Standalone"
         AppInfo.version = BuildConfig.VERSION_NAME
         AppInfo.platform = "Android"
         AppInfo.deviceName = android.os.Build.MODEL

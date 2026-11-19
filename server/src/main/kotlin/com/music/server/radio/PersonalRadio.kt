@@ -84,7 +84,7 @@ class PersonalRadio(private val services: Services) {
         // Stations nobody listens to go off the air.
         services.scope.launch {
             while (isActive) {
-                delay(15_000)
+                delay(5_000)
                 val now = services.clock()
                 transmitters.entries.removeIf { (_, t) ->
                     val idle = t.idleSince?.let { now - it > IDLE_OFF_MS } == true
@@ -218,8 +218,8 @@ class PersonalRadio(private val services: Services) {
             return programmer.pick(taste, discovery(user, taste), played, scheduled, position++, services.clock(), kotlin.random.Random.Default, unplayable)
         }
 
-        override suspend fun open(song: Candidate, fromMs: Long): PcmSource = try {
-            decode(user, song, fromMs)
+        override suspend fun open(song: Candidate, fromMs: Long, exact: Boolean): PcmSource = try {
+            decode(user, song, fromMs, exact)
         } catch (e: Exception) {
             unplayable += song.key
             throw e
@@ -240,9 +240,14 @@ class PersonalRadio(private val services: Services) {
         }
     }
 
-    /** Where [song] plays from for [user], decoding from [fromMs] (levelled, its leading silence cut). */
-    private suspend fun decode(user: User, song: Candidate, fromMs: Long): PcmSource {
+    /**
+     * Where [song] plays from for [user], decoding from [fromMs] (levelled, its leading silence
+     * cut). A source that can't jump about would have to send everything before [fromMs] first,
+     * so unless the position must be [exact] (picking a song up again), it starts from the top.
+     */
+    private suspend fun decode(user: User, song: Candidate, requestedMs: Long, exact: Boolean): PcmSource {
         val resolution = services.catalog.resolve(user, song.track.toTrack(), song.track.via, StreamQuality.Original, thorough = false)
+        val fromMs = if (resolution.stream.supportsRangeRequests || exact) requestedMs else 0L
         val (relayId, relayUrl) = services.streamer.openRelay(resolution.stream)
         val seek = if (fromMs > 0) listOf("-ss", "%.3f".format(java.util.Locale.ROOT, fromMs / 1000.0)) else emptyList()
         val filters = buildList {
@@ -254,6 +259,8 @@ class PersonalRadio(private val services: Services) {
             addAll(listOf(services.config.ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin"))
             if (resolution.stream.supportsRangeRequests) {
                 addAll(seek)
+                // A dropped connection is picked up where it was (the relay takes ranges).
+                addAll(listOf("-reconnect", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "4"))
                 addAll(listOf("-i", relayUrl))
             } else {
                 addAll(listOf("-seekable", "0", "-i", relayUrl))
@@ -263,16 +270,9 @@ class PersonalRadio(private val services: Services) {
         }
         val process = withContext(Dispatchers.IO) { ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start() }
         val input = process.inputStream.buffered(64 * 1024)
-        // Waits for the first audio, so a song that won't play is known now (not mid-air).
-        input.mark(1)
-        val first = withContext(Dispatchers.IO) { input.read() }
-        if (first < 0) {
-            process.destroy()
-            services.streamer.closeRelay(relayId)
-            throw IOException("${resolution.source.name} sent nothing to play")
-        }
-        input.reset()
         return object : PcmSource {
+            override val startMs: Long = fromMs
+
             override fun read(into: ByteArray, offset: Int, length: Int): Int = try {
                 input.read(into, offset, length)
             } catch (e: IOException) {
@@ -289,7 +289,8 @@ class PersonalRadio(private val services: Services) {
 
     companion object {
         private const val TAG = "Radio"
-        private const val IDLE_OFF_MS = 45_000L
+        /** A station nobody's listening to stays on this long (for a quick reconnect), then goes off: it fetches nothing once off. */
+        private const val IDLE_OFF_MS = 20_000L
         private const val MAX_ON_AIR = 8
         private const val TASTE_MS = 10 * 60_000L
         private const val DISCOVERY_MS = 12 * 60 * 60_000L

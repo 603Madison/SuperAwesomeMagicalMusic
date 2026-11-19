@@ -34,7 +34,7 @@ data class Resolution(val source: StoredSource, val track: Track, val stream: So
 
 /**
  * A person's music across their sources: picking where a song plays from, by the same rules as
- * the Lite app:
+ * the Standalone app:
  *
  *  1. Libraries (Jellyfin) first: a song from any service is looked for there.
  *  2. Not in any library: Lidarr is asked to get the artist (if set up).

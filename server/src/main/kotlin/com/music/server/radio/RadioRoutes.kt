@@ -54,10 +54,19 @@ data class PersonalNow(
     /** The server's clock, and how far behind it listeners hear (times here are on-air times). */
     val serverTime: Long,
     val heardDelayMs: Long,
+    /**
+     * How far behind the station this listener's stream is, when it said where it is (its
+     * listener id and position): players far behind tune in again to catch up.
+     */
+    val behindMs: Long? = null,
 )
 
 @Serializable
 data class StationThumb(val key: String, val thumb: String)
+
+/** A skip: [retune] tells a player that's behind the station to tune in again. */
+@Serializable
+data class SkipResult(val ok: Boolean, val retune: Boolean = false)
 
 fun Route.radioRoutes(services: Services) {
     val radio = services.personalRadio
@@ -80,31 +89,45 @@ fun Route.radioRoutes(services: Services) {
 
     fun onAirView(t: Transmitter.OnAir) = songView(t.song, t.startMs, t.durationMs)
 
-    suspend fun nowOf(user: User, kind: StationKind, transmitter: Transmitter?): PersonalNow {
+    /**
+     * What's on [kind] for [user]. A player that says where it is in its stream ([listener], the
+     * id it tuned in with, and [positionMs], how far it has played) is told what it's hearing:
+     * players can fall behind the station (a stall while loading, say), and what's shown, what
+     * the DJ says and what a thumb or skip is for follow what's heard, not what's on.
+     */
+    suspend fun nowOf(user: User, kind: StationKind, transmitter: Transmitter?, listener: String? = null, positionMs: Long? = null): PersonalNow {
         val station = art.outgoing(Stations.track(kind, user.displayName, user.username))
         val serverTime = services.clock()
         if (transmitter == null) return PersonalNow(station, serverTime = serverTime, heardDelayMs = HEARD_DELAY_MS)
-        val current = transmitter.current
+        val heard = if (listener != null && positionMs != null) transmitter.heardAt(listener, positionMs) else null
+        val behind = heard?.let { (serverTime - it).coerceAtLeast(0) }
+        // The song heard, and what was on the air after it (when the player is behind).
+        val fromHeard = heard?.let(transmitter::songsFrom).orEmpty()
+        val playing = fromHeard.firstOrNull() ?: transmitter.current
+        val after = fromHeard.drop(1)
         // What's lined up, with when each should start (each song's length, less the crossfade).
+        val current = transmitter.current
         var at = current?.let { it.startMs + it.durationMs } ?: serverTime
-        val next = transmitter.lined.map { song ->
+        val next = after.map(::onAirView) + transmitter.lined.map { song ->
             val length = song.track.durationMs ?: 0
             songView(song, at, length).also { at += length }
         }
+        val before = transmitter.recent.filter { played -> playing == null || played.airedAt < playing.airedAt }
         val thumbs = radio.thumbs(user)
-        val dj = transmitter.dj?.takeIf { line -> line.songKey == current?.song?.key }
+        val dj = playing?.let { transmitter.djFor(it.song.key) }
         return PersonalNow(
             station = station,
-            now = current?.let(::onAirView),
-            songKey = current?.song?.key,
-            thumb = current?.song?.key?.let { thumbs[it] }?.let { if (it > 0) "UP" else "DOWN" },
+            now = playing?.let(::onAirView),
+            songKey = playing?.song?.key,
+            thumb = playing?.song?.key?.let { thumbs[it] }?.let { if (it > 0) "UP" else "DOWN" },
             next = next,
-            recent = transmitter.recent.map(::onAirView),
+            recent = before.map(::onAirView),
             dj = dj?.let { DjView(it.id, it.text, it.atMs) },
-            welcome = current?.let { "You're tuned to ${transmitter.name}. ${it.song.track.title}, by ${it.song.track.artist}." }
+            welcome = playing?.let { "You're tuned to ${transmitter.name}. ${it.song.track.title}, by ${it.song.track.artist}." }
                 ?: "You're tuned to ${transmitter.name}.",
             serverTime = serverTime,
-            heardDelayMs = HEARD_DELAY_MS,
+            heardDelayMs = behind ?: HEARD_DELAY_MS,
+            behindMs = behind,
         )
     }
 
@@ -140,13 +163,20 @@ fun Route.radioRoutes(services: Services) {
             val transmitter = radio.onAir(user, kind)
             zoneOf(call)?.let { transmitter?.zone = it }
             call.response.header(HttpHeaders.CacheControl, "no-store")
-            call.respond(nowOf(user, kind, transmitter))
+            val listener = call.request.queryParameters["listener"]?.take(64)
+            val position = call.request.queryParameters["pos"]?.toLongOrNull()
+            call.respond(nowOf(user, kind, transmitter, listener, position))
         }
 
+        // Skips what's on. With the song the player hears ([key]): if that's already over on the
+        // station (the player is behind), it's told to tune in again, to hear the next song now.
         post("/personal/{id}/skip") {
             val user = call.requireUser(services)
-            radio.skip(user, kindOf(call))
-            call.respond(mapOf("ok" to true))
+            val kind = kindOf(call)
+            val heard = call.request.queryParameters["key"]
+            val behind = heard != null && radio.onAir(user, kind)?.current?.song?.key != heard
+            radio.skip(user, kind)
+            call.respond(SkipResult(ok = true, retune = behind))
         }
 
         post("/personal/{id}/thumb") {
@@ -172,7 +202,9 @@ suspend fun PersonalRadio.respondStream(call: ApplicationCall, user: User, id: S
     val kind = StationKind.of(id) ?: throw ApiError.notFound("There's no such station")
     val zone = call.request.queryParameters["tz"]?.let { runCatching { ZoneId.of(it) }.getOrNull() }
     val transmitter = tuneIn(user, kind, zone)
-    val (burst, listener) = transmitter.subscribe()
+    // The id the player tuned in with: with it, the player can ask what it's hearing.
+    val id = call.request.queryParameters["listener"]?.take(64)?.takeIf { it.isNotBlank() }
+    val (burst, listener) = transmitter.subscribe(id)
     call.response.header(HttpHeaders.CacheControl, "no-store")
     call.response.header("icy-name", transmitter.name.replace('’', '\'').filter { it.code in 0x20..0x7e })
     try {

@@ -244,7 +244,7 @@ fun PlayerScreen(onClose: () -> Unit) {
                 }
             }
         } else {
-            item { AppCard(Modifier.padding(horizontal = 16.dp), padding = 0.dp) { Lyrics(nowSong, state.positionMs) } }
+            item { AppCard(Modifier.padding(horizontal = 16.dp), padding = 0.dp) { Lyrics(nowSong, station?.songPositionMs() ?: state.positionMs) } }
         }
         item { Spacer(Modifier.height(24.dp)) }
     }
