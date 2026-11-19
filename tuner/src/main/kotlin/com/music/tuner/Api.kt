@@ -191,8 +191,8 @@ fun Application.tunerModule(app: TunerApp) {
             callLetters = station.callLetters ?: live?.callLetters,
             pi = station.pi ?: live?.pi,
             genre = station.genre ?: live?.genre,
-            now = live?.let { NowView(it.title, it.artist, it.album, it.radiotext, it.slogan ?: station.slogan) }
-                ?: station.slogan?.let { NowView(slogan = it) },
+            now = (live?.let { NowView(it.title, it.artist, it.album, it.radiotext, it.slogan ?: station.slogan) } ?: NowView(slogan = station.slogan))
+                .takeIf { it != NowView() },
             signal = live?.signal ?: station.signal,
             playing = session != null,
             listeners = session?.listeners ?: 0,
