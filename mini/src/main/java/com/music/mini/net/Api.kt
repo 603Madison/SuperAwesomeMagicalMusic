@@ -286,7 +286,8 @@ class Api(
 
         /**
          * Accepts "music.example.com", "http://host:8080/" and the like; with no scheme, HTTPS,
-         * except for addresses on the home network (an IP address, or a name with a port).
+         * except for addresses that look like the home network's (an IP address, a name with no
+         * dots, or one ending .local, .lan or .home.arpa), which are usually plain HTTP.
          */
         fun normalize(raw: String): String? {
             val trimmed = raw.trim().trimEnd('/')
@@ -302,7 +303,7 @@ class Api(
 
         private fun looksLocal(address: String): Boolean {
             val host = address.substringBefore('/').substringBefore(':')
-            return host.matches(Regex("\\d{1,3}(\\.\\d{1,3}){3}")) || host.equals("localhost", true) || host.endsWith(".local", true) ||
+            return host.matches(Regex("\\d{1,3}(\\.\\d{1,3}){3}")) || '.' !in host || host.endsWith(".local", true) ||
                 host.endsWith(".lan", true) || host.endsWith(".home.arpa", true)
         }
 

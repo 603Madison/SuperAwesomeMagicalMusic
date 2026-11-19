@@ -89,6 +89,8 @@ class CodeSignInTest {
         assertEquals("https://music.example.com", Api.normalize(" music.example.com/ "))
         assertEquals("http://192.168.1.20:8080", Api.normalize("192.168.1.20:8080"))
         assertEquals("http://nas.local:8080", Api.normalize("nas.local:8080"))
+        assertEquals("http://nas:8080", Api.normalize("nas:8080"))
+        assertEquals("https://music.example.com:8443", Api.normalize("music.example.com:8443"))
         assertEquals("http://music.example.com", Api.normalize("http://music.example.com"))
         assertEquals(null, Api.normalize(""))
         assertEquals(null, Api.normalize("not an address"))
