@@ -2,6 +2,7 @@ import type {
   ArtistView, ChannelView, NowView, StationTracks, PersonalNow, PersonalStation, Heard, ListenResult, ListenStatus,
   AdminSettings, AuthConfig, KindsResponse, LidarrRequest, Listen, LyricsView, Wrapped, Playlist, PlaylistSummary,
   ResolvedStream, SearchResults, ArtistPage, AlbumPage, ServerSettings, SessionInfo, SourceView, Track, User, OidcSettings,
+  DeviceRequest,
 } from "./types";
 
 /** An error from the server, with a message meant for people. */
@@ -58,6 +59,8 @@ export const api = {
   login: (username: string, password: string) => post<{ user: User }>("/api/auth/login", { username, password }),
   logout: () => post<unknown>("/api/auth/logout"),
   appCode: (challenge: string) => post<{ code: string }>("/api/auth/app/code", { challenge }),
+  deviceRequest: (code: string) => get<DeviceRequest>(`/api/auth/device/request?code=${q(code)}`),
+  deviceDecide: (userCode: string, allow: boolean) => post<unknown>("/api/auth/device/decide", { userCode, allow }),
 
   me: () => get<{ user: User; session: SessionInfo }>("/api/me"),
   updateProfile: (displayName: string) => patch<User>("/api/me", { displayName }),
