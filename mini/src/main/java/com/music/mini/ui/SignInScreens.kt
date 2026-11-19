@@ -198,7 +198,9 @@ class CodeScreen(private val server: String, private val serverName: String) : S
 
     /** The page's address as a QR code, as big as the screen's width allows. */
     private fun showQr(link: String) {
-        val size = (context.resources.displayMetrics.widthPixels - context.dp(32)).coerceIn(context.dp(96), context.dp(240))
+        // Under the code and the words, on the screen at once where it can be.
+        val metrics = context.resources.displayMetrics
+        val size = minOf(metrics.widthPixels - context.dp(32), metrics.heightPixels * 35 / 100).coerceIn(context.dp(96), context.dp(240))
         val bitmap = runCatching { qrBitmap(link, size) }.getOrNull() ?: return
         qr.setImageBitmap(bitmap)
         qr.visibility = View.VISIBLE

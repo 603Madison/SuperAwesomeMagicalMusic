@@ -18,10 +18,12 @@ cd "$fdroid_dir"
 declare -A listing=(
   [com.music.player]="$root/fastlane/metadata/android/en-US"
   [com.music.connect]="$root/connect/fastlane/metadata/android/en-US"
+  [com.music.mini]="$root/mini/fastlane/metadata/android/en-US"
 )
 declare -A app_metadata=(
   [com.music.player]="app-metadata.yml"
   [com.music.connect]="app-metadata-connect.yml"
+  [com.music.mini]="app-metadata-mini.yml"
 )
 
 # Addresses follow the GitHub repository's name (GITHUB_REPOSITORY in Actions), so renaming the

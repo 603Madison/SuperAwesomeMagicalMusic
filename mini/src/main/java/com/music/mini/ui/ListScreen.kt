@@ -1,6 +1,7 @@
 package com.music.mini.ui
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.text.TextUtils
 import android.util.TypedValue
@@ -209,15 +210,19 @@ abstract class ListScreen : Screen() {
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
             val c = parent.context
+            // The row's state (focused) reaches its texts, so they change colour with it. (Set
+            // before they're added to the row: afterwards it may not take.)
             val title = TextView(c).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
+                isDuplicateParentStateEnabled = true
             }
             val detail = TextView(c).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
+                isDuplicateParentStateEnabled = true
             }
             val root = LinearLayout(c).apply {
                 orientation = LinearLayout.VERTICAL
@@ -234,14 +239,19 @@ abstract class ListScreen : Screen() {
             } else {
                 title.setTextColor(c.getColorStateList(R.color.row_text))
                 detail.setTextColor(c.getColorStateList(R.color.row_detail))
-                // The row's state (focused) reaches its texts, so they change colour with it.
-                title.isDuplicateParentStateEnabled = true
-                detail.isDuplicateParentStateEnabled = true
                 root.setBackgroundResource(R.drawable.row_background)
                 root.minimumHeight = c.dp(44)
                 root.setPadding(c.dp(10), c.dp(8), c.dp(10), c.dp(8))
                 root.isFocusable = true
                 root.isClickable = true
+                // Dark text on the highlight. (The colour lists do this too; this makes sure the
+                // texts are drawn again at once, whatever the phone.)
+                val text = c.getColorStateList(R.color.row_text)
+                val muted = c.getColorStateList(R.color.row_detail)
+                root.setOnFocusChangeListener { _, focused ->
+                    title.setTextColor(if (focused) ColorStateList.valueOf(c.color(R.color.on_focus)) else text)
+                    detail.setTextColor(if (focused) ColorStateList.valueOf(c.color(R.color.on_focus)) else muted)
+                }
             }
             return Holder(root, title, detail)
         }

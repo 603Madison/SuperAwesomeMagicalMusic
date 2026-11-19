@@ -1,0 +1,18 @@
+<p>The <b>SuperAwesomeMagicalMusic server</b> on an Android flip phone (TCL Flip, Kyocera DuraXV, Sonim XP3plus, CAT S22 Flip and the like): small, quick on phones with little memory, and made for the keypad.</p>
+
+<p><b>No password to type</b></p>
+<ul>
+<li>Enter your server's address, and Mini shows a short code (and a QR code). Type it at your server's /link page on your phone or computer, where you're already signed in, and allow it: Mini is signed in.</li>
+<li>Mini is listed with your other devices in the web player's Settings, where you can sign it out.</li>
+</ul>
+
+<p><b>All with the keys</b></p>
+<ul>
+<li>The D-pad moves a big, bright highlight; OK chooses; Back goes back; the left soft key opens options; the number keys pick from menus. A touch screen works too.</li>
+<li>Search (with the phone's T9), your playlists, your own radio stations and your favourite channels and stations, and what you played lately.</li>
+<li>Now playing: OK plays and pauses, left and right go back and forward (on your own stations, right skips the song), up and down change the volume. Options give thumbs up and down, adding to a playlist and a sleep timer.</li>
+</ul>
+
+<p>Plays in the background with the notification and headset buttons. Streams at 96 kbps by default to save data; Settings has higher qualities.</p>
+
+<p>Needs a SuperAwesomeMagicalMusic server from the same release as Mini or later (for signing in with a code).</p>

@@ -203,6 +203,12 @@ class MainActivity : Activity(), Host {
                 return true
             }
         }
+        if (event.action == KeyEvent.ACTION_DOWN && code in NAVIGATION && content.isInTouchMode && focusedView !is EditText) {
+            // The first key after a touch brings the highlight back (where the screen wants it), as Android does.
+            (screen?.defaultFocus() ?: content).requestFocusFromTouch()
+            screen?.onShown(first = false)
+            return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN && screen?.onKey(code, event) == true) return true
         if (super.dispatchKeyEvent(event)) return true
         if (event.action != KeyEvent.ACTION_DOWN) return false
@@ -223,6 +229,13 @@ class MainActivity : Activity(), Host {
         }
         if (direction != 0) focused.focusSearch(direction)?.takeIf { isInside(it) }?.requestFocus(direction)
         return true
+    }
+
+    private companion object {
+        val NAVIGATION = setOf(
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+        )
     }
 
     private fun isInside(view: View): Boolean {

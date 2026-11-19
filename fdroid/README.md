@@ -11,6 +11,9 @@ GitHub Pages:
 It lists the same signed APKs as the GitHub releases (the newest five), so an app installed from a
 release is updated by F-Droid too.
 
+SuperAwesomeMagicalMusic Mini (for flip phones, `com.music.mini`) is listed there too, from
+`mini/fastlane/metadata/android/en-US` and `app-metadata-mini.yml`.
+
 ## How it's built
 
 `.github/workflows/fdroid.yml` runs after every release (release.yml calls it) and can be started

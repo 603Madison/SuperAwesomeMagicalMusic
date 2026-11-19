@@ -121,6 +121,12 @@ Turn off *People can sign in with a password* to make everyone use Authentik. Th
 admin can always sign in with its password (from the sign-in page's *Sign in with a password*),
 so a broken identity provider can't lock you out.
 
+**Signing in with a code**: a device that's awkward to type on (SuperAwesomeMagicalMusic Mini on a
+flip phone, or the phone app's *Sign in with a code from another device*) shows a short code. Type
+it at your server's `/link` page (or the web player's Settings › Signed in on › *Sign in a device
+with a code*) where you're signed in, check which device is asking, and allow it. This works with
+single sign-on too, since you approve it from a sign-in you already have.
+
 ## Settings
 
 Environment variables (all optional):
@@ -225,6 +231,10 @@ Cloudflare, check that bot protection isn't blocking `/mcp`.
 - People who add their own sources make the server connect to addresses they choose. Turn off
   *People can add their own sources* if that's not wanted on your network.
 - The server talks to the services, so your Jellyfin and Lidarr needn't be reachable from outside.
+- Codes for signing in another device (OAuth's device authorization flow, `/api/auth/device/*`)
+  work once and expire after ten minutes; the device holds a long secret of its own, and only
+  someone signed in can allow it, after seeing the device's name. Wrong codes are limited per
+  person and address, like wrong passwords, and devices asking too often are told to slow down.
 - A Claude connector link is a sign-in that only opens `/mcp`, where everything is read-only.
   Anyone with the link can read what the tools show (your sources' names, your history, SiriusXM's
   log); remove it under **Signed in on** if it leaks.

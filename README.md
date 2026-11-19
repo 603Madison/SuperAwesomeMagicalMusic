@@ -38,6 +38,15 @@ This repository holds:
   SiriusXM and radio, with media keys and the desktop's media controls, in the same look and
   themes as the web player and the phone app. See
   [desktop/README.md](desktop/README.md).
+- **SuperAwesomeMagicalMusic Mini** (`mini/`): the server's app for Android flip phones (TCL Flip,
+  Kyocera DuraXV, Sonim XP3plus, CAT S22 Flip and the like; Android 8 and later), made for the
+  keypad: the D-pad moves a big highlight, OK chooses, the soft keys open options and go back, and
+  the number keys pick from menus. No password to type: it shows a short code (and a QR code) to
+  type at the server's `/link` page on a phone or computer that's signed in. Search, playlists,
+  your own radio stations and favourites, recently played, and Now playing (OK plays and pauses,
+  left and right change songs, up and down set the volume), playing in the background. Plain
+  Android views, light enough for phones with 512 MB, and streams at 96 kbps by default to save
+  data. Installs alongside the other apps.
 
 Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Android 8.0+ (API 26).
 
@@ -357,6 +366,12 @@ repository**, or in F-Droid go to Settings › Repositories › **+** and enter
 **From GitHub:** download `SuperAwesomeMagicalMusic-vX.Y.Z.apk` from the repository's **Releases** page and open it on your phone
 (allow installing from your browser or file manager when Android asks). Every release is signed
 with the same key, so new versions install over old ones and keep your settings and downloads.
+
+**On a flip phone:** download `SuperAwesomeMagicalMusic-Mini-vX.Y.Z.apk` from **Releases** (or get
+SuperAwesomeMagicalMusic Mini from the F-Droid repository), enter your server's address, and type the
+code it shows at your server's `/link` page on your phone or computer. Signing in with a code also
+works in the SuperAwesomeMagicalMusic app (**Sign in with a code from another device**), and the web
+player's Settings › Signed in on has **Sign in a device with a code**.
 
 **On the Linux desktop:** download the package from **Releases**, then
 `sudo apt install ./SuperAwesomeMagicalMusic-Desktop-vX.Y.Z-amd64.deb` (Ubuntu 24.04 and later) or
