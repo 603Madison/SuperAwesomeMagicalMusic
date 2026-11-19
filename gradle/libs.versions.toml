@@ -1,32 +1,36 @@
 [versions]
-agp = "8.13.2"
-kotlin = "2.2.21"
-ksp = "2.2.21-2.0.5"
-coreKtx = "1.17.0"
-activityCompose = "1.11.0"
-lifecycle = "2.9.4"
-navigation = "2.9.6"
-composeBom = "2025.10.01"
-media3 = "1.9.4"
-room = "2.8.4"
-work = "2.11.0"
-datastore = "1.1.7"
-okhttp = "4.12.0"
-serialization = "1.9.0"
-coroutines = "1.10.2"
-coil = "3.3.0"
-palette = "1.0.0"
-newpipeExtractor = "v0.27.0"
+agp = "9.5.1"
+kotlin = "2.4.21"
+ksp = "2.3.14"
+coreKtx = "1.19.1"
+activityCompose = "1.13.0"
+lifecycle = "2.11.0"
+navigation = "2.10.2"
+composeBom = "2026.09.00"
+media3 = "1.11.1"
+room = "2.8.5"
+work = "2.12.0"
+datastore = "1.3.0"
+okhttp = "5.5.1"
+serialization = "1.13.0"
+coroutines = "1.11.0"
+coil = "3.6.3"
+palette = "1.1.0"
+newpipeExtractor = "v0.27.1"
 desugar = "2.1.5"
 junit = "4.13.2"
-robolectric = "4.16.1"
-androidxMedia = "1.7.1"
-browser = "1.8.0"
+robolectric = "4.18"
+androidxMedia = "1.8.0"
+browser = "1.10.0"
 # Server
-ktor = "3.3.3"
-sqliteJdbc = "3.50.3.0"
-nimbusJoseJwt = "10.5"
-logback = "1.5.20"
+ktor = "3.6.1"
+sqliteJdbc = "3.54.1.0"
+nimbusJoseJwt = "10.10"
+logback = "1.6.7"
+# Security floors for libraries that come in transitively (Ktor 3.3 brings Netty 4.2.7).
+netty = "4.2.20.Final"
+# AndroidX/Media3 bring Guava 33.3.
+guava = "33.7.2-android"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -84,11 +88,12 @@ ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref 
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqliteJdbc" }
 nimbus-jose-jwt = { module = "com.nimbusds:nimbus-jose-jwt", version.ref = "nimbusJoseJwt" }
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
+netty-bom = { module = "io.netty:netty-bom", version.ref = "netty" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

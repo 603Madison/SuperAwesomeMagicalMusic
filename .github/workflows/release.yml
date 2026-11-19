@@ -25,7 +25,7 @@ jobs:
     env:
       TAG: ${{ inputs.version || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.commit || github.sha }}
 
@@ -43,12 +43,12 @@ jobs:
           fi
           echo "COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       # The key belongs in repository secrets. (Older setups put it in repository variables,
       # which aren't meant for secrets; that still works, with a warning, until it's moved.)
@@ -109,7 +109,7 @@ jobs:
     env:
       TAG: ${{ inputs.version || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.commit || github.sha }}
 
@@ -162,7 +162,7 @@ jobs:
     env:
       TAG: ${{ inputs.version || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.commit || github.sha }}
 
@@ -179,16 +179,16 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64

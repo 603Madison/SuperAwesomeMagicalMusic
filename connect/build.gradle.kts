@@ -2,7 +2,6 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -15,7 +14,7 @@ val sammVersionCode = Regex("versionCode = (\\d+)").find(appGradle)!!.groupValue
 
 android {
     namespace = "com.music.connect"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         // A separate app from Lite, so both can be installed.
@@ -83,6 +82,10 @@ ksp {
 }
 
 dependencies {
+    // Guava with its security fix (CVE-2026-102554), over the older one AndroidX libraries ask for.
+    constraints {
+        implementation(libs.guava) { because("CVE-2026-102554") }
+    }
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(project(":core"))
 

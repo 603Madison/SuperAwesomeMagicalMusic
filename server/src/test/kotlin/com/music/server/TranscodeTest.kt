@@ -75,19 +75,19 @@ class TranscodeTest {
             val token = http.newCall(
                 Request.Builder().url("http://127.0.0.1:$port/api/auth/login")
                     .post("""{"username":"admin","password":"break-glass-pw","app":true}""".toRequestBody()).header("Content-Type", "application/json").build(),
-            ).execute().use { Regex("\"token\":\"([^\"]+)\"").find(it.body!!.string())!!.groupValues[1] }
+            ).execute().use { Regex("\"token\":\"([^\"]+)\"").find(it.body.string())!!.groupValues[1] }
             val track = ApiJson.encodeToString(ApiTrack.serializer(), ApiTrack(SourceType.JELLYFIN, "tone", "Tone", "Test"))
             val resolved = http.newCall(
                 Request.Builder().url("http://127.0.0.1:$port/api/play/resolve").header("Authorization", "Bearer $token")
                     .post("""{"track":$track,"kbps":64,"codecs":["opus","aac"]}""".toRequestBody()).header("Content-Type", "application/json").build(),
-            ).execute().use { it.body!!.string() }
+            ).execute().use { it.body.string() }
             assertTrue(resolved, "\"transcoded\":true" in resolved)
             val streamUrl = Regex("\"streamUrl\":\"([^\"]+)\"").find(resolved)!!.groupValues[1].replace("\\u0026", "&")
 
             http.newCall(Request.Builder().url("http://127.0.0.1:$port$streamUrl").header("Authorization", "Bearer $token").build()).execute().use { response ->
                 assertEquals(200, response.code)
                 assertEquals("audio/ogg", response.header("Content-Type"))
-                val bytes = response.body!!.bytes()
+                val bytes = response.body.bytes()
                 assertEquals("OggS", String(bytes.copyOfRange(0, 4)))
                 // 60 seconds at 64 kbps is about 480 KB; the FLAC was several times that.
                 assertTrue("${bytes.size} bytes", bytes.size in 200_000..800_000)
@@ -96,7 +96,7 @@ class TranscodeTest {
             // Starting partway gives the rest of the song, even though Jellyfin's stream can't
             // jump ahead (ffmpeg reads through to the start point).
             http.newCall(Request.Builder().url("http://127.0.0.1:$port$streamUrl&start=40").header("Authorization", "Bearer $token").build()).execute().use { response ->
-                val bytes = response.body!!.bytes()
+                val bytes = response.body.bytes()
                 assertTrue("${bytes.size} bytes", bytes.size in 80_000..300_000)
             }
         } finally {

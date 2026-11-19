@@ -74,7 +74,7 @@ class EndToEndTest {
         assertEquals("Neon Tidepool", found.single().title)
         val resolved = api.resolve(found.single(), 0, thorough = true)
         val bytes = http.newCall(Request.Builder().url(api.absolute(resolved.streamUrl)).header("Authorization", "Bearer $token").build())
-            .execute().use { it.body!!.bytes() }
+            .execute().use { it.body.bytes() }
         assertArrayEquals(audio, bytes)
         // The interceptor adds the sign-in for the server only.
         val interceptor = ServerApi.authInterceptor({ base }, { token })
@@ -153,7 +153,7 @@ class EndToEndTest {
         val code = browser.newCall(
             Request.Builder().url("$base/api/auth/app/code").header("X-SAMM", "1")
                 .post("""{"challenge":"${SignIn.challenge(verifier)}"}""".toRequestBody(json)).build(),
-        ).execute().use { Regex("\"code\":\"([^\"]+)\"").find(it.body!!.string())!!.groupValues[1] }
+        ).execute().use { Regex("\"code\":\"([^\"]+)\"").find(it.body.string())!!.groupValues[1] }
         val signedIn = api.exchangeCode(base, code, verifier, "Test phone")
         token = signedIn.token
         assertEquals("maddie", api.me().user.username)

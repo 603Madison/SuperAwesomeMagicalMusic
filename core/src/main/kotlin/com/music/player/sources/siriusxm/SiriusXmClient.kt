@@ -815,7 +815,7 @@ class SiriusXmClient(
             .method(method, payload?.toString()?.toRequestBody(JSON))
             .build()
         val body = http.call(request) { response ->
-            val text = response.body?.string().orEmpty()
+            val text = response.body.string()
             if (!response.isSuccessful) throw HttpException(response.code, "SiriusXM $path failed: HTTP ${response.code}")
             text
         }

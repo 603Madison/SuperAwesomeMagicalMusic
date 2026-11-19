@@ -130,7 +130,7 @@ private suspend fun OkHttpClient.enqueueAndAwait(request: Request): Response = s
 
 /** Executes the request and returns the body, throwing [HttpException] for non-2xx responses. */
 suspend fun OkHttpClient.fetchString(request: Request): String = call(request) { response ->
-    val body = response.body?.string().orEmpty()
+    val body = response.body.string()
     if (!response.isSuccessful) {
         throw HttpException(response.code, "${request.method} ${request.url.encodedPath} failed: HTTP ${response.code} ${body.take(200)}")
     }

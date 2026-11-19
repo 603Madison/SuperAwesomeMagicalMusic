@@ -33,7 +33,7 @@ class ChunkedDownloader(private val client: OkHttpClient) {
             if (!useRanges) {
                 execute(url, headers, range = null).use { response ->
                     ensureSuccess(response)
-                    copy(response, out, 0L, response.body?.contentLength()?.takeIf { it > 0 }, onProgress)
+                    copy(response, out, 0L, response.body.contentLength().takeIf { it > 0 }, onProgress)
                 }
                 return@use
             }
@@ -81,7 +81,7 @@ class ChunkedDownloader(private val client: OkHttpClient) {
             }
             200 -> {
                 out.setLength(0)
-                val size = it.body?.contentLength()?.takeIf { len -> len > 0 }
+                val size = it.body.contentLength().takeIf { len -> len > 0 }
                 Chunk.Whole(copy(it, out, 0L, size, onProgress))
             }
             416 -> Chunk.End
@@ -126,7 +126,7 @@ class ChunkedDownloader(private val client: OkHttpClient) {
         total: Long?,
         onProgress: suspend (Long, Long?) -> Unit,
     ): Long {
-        val body = response.body ?: return 0L
+        val body = response.body
         out.seek(startOffset)
         val buffer = ByteArray(64 * 1024)
         var read = 0L

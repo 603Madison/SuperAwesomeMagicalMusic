@@ -163,7 +163,7 @@ class Speakers(
 
     private suspend fun fetch(url: String): String = withContext(Dispatchers.IO) {
         val quick = lan.newBuilder().connectTimeout(3, TimeUnit.SECONDS).readTimeout(4, TimeUnit.SECONDS).callTimeout(5, TimeUnit.SECONDS).build()
-        quick.newCall(Request.Builder().url(url).header("User-Agent", MusicCastSpeaker.USER_AGENT).build()).execute().use { it.body?.string().orEmpty() }
+        quick.newCall(Request.Builder().url(url).header("User-Agent", MusicCastSpeaker.USER_AGENT).build()).execute().use { it.body.string() }
     }
 
     /** Keeps the app running while a speaker plays (the phone hands it each song). */
