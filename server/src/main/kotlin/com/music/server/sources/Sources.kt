@@ -209,8 +209,10 @@ class SourceStore(
         enabled = enabled,
         hidden = hidden,
         editable = canEdit(user),
-        settings = settings,
-        secretsSet = secrets.filterValues { (it as? JsonPrimitive)?.contentOrNull?.isNotEmpty() == true }.keys.sorted(),
+        // A source someone else set up (a shared one) plays for them, but its address, account
+        // and the like are the owner's business.
+        settings = if (canEdit(user)) settings else JsonObject(emptyMap()),
+        secretsSet = if (!canEdit(user)) emptyList() else secrets.filterValues { (it as? JsonPrimitive)?.contentOrNull?.isNotEmpty() == true }.keys.sorted(),
     )
 
     private fun cleanName(name: String, kind: SourceKind) = name.trim().take(80).ifBlank { kind.label }

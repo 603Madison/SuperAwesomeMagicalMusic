@@ -89,6 +89,17 @@ class Streamer(
         if (plan.format == null) passThrough(call, stream, refresh) else transcode(call, stream, plan.format, plan.kbps, start)
     }
 
+    /** A relay for [stream] (see the class notes), for ffmpeg run elsewhere: its id and address. */
+    fun openRelay(stream: SourceStream): Pair<String, String> {
+        val id = Random.token()
+        relays[id] = stream
+        return id to "${selfUrl()}/internal/relay/$id"
+    }
+
+    fun closeRelay(id: String) {
+        relays.remove(id)
+    }
+
     /** Serves a relayed stream to ffmpeg (see the class notes). */
     suspend fun relay(call: ApplicationCall, id: String) {
         val stream = relays[id] ?: throw ApiError.notFound()
@@ -171,10 +182,10 @@ class Streamer(
                 upstream.code != 200 && upstream.code != 206 -> throw ApiError.upstream("The source answered HTTP ${upstream.code}")
             }
             val body = upstream.body ?: throw ApiError.upstream("The source sent nothing")
-            val contentType = upstream.header(HttpHeaders.ContentType)
-                ?.takeIf { it.startsWith("audio/") || it.startsWith("video/") || it == "application/ogg" }
-                ?.let { runCatching { ContentType.parse(it) }.getOrNull() }
+            val contentType = MediaTypes.relayed(upstream.header(HttpHeaders.ContentType))
+                ?.takeIf { it.contentType == "audio" || it.contentType == "video" || it.match(MediaTypes.OGG) }
                 ?: contentTypeFor(current.fileExtension)
+            MediaTypes.sandbox(call)
             // A range the player didn't ask for (see above): the whole song, as a plain answer.
             val whole = asked == null && upstream.code == 206
             call.response.header(HttpHeaders.AcceptRanges, if (current.supportsRangeRequests) "bytes" else "none")

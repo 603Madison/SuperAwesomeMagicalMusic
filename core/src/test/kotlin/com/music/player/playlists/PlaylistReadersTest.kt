@@ -188,4 +188,21 @@ class PlaylistReadersTest {
         assertNull(ImportMatcher.pick(ListedSong("Creep", "Radiohead", 238_000), listOf(other)))
         assertEquals("Radiohead Creep", ImportMatcher.query(ListedSong("Creep", "Radiohead", null, line = "Radiohead - Creep")))
     }
+
+    @Test
+    fun `a pasted wall of text is read quickly`() {
+        // Patterns that backtrack would take hours over lines like these.
+        val spaces = "a" + " ".repeat(200_000) + "b"
+        val bys = "x " + "by ".repeat(100_000) + "!"
+        val quotes = "title,artist\n\"" + " ".repeat(200_000) + "\"x,y"
+        val started = System.nanoTime()
+        PlaylistReaders.parseText(spaces)
+        PlaylistReaders.parseText(bys)
+        PlaylistReaders.parseText(quotes)
+        PlaylistReaders.parseText((1..50_000).joinToString("\n") { "Artist $it - Title $it" })
+        val seconds = (System.nanoTime() - started) / 1e9
+        assertTrue("took $seconds s", seconds < 5)
+        // Ordinary lines still read as before.
+        assertEquals(ListedSong("Creep", "Radiohead", 238_000, line = "Radiohead - Creep"), PlaylistReaders.parseText("1. Radiohead   -   Creep (3:58)").single())
+    }
 }

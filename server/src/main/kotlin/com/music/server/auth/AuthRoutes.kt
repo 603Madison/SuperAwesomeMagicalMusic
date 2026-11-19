@@ -78,15 +78,12 @@ fun Route.authRoutes(services: Services) {
 
         post("/login") {
             val request = call.receive<LoginRequest>()
-            val address = "ip:${clientAddress(call.request.local.remoteAddress, call.request.headers, services.config)}"
-            val account = "user:${request.username.trim().lowercase()}"
-            services.throttle.check(address, account)
+            if (request.username.length > 200 || request.password.length > 1_000) throw ApiError.unauthorized("Wrong username or password")
+            val attempt = LoginThrottle.Attempt(clientAddress(call.request.local.remoteAddress, call.request.headers, services.config), request.username)
+            services.throttle.attempt(attempt)
             val user = services.users.checkPassword(request.username, request.password)
-            if (user == null) {
-                services.throttle.failed(address, account)
-                throw ApiError.unauthorized("Wrong username or password")
-            }
-            services.throttle.succeeded(account)
+                ?: throw ApiError.unauthorized("Wrong username or password")
+            services.throttle.succeeded(attempt)
             if (user.disabled) throw ApiError.forbidden("This account is turned off")
             val settings = services.settings.get()
             if (!settings.localLogin && settings.oidc.enabled && !user.breakGlass) {
@@ -182,14 +179,13 @@ fun Route.authRoutes(services: Services) {
         post("/password") {
             val principal = call.principal(services) ?: throw ApiError.unauthorized()
             val change = call.receive<PasswordChange>()
-            val address = "ip:${clientAddress(call.request.local.remoteAddress, call.request.headers, services.config)}"
-            val account = "user:${principal.user.username.lowercase()}"
-            services.throttle.check(address, account)
             if (!principal.user.hasPassword) throw ApiError.badRequest("This account signs in through single sign-on")
-            if (services.users.checkPassword(principal.user.username, change.current) == null) {
-                services.throttle.failed(address, account)
+            val attempt = LoginThrottle.Attempt(clientAddress(call.request.local.remoteAddress, call.request.headers, services.config), principal.user.username)
+            services.throttle.attempt(attempt)
+            if (change.current.length > 1_000 || services.users.checkPassword(principal.user.username, change.current) == null) {
                 throw ApiError.badRequest("The current password is wrong")
             }
+            services.throttle.succeeded(attempt)
             services.users.setPassword(principal.user.id, change.new)
             // Signs out everywhere else.
             services.sessions.list(principal.user.id).filter { it.id != principal.session.id }.forEach { services.sessions.revoke(principal.user.id, it.id) }
@@ -274,9 +270,15 @@ suspend fun publicBase(services: Services, call: ApplicationCall): String {
     return "${origin.scheme}://${origin.serverHost}${if (defaultPort) "" else ":${origin.serverPort}"}"
 }
 
-/** Only places on this server: never another site (an open redirect). */
-private fun safeReturn(path: String?): String =
-    path?.takeIf { it.startsWith("/") && !it.startsWith("//") && !it.startsWith("/\\") && !it.contains('\n') && !it.contains('\r') } ?: "/"
+/**
+ * Only places on this server: never another site (an open redirect). Browsers drop tabs and line
+ * breaks from addresses and read a backslash as a slash, so "/\t/evil.example" would become
+ * "//evil.example": a path with any of those isn't taken.
+ */
+internal fun safeReturn(path: String?): String =
+    path?.takeIf { p ->
+        p.startsWith("/") && !p.startsWith("//") && p.length <= 2_000 && p.none { it.code < 0x20 || it.code == 0x7f || it == '\\' }
+    } ?: "/"
 
 /** "Firefox on Windows" and the like, to tell sign-ins apart. */
 fun deviceName(call: ApplicationCall): String {

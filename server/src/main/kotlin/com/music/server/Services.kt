@@ -44,12 +44,14 @@ class Services(
     val config: ServerConfig,
     val db: Database,
     val box: SecretBox,
-    val http: OkHttpClient = Http.createClient(),
+    http: OkHttpClient = Http.createClient(),
     passwords: Passwords = Passwords(),
     val clock: () -> Long = System::currentTimeMillis,
     /** The server's own address, for ffmpeg to read from. */
     selfUrl: () -> String = { "http://127.0.0.1:${config.port}" },
 ) : AutoCloseable {
+    /** Every request the server makes, kept off places it mustn't reach (see [NetworkGuard]). */
+    val http: OkHttpClient = http.newBuilder().addNetworkInterceptor(com.music.server.util.NetworkGuard.interceptor()).build()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     /** When the server started, for the connector's status. */
     val startedAt = clock()
@@ -61,7 +63,7 @@ class Services(
     val throttle = LoginThrottle(clock = clock)
     val sources = SourceStore(db, box, clock)
     val setup = SourceSetup(http)
-    val registry = SourceRegistry(http, sources)
+    val registry = SourceRegistry(http, sources) { owner -> config.localSources || kotlinx.coroutines.runBlocking { users.byId(owner) }?.isAdmin == true }
     val lidarr = LidarrRequests(db, sources, registry, http, scope, clock)
     val catalog = Catalog(sources, registry, lidarr, clock)
     val streamer = Streamer(http, config.ffmpeg, config.maxTranscodes, selfUrl)
@@ -76,6 +78,7 @@ class Services(
     val connect = com.music.server.connect.ConnectHub(clock)
     val songArt = SongArt(sources, registry, scope, clock)
     val missingFinder = com.music.server.playlists.MissingFinder(playlists, users, importer, scope)
+    val personalRadio = com.music.server.radio.PersonalRadio(this)
 
     override fun close() {
         scope.cancel()
@@ -122,11 +125,14 @@ class Services(
             val password = config.adminPassword ?: Random.password()
             users.create(config.adminUsername, "Administrator", Role.ADMIN, password, breakGlass = true)
             if (config.adminPassword == null) {
-                log.warn(
-                    "\n\n  Created the break-glass admin account.\n  Username: {}\n  Password: {}\n" +
+                // Straight to the console, not the log: the log is kept for the admin page and
+                // the MCP connector, and a password doesn't belong in either.
+                System.err.println(
+                    "\n\n  Created the break-glass admin account.\n  Username: ${config.adminUsername}\n  Password: $password\n" +
                         "  This is shown once. Sign in and keep it somewhere safe; reset it with `samm-server reset-admin-password`.\n",
-                    config.adminUsername, password,
                 )
+                System.err.flush()
+                log.warn("Created the break-glass admin account {}; its password is in the console output above", config.adminUsername)
             } else {
                 log.info("Created the break-glass admin account {} with the password from SAMM_ADMIN_PASSWORD", config.adminUsername)
             }

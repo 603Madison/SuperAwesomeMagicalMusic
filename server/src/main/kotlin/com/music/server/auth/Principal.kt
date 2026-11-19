@@ -94,32 +94,57 @@ fun clientAddress(direct: String, headers: Headers, config: ServerConfig): Strin
 }
 
 /**
- * Slows down password guessing: after [maxFailures] wrong passwords for an account, or
- * [maxFailuresPerAddress] from one address (a reverse proxy can make everyone one address),
- * within [windowMs], more attempts are refused until the window passes.
+ * Slows down password guessing. Each attempt counts as a wrong one until it turns out right (so
+ * a burst sent all at once can't slip past while the first are still being checked), and they're
+ * counted three ways within [windowMs]:
+ *
+ *  - [maxFailures] for one account from one address: guessing someone's password;
+ *  - [maxFailuresPerAddress] from one address, whichever accounts (a reverse proxy can make
+ *    everyone one address, so this is higher);
+ *  - [maxFailuresPerAccount] for one account from everywhere: guessing spread over many
+ *    addresses. Higher too, so someone else's wrong guesses don't easily lock a person out.
  */
 class LoginThrottle(
     private val maxFailures: Int = 10,
     private val maxFailuresPerAddress: Int = 50,
+    private val maxFailuresPerAccount: Int = 100,
     private val windowMs: Long = 15L * 60 * 1000,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val failures = ConcurrentHashMap<String, List<Long>>()
 
-    fun check(vararg keys: String) {
-        val now = clock()
-        if (keys.any { key -> recent(key, now) >= if (key.startsWith("ip:")) maxFailuresPerAddress else maxFailures }) {
-            throw ApiError.tooMany("Too many wrong passwords. Try again in a few minutes.")
-        }
+    /** The keys one sign-in attempt counts against. */
+    class Attempt(address: String, username: String) {
+        val address = "ip:$address"
+        val account = "user:${username.trim().lowercase()}"
+        val pair = "pair:${username.trim().lowercase()}@$address"
+        val keys = listOf(this.address, account, pair)
     }
 
-    fun failed(vararg keys: String) {
+    private fun limitOf(key: String) = when {
+        key.startsWith("ip:") -> maxFailuresPerAddress
+        key.startsWith("user:") -> maxFailuresPerAccount
+        else -> maxFailures
+    }
+
+    /** Takes an attempt (counted as wrong until [succeeded]), or refuses it if there have been too many. */
+    @Synchronized
+    fun attempt(attempt: Attempt) {
         val now = clock()
-        keys.forEach { key -> failures.compute(key) { _, list -> list.orEmpty().filter { now - it <= windowMs } + now } }
+        if (attempt.keys.any { key -> recent(key, now) >= limitOf(key) }) {
+            throw ApiError.tooMany("Too many wrong passwords. Try again in a few minutes.")
+        }
+        attempt.keys.forEach { key -> failures.compute(key) { _, list -> list.orEmpty().filter { now - it <= windowMs } + now } }
         if (failures.size > 10_000) failures.entries.removeIf { (_, list) -> list.all { now - it > windowMs } }
     }
 
-    fun succeeded(vararg keys: String) = keys.forEach { failures.remove(it) }
+    /** The password was right: the account starts afresh, and the address isn't held to this one. */
+    @Synchronized
+    fun succeeded(attempt: Attempt) {
+        failures.remove(attempt.account)
+        failures.remove(attempt.pair)
+        failures.computeIfPresent(attempt.address) { _, list -> list.dropLast(1).ifEmpty { null } }
+    }
 
     private fun recent(key: String, now: Long): Int = failures[key]?.count { now - it <= windowMs } ?: 0
 }

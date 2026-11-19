@@ -9,7 +9,7 @@ import { PlayerBar, useKeyboardShortcuts } from "./components/PlayerBar";
 import { Queue } from "./components/Queue";
 import { Spinner, Toasts } from "./components/ui";
 import { Artwork, Mosaic } from "./components/Artwork";
-import { Login } from "./pages/Login";
+import { Login, safeReturn } from "./pages/Login";
 import { ConnectApp } from "./pages/ConnectApp";
 import { Search } from "./pages/Search";
 import { AlbumView, ArtistView } from "./pages/Browse";
@@ -38,7 +38,7 @@ function Root() {
   const here = `${location.pathname}${location.search}`;
 
   if (loading) return <div className="splash"><Spinner size={32} /></div>;
-  if (location.pathname === "/login") return user ? <Navigate to={new URLSearchParams(location.search).get("return") ?? "/"} replace /> : <Login />;
+  if (location.pathname === "/login") return user ? <Navigate to={safeReturn(new URLSearchParams(location.search).get("return"))} replace /> : <Login />;
   if (!user) return <Navigate to={`/login?return=${encodeURIComponent(here)}`} replace />;
   if (location.pathname === "/connect-app") return <ConnectApp />;
   return <Shell />;

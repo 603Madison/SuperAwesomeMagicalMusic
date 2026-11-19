@@ -2,6 +2,7 @@ package com.music.server.sources
 
 import com.music.player.lidarr.LidarrClient
 import com.music.player.net.Http
+import com.music.server.util.NetworkGuard
 import com.music.player.net.HttpException
 import com.music.player.settings.JellyfinConfig
 import com.music.player.settings.LidarrConfig
@@ -97,7 +98,12 @@ class SourceSetup(private val http: OkHttpClient) {
      * The settings and secrets to save for [kind] from what was filled in, signing in where the
      * service needs it. [previous] is the source being changed: secrets left empty keep its values.
      */
-    suspend fun configure(kind: SourceKind, id: String, fields: JsonObject, previous: StoredSource?): Pair<JsonObject, JsonObject> {
+    /**
+     * The settings and secrets for a source of [kind] from [fields]. [untrusted]: added by someone
+     * who isn't an admin, so it may not point at the server's own machine (see [NetworkGuard]).
+     */
+    suspend fun configure(kind: SourceKind, id: String, fields: JsonObject, previous: StoredSource?, untrusted: Boolean = false): Pair<JsonObject, JsonObject> {
+        fun url(raw: String): String = checkedUrl(raw, untrusted)
         fun text(key: String): String? = (fields[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
         fun bool(key: String, default: Boolean): Boolean =
             (fields[key] as? JsonPrimitive)?.let { it.booleanOrNull ?: it.contentOrNull?.toBooleanStrictOrNull() } ?: previous?.settingBool(key, default) ?: default
@@ -174,10 +180,14 @@ class SourceSetup(private val http: OkHttpClient) {
         }
     }
 
-    private fun url(raw: String): String {
+    private fun checkedUrl(raw: String, untrusted: Boolean): String {
         val url = Http.normalizeBaseUrl(raw)
-        if (!url.startsWith("http://") && !url.startsWith("https://") || url.toHttpUrlOrNull() == null) {
+        val parsed = url.toHttpUrlOrNull()
+        if (!url.startsWith("http://") && !url.startsWith("https://") || parsed == null) {
             throw ApiError.badRequest("That isn't a web address")
+        }
+        NetworkGuard.refusalForHost(parsed.host, if (untrusted) NetworkGuard.Reach.NO_LOOPBACK else NetworkGuard.Reach.ANY)?.let {
+            throw ApiError.badRequest("That address can't be used: ${it.removePrefix("Not allowed: ")}")
         }
         return url
     }
@@ -212,7 +222,17 @@ class SourceSetup(private val http: OkHttpClient) {
  * The service clients for saved sources, made once per version of each source and kept, so
  * their sign-ins and caches are shared by everyone using the source.
  */
-class SourceRegistry(private val http: OkHttpClient, private val store: SourceStore) {
+class SourceRegistry(
+    private val http: OkHttpClient,
+    private val store: SourceStore,
+    /** Whether a person's own sources are trusted to reach anywhere (an admin's are). */
+    private val ownerTrusted: (String) -> Boolean = { true },
+) {
+    /** For sources people added for themselves: never the server's own machine (see [NetworkGuard]). */
+    private val guarded: OkHttpClient by lazy { http.newBuilder().addNetworkInterceptor(NetworkGuard.interceptor(NetworkGuard.Reach.NO_LOOPBACK)).build() }
+
+    private fun clientFor(source: StoredSource): OkHttpClient = if (source.ownerId == null || ownerTrusted(source.ownerId)) http else guarded
+
     private val instances = ConcurrentHashMap<String, Pair<Long, MusicSource>>()
     private val siriusXmClients = ConcurrentHashMap<String, Pair<Long, SiriusXmClient>>()
     private val youtube by lazy { YouTubeMusicSource(http) }
@@ -226,7 +246,7 @@ class SourceRegistry(private val http: OkHttpClient, private val store: SourceSt
         siriusXmClients[source.id]?.let { (at, client) -> if (at == source.updatedAt) return client }
         val config = SiriusXmConfig(source.setting("username").orEmpty(), source.secret("password"))
         val client = SiriusXmClient(
-            http,
+            clientFor(source),
             credentials = { config },
             loadSession = { store.loadState(source.id) },
             saveSession = { store.saveState(source.id, it) },
@@ -244,7 +264,7 @@ class SourceRegistry(private val http: OkHttpClient, private val store: SourceSt
                 accessToken = source.secret("accessToken"),
             )
             val codec = TranscodeCodec.entries.firstOrNull { it.name == source.setting("transcodeCodec") } ?: TranscodeCodec.MP3
-            JellyfinSource(http, config = { config }, deviceId = { SourceSetup.deviceId(source.id) }, transcodeCodec = { codec })
+            JellyfinSource(clientFor(source), config = { config }, deviceId = { SourceSetup.deviceId(source.id) }, transcodeCodec = { codec })
         }
         SourceKind.QOBUZ -> cached(source) {
             val config = QobuzConfig(
@@ -253,7 +273,7 @@ class SourceRegistry(private val http: OkHttpClient, private val store: SourceSt
                 username = source.setting("username").orEmpty(),
                 userAuthToken = source.secret("userAuthToken"),
             )
-            QobuzSource(http) { config }
+            QobuzSource(clientFor(source)) { config }
         }
         SourceKind.YOUTUBE_MUSIC -> youtube
         SourceKind.LIDARR, SourceKind.SIRIUSXM, SourceKind.RADIO -> null

@@ -123,8 +123,15 @@ class SecretBox(private val key: ByteArray) {
         fun fromFile(file: File): SecretBox {
             if (!file.exists()) {
                 file.parentFile?.mkdirs()
-                file.writeBytes(Random.bytes(32))
-                runCatching { Files.setPosixFilePermissions(file.toPath(), PosixFilePermissions.fromString("rw-------")) }
+                // Made readable only by the server before the key goes in, then moved into place
+                // whole: never a moment where it's readable by others, or half written.
+                val dir = (file.absoluteFile.parentFile ?: File(".")).toPath()
+                val temp = runCatching {
+                    Files.createTempFile(dir, ".secret", ".tmp", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))
+                }.getOrElse { Files.createTempFile(dir, ".secret", ".tmp") }
+                Files.write(temp, Random.bytes(32))
+                runCatching { Files.move(temp, file.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE) }
+                    .getOrElse { Files.move(temp, file.toPath()) }
             }
             return SecretBox(file.readBytes())
         }

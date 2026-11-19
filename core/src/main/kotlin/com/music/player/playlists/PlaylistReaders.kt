@@ -230,7 +230,12 @@ class PlaylistReaders(
          * "Artist - Title" (or "Title by Artist", or just a title).
          */
         fun parseText(text: String): List<ListedSong> {
-            val lines = text.removePrefix("\uFEFF").lines().map { it.trim() }.filter { it.isNotEmpty() }
+            // Bounded, so a pasted wall of text (one endless line, say) can't keep the reader busy.
+            val lines = text.removePrefix("\uFEFF").lineSequence()
+                .map { it.trim().take(MAX_LINE) }
+                .filter { it.isNotEmpty() }
+                .take(MAX_LINES)
+                .toList()
             if (lines.isEmpty()) return emptyList()
             table(lines)?.let { return it }
             return lines.mapNotNull(::parseLine).take(MAX_SONGS)
@@ -241,9 +246,18 @@ class PlaylistReaders(
         private val DASH = Regex("\\s+[-–—]\\s+")
         private val BY = Regex("^(.+?)\\s+by\\s+(.+)$", RegexOption.IGNORE_CASE)
         private val TRAILING_TIME = Regex("\\s*[(\\[]?(\\d{1,2}:\\d{2})[)\\]]?$")
+        private val SPACES = Regex("\\s+")
+
+        /** The most lines read from pasted text, and the longest line (a CSV row can be long). */
+        private const val MAX_LINES = 20_000
+        private const val MAX_LINE = 4_000
+
+        /** The longest song line: no "Artist - Title" is longer. */
+        private const val MAX_SONG_LINE = 500
 
         private fun parseLine(raw: String): ListedSong? {
-            var line = raw.replace(NUMBERING, "").trim()
+            // Runs of spaces become one first, which also keeps the patterns below quick.
+            var line = raw.replace(SPACES, " ").take(MAX_SONG_LINE).replace(NUMBERING, "").trim()
             // "3 - Artist - Title" is numbered; "311 - Amber" isn't.
             NUMBER_DASH.find(line)?.let { number -> if (DASH.containsMatchIn(line.substring(number.range.last + 1))) line = line.substring(number.range.last + 1) }
             val duration = TRAILING_TIME.find(line)?.let { match -> line = line.removeRange(match.range).trim(); clockMs(match.groupValues[1]) }
@@ -288,6 +302,8 @@ class PlaylistReaders(
             val cells = mutableListOf<String>()
             val cell = StringBuilder()
             var quoted = false
+            // Whether the cell is still all spaces (a quote there opens a quoted cell).
+            var blank = true
             var i = 0
             while (i < line.length) {
                 val c = line[i]
@@ -297,15 +313,20 @@ class PlaylistReaders(
                         i++
                     }
                     quoted && c == '"' -> quoted = false
-                    !quoted && c == '"' && cell.isBlank() -> {
+                    !quoted && c == '"' && blank -> {
                         quoted = true
+                        blank = false
                         cell.setLength(0)
                     }
                     !quoted && c == separator -> {
                         cells += cell.toString()
                         cell.setLength(0)
+                        blank = true
                     }
-                    else -> cell.append(c)
+                    else -> {
+                        cell.append(c)
+                        if (!c.isWhitespace()) blank = false
+                    }
                 }
                 i++
             }

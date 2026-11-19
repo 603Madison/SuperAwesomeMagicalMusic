@@ -128,6 +128,27 @@ object Schema {
         """
         ALTER TABLE history ADD COLUMN station TEXT;
         """,
+        // 6: personal radio: what each person's stations played (to keep songs and artists apart)
+        // and the thumbs given on them.
+        """
+        CREATE TABLE station_plays (
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            station TEXT NOT NULL,
+            song_key TEXT NOT NULL,
+            artist_key TEXT NOT NULL,
+            track TEXT NOT NULL,
+            played_at INTEGER NOT NULL
+        );
+        CREATE INDEX station_plays_user ON station_plays (user_id, played_at);
+        CREATE TABLE station_feedback (
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            song_key TEXT NOT NULL,
+            track TEXT NOT NULL,
+            thumb INTEGER NOT NULL,
+            at INTEGER NOT NULL,
+            PRIMARY KEY (user_id, song_key)
+        );
+        """,
     )
 
     val version: Int get() = migrations.size

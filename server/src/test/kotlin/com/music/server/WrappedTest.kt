@@ -50,7 +50,9 @@ class WrappedTest {
             listen(song("Fool's Gold", "Buffalo Traffic Jam", "Gold", "YOUTUBE_MUSIC", "yt2"), "2026-05-01T20:00:00Z", ms = 240_000, station = "Alt Nation Advanced Placement"),
             listen(channel, "2026-05-01T20:04:00Z", ms = 600_000, station = "Alt Nation Advanced Placement"),
         )
-        user.post("/api/history") { csrf(); json("""{"listens":[${listens.joinToString(",")}]}""") }
+        // Players send back the artwork addresses the server gave them (it fetches no others).
+        val sent = listens.map { it.replace(Regex("https://img\\.example\\.com/[^\"]+")) { m -> services.artwork.wrap(m.value)!! } }
+        user.post("/api/history") { csrf(); json("""{"listens":[${sent.joinToString(",")}]}""") }
 
         // The station is kept with the listen.
         val history = user.get("/api/history").json().jsonArray.map { it.jsonObject }

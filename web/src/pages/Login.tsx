@@ -5,9 +5,13 @@ import { api } from "../lib/api";
 import { session, useSession } from "../lib/session";
 import { Button, Field } from "../components/ui";
 
-/** Only addresses on this server. */
+/**
+ * Only addresses on this server. Browsers drop tabs and line breaks from addresses and read a
+ * backslash as a slash ("/\t/evil.example" is "//evil.example"), so a path with any of those isn't taken.
+ */
 export function safeReturn(path: string | null): string {
-  return path && path.startsWith("/") && !path.startsWith("//") && !path.startsWith("/\\") ? path : "/";
+  // eslint-disable-next-line no-control-regex
+  return path && path.startsWith("/") && !path.startsWith("//") && path.length <= 2000 && !/[\u0000-\u001f\u007f\\]/.test(path) ? path : "/";
 }
 
 export function Login() {

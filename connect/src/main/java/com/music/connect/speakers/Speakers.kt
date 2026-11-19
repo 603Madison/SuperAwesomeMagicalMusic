@@ -35,7 +35,10 @@ import java.util.concurrent.TimeUnit
  */
 class Speakers(
     private val context: Context,
+    /** For the server (signed in): the relay and the speakers' own Connect links. */
     private val http: OkHttpClient,
+    /** For the speakers themselves: devices on the Wi-Fi never get the server's sign-in. */
+    private val lan: OkHttpClient,
     private val api: ServerApi,
     private val settings: StateFlow<Settings>,
     private val network: StateFlow<NetworkState>,
@@ -95,12 +98,12 @@ class Speakers(
                     val description = fetch(location)
                     if (!MusicCastSpeaker.isMusicCast(description)) return@runCatching
                     val host = location.toHttpUrlOrNull()?.host ?: return@runCatching
-                    val info = MusicCastSpeaker.identify(host, http, location)
+                    val info = MusicCastSpeaker.identify(host, lan, location)
                     seen[info.deviceId] = info
                 }.onFailure { Log.d(TAG, "Not a speaker at $location: ${it.message}") }
             }
             for (address in settings.value.speakerAddresses) {
-                runCatching { MusicCastSpeaker.identify(address.trim(), http) }
+                runCatching { MusicCastSpeaker.identify(address.trim(), lan) }
                     .onSuccess { seen.putIfAbsent(it.deviceId, it) }
                     .onFailure { Log.i(TAG, "No speaker at $address: ${it.message}") }
             }
@@ -142,7 +145,7 @@ class Speakers(
             fixedName = info.name,
         )
         return SpeakerSession(
-            MusicCastSpeaker(info, http), hub, api, relay,
+            MusicCastSpeaker(info, lan), hub, api, relay,
             server = { settings.value.server },
             kbps = { settings.value.kbpsFor(NetworkClass.WIFI) },
             scope = scope,
@@ -159,7 +162,7 @@ class Speakers(
     }
 
     private suspend fun fetch(url: String): String = withContext(Dispatchers.IO) {
-        val quick = http.newBuilder().connectTimeout(3, TimeUnit.SECONDS).readTimeout(4, TimeUnit.SECONDS).callTimeout(5, TimeUnit.SECONDS).build()
+        val quick = lan.newBuilder().connectTimeout(3, TimeUnit.SECONDS).readTimeout(4, TimeUnit.SECONDS).callTimeout(5, TimeUnit.SECONDS).build()
         quick.newCall(Request.Builder().url(url).header("User-Agent", MusicCastSpeaker.USER_AGENT).build()).execute().use { it.body?.string().orEmpty() }
     }
 

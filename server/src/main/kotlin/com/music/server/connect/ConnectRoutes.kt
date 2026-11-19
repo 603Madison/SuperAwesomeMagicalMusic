@@ -11,6 +11,9 @@ import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.net.URI
 
 /**
@@ -37,17 +40,30 @@ fun Route.connectRoutes(services: Services) {
         val device = services.connect.join(principal.user.id, id, params["name"].orEmpty(), params["kind"].orEmpty()) { text ->
             outgoing.send(Frame.Text(text))
         }
+        // Signed out elsewhere (or the account turned off): the connection doesn't outlive it.
+        val watch = launch {
+            while (isActive) {
+                delay(SESSION_CHECK_MS)
+                if (!services.sessions.isLive(principal.session.id)) {
+                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Signed out"))
+                    break
+                }
+            }
+        }
         try {
             for (frame in incoming) {
                 if (frame is Frame.Text) services.connect.receive(device, frame.readText())
             }
         } finally {
+            watch.cancel()
             services.connect.leave(device)
         }
     }
 }
 
 private val DEVICE_ID = Regex("[A-Za-z0-9_-]{8,64}")
+
+private const val SESSION_CHECK_MS = 60_000L
 
 /**
  * Whether a browser's [origin] is this server: the name it was reached by, or its public address.

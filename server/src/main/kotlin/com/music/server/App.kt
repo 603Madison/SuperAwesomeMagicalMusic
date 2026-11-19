@@ -2,6 +2,7 @@ package com.music.server
 
 import com.music.server.connect.connectRoutes
 import com.music.server.mcp.mcpRoutes
+import com.music.server.radio.radioRoutes
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
 import io.ktor.server.websocket.timeout
@@ -22,6 +23,7 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.http.content.staticResources
 import io.ktor.server.plugins.BadRequestException
+import io.ktor.server.plugins.origin
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.defaultheaders.DefaultHeaders
@@ -72,6 +74,10 @@ fun Application.module(services: Services) {
                 "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
         )
     }
+    // Reached over HTTPS (directly, or through a trusted proxy that says so): browsers keep to it.
+    intercept(io.ktor.server.application.ApplicationCallPipeline.Plugins) {
+        if (context.request.origin.scheme == "https") context.response.headers.append("Strict-Transport-Security", "max-age=31536000")
+    }
     install(CallLogging) {
         level = Level.INFO
         filter { call -> call.request.path().startsWith("/api/") && call.request.path() != "/api/health" }
@@ -91,6 +97,9 @@ fun Application.module(services: Services) {
         }
     }
 
+    // After StatusPages, so a request that's too large gets its answer.
+    install(com.music.server.util.BodyLimit.plugin)
+
     routing {
         get("/api/health") { call.respond(Health(true, Services.version)) }
         authRoutes(services)
@@ -98,6 +107,7 @@ fun Application.module(services: Services) {
         sourceRoutes(services)
         musicRoutes(services)
         liveRoutes(services)
+        radioRoutes(services)
         playlistRoutes(services)
         wrappedRoutes(services)
         connectRoutes(services)

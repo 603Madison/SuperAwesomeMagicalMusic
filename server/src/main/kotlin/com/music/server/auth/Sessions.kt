@@ -98,6 +98,14 @@ class SessionStore(private val db: Database, private val clock: () -> Long = Sys
     suspend fun revoke(userId: String, sessionId: String): Boolean =
         db.tx { update("DELETE FROM sessions WHERE id = ? AND user_id = ?", sessionId, userId) } > 0
 
+    /** Whether sign-in [sessionId] still holds (not signed out, expired, or its account turned off). */
+    suspend fun isLive(sessionId: String): Boolean = db.tx {
+        one(
+            "SELECT 1 AS ok FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.expires_at >= ? AND u.disabled = 0",
+            sessionId, clock(),
+        ) { true } ?: false
+    }
+
     suspend fun revokeToken(token: String) = db.tx { update("DELETE FROM sessions WHERE id = ?", idOf(token)) }
 
     suspend fun revokeAll(userId: String) = db.tx { update("DELETE FROM sessions WHERE user_id = ?", userId) }

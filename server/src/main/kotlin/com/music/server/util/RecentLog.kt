@@ -15,7 +15,9 @@ import java.time.format.DateTimeFormatter
 class RecentLog : AppenderBase<ILoggingEvent>() {
     override fun append(event: ILoggingEvent) {
         val cause = event.throwableProxy?.let { " (${it.className}: ${it.message})" }.orEmpty()
-        val line = "${TIME.format(Instant.ofEpochMilli(event.timeStamp))} ${event.level} ${event.loggerName.substringAfterLast('.')}: ${event.formattedMessage}$cause"
+        // One event, one line: text people sent (a song title, a device name) can't start a
+        // line of its own that looks like the server's.
+        val line = "${TIME.format(Instant.ofEpochMilli(event.timeStamp))} ${event.level} ${event.loggerName.substringAfterLast('.')}: ${oneLine(event.formattedMessage)}${oneLine(cause)}"
             .take(2_000)
         synchronized(everything) {
             everything.addLast(line)
@@ -33,6 +35,12 @@ class RecentLog : AppenderBase<ILoggingEvent>() {
         private val everything = ArrayDeque<String>()
         private val warnings = ArrayDeque<String>()
         private val TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'").withZone(ZoneOffset.UTC)
+
+        /** [text] with line breaks and other control characters shown as " | " and spaces. */
+        fun oneLine(text: String?): String =
+            text.orEmpty().replace(BREAKS, " | ").map { if (it.code < 0x20 || it.code == 0x7f) ' ' else it }.joinToString("")
+
+        private val BREAKS = Regex("\\r\\n|[\\r\\n\\u2028\\u2029]")
 
         /** The latest lines, oldest first: everything, or only warnings and errors. */
         fun latest(warningsOnly: Boolean = false): List<String> = synchronized(everything) { (if (warningsOnly) warnings else everything).toList() }

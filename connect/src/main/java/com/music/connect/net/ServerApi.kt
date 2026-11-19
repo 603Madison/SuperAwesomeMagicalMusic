@@ -471,11 +471,15 @@ class ServerApi(
             return withScheme.toHttpUrlOrNull()?.let { withScheme }
         }
 
-        /** Adds the app's sign-in to requests for the server (and nothing else). */
+        /**
+         * Adds the app's sign-in to requests for the server (and nothing else): the same scheme,
+         * name and port, so it's never sent unencrypted to a server reached over HTTPS.
+         */
         fun authInterceptor(base: () -> String, token: () -> String?) = Interceptor { chain ->
             val request = chain.request()
             val server = base().toHttpUrlOrNull()
-            val sameServer = server != null && request.url.host == server.host && request.url.port == server.port
+            val sameServer = server != null && request.url.scheme == server.scheme && request.url.host.equals(server.host, ignoreCase = true) &&
+                request.url.port == server.port
             val tokenValue = token()
             if (sameServer && tokenValue != null && request.header("Authorization") == null) {
                 chain.proceed(request.newBuilder().header("Authorization", "Bearer $tokenValue").build())

@@ -45,9 +45,16 @@ class PendingLogins(private val clock: () -> Long = System::currentTimeMillis) {
         val now = clock()
         states.entries.removeIf { now - it.value.createdAt > STATE_TTL_MS }
         codes.entries.removeIf { now - it.value.createdAt > CODE_TTL_MS }
-        // Someone opening thousands of sign-ins shouldn't fill the memory.
-        if (states.size > MAX_PENDING) states.clear()
-        if (codes.size > MAX_PENDING) codes.clear()
+        // Someone opening thousands of sign-ins shouldn't fill the memory, nor (by emptying it)
+        // cut off people signing in just then: the oldest go first.
+        trim(states) { it.createdAt }
+        trim(codes) { it.createdAt }
+    }
+
+    private fun <T> trim(map: ConcurrentHashMap<String, T>, createdAt: (T) -> Long) {
+        val over = map.size - MAX_PENDING
+        if (over <= 0) return
+        map.entries.sortedBy { createdAt(it.value) }.take(over + MAX_PENDING / 10).forEach { map.remove(it.key, it.value) }
     }
 
     private companion object {

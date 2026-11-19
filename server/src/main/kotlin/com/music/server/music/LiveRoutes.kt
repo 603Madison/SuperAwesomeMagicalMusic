@@ -10,6 +10,9 @@ import com.music.server.ApiError
 import com.music.server.Services
 import com.music.server.auth.User
 import com.music.server.auth.requireUser
+import com.music.server.radio.Stations
+import com.music.server.radio.radioTitle
+import com.music.server.radio.respondStream
 import com.music.server.sources.SourceKind
 import com.music.server.sources.SourceSetup
 import com.music.server.sources.StoredSource
@@ -142,7 +145,9 @@ fun Route.liveRoutes(services: Services) {
             val change = call.receive<FavoriteChange>()
             val track = art.incoming(change.track)
             if (!track.toTrack().isLive || track.toTrack().isSiriusXmStationTrack) throw ApiError.badRequest("Only channels and stations can be favourites")
-            if (track.via.isNullOrBlank() || services.sources.accessible(user, track.via) == null) throw ApiError.notFound("That source isn't available")
+            if (!Stations.isPersonal(track) && (track.via.isNullOrBlank() || services.sources.accessible(user, track.via) == null)) {
+                throw ApiError.notFound("That source isn't available")
+            }
             services.liveFavorites.set(user.id, track, change.favorite)
             call.respond(services.liveFavorites.list(user.id).map(art::outgoing))
         }
@@ -152,7 +157,9 @@ fun Route.liveRoutes(services: Services) {
             val user = call.requireUser(services)
             val track = art.incoming(call.receive<PlayedLive>().track)
             if (!track.toTrack().isLive || track.toTrack().isSiriusXmStationTrack) throw ApiError.badRequest("Only channels and stations")
-            if (track.via.isNullOrBlank() || services.sources.accessible(user, track.via) == null) throw ApiError.notFound("That source isn't available")
+            if (!Stations.isPersonal(track) && (track.via.isNullOrBlank() || services.sources.accessible(user, track.via) == null)) {
+                throw ApiError.notFound("That source isn't available")
+            }
             services.liveFavorites.played(user.id, track)
             call.respond(mapOf("ok" to true))
         }
@@ -205,7 +212,9 @@ fun Route.liveRoutes(services: Services) {
         // What SiriusXM answered lately (no passwords or session tokens), for troubleshooting.
         get("/sxm/{src}/diagnostics") {
             val user = call.requireUser(services)
-            val (_, client) = call.siriusXm(user)
+            val (source, client) = call.siriusXm(user)
+            // A shared account's answers are for whoever set it up.
+            if (!source.canEdit(user)) throw ApiError.forbidden("Only whoever set up this SiriusXM account can see that")
             call.response.header(HttpHeaders.CacheControl, "no-store")
             call.respondText(client.diagnostics().ifBlank { "Nothing yet: play a SiriusXM channel first." }, ContentType.Text.Plain)
         }
@@ -217,7 +226,7 @@ fun Route.liveRoutes(services: Services) {
             val key = try {
                 SourceSetup.service("SiriusXM") { client.key(guid) }
             } catch (e: Exception) {
-                client.note(null, "the server couldn't get key $guid: ${e.message ?: e}")
+                client.note(null, "the server couldn't get key ${guid.take(64).filter { it.isLetterOrDigit() || it == '-' }}: ${e.message ?: e}")
                 throw e
             }
             call.response.header(HttpHeaders.CacheControl, "private, max-age=86400")
@@ -371,6 +380,8 @@ fun Route.liveRoutes(services: Services) {
 
         get("/radio/{src}/station/{id}/stream") {
             val user = call.requireUser(services)
+            // A personal station: the person's own broadcast.
+            if (call.parameters["src"] == Stations.VIA) return@get services.personalRadio.respondStream(call, user, call.parameters["id"].orEmpty())
             val source = call.radioSource(user)
             val id = call.parameters["id"].orEmpty().removePrefix("hls:")
             val station = SourceSetup.service("Radio Browser") { services.registry.radio.station(id) }
@@ -389,6 +400,7 @@ fun Route.liveRoutes(services: Services) {
 
         get("/radio/{src}/station/{id}/now") {
             val user = call.requireUser(services)
+            if (call.parameters["src"] == Stations.VIA) return@get call.respond(RadioNow(services.personalRadio.radioTitle(user, call.parameters["id"].orEmpty())))
             val source = call.radioSource(user)
             val id = call.parameters["id"].orEmpty().removePrefix("hls:")
             call.respond(RadioNow(proxy.radioTitle("${source.id}|$id")))

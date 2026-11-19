@@ -18,6 +18,11 @@ data class ServerConfig(
     val adminPassword: String? = null,
     val ffmpeg: String = "ffmpeg",
     val maxTranscodes: Int = 4,
+    /**
+     * Whether sources people add for themselves may be on the server's own machine (localhost).
+     * Off: only admins' may, so nobody else can point the server at what listens only there.
+     */
+    val localSources: Boolean = false,
     /** Settings applied at every start, overriding the admin page (for configuration as code). */
     val overrides: Map<String, String> = emptyMap(),
 ) {
@@ -36,6 +41,7 @@ data class ServerConfig(
             adminPassword = env["SAMM_ADMIN_PASSWORD"]?.ifBlank { null },
             ffmpeg = env["SAMM_FFMPEG"]?.ifBlank { null } ?: "ffmpeg",
             maxTranscodes = env["SAMM_MAX_TRANSCODES"]?.toIntOrNull()?.coerceIn(1, 64) ?: 4,
+            localSources = env["SAMM_LOCAL_SOURCES"]?.lowercase() in setOf("1", "true", "yes"),
             overrides = env.filterKeys { it in OVERRIDES }.filterValues { it.isNotBlank() },
         )
 

@@ -136,6 +136,7 @@ Environment variables (all optional):
 | `SAMM_ADMIN_USERNAME` | `admin` | The break-glass admin, made at first start. |
 | `SAMM_ADMIN_PASSWORD` | generated | Its first password. |
 | `SAMM_MAX_TRANSCODES` | `4` | Songs converted at once. |
+| `SAMM_LOCAL_SOURCES` | `false` | Lets everyone's own sources (not just admins') be on the server's own machine (`localhost`). Off, nobody else can point the server at what listens only there. |
 | `SAMM_OIDC_ISSUER`, `SAMM_OIDC_CLIENT_ID`, `SAMM_OIDC_CLIENT_SECRET`, `SAMM_OIDC_USER_GROUP`, `SAMM_OIDC_ADMIN_GROUP`, `SAMM_OIDC_BUTTON_LABEL`, `SAMM_OIDC_SCOPES`, `SAMM_LOCAL_LOGIN` | | Single sign-on and password sign-in, if you'd rather configure them here. They're applied at every start, over the admin page. |
 
 ### Behind a reverse proxy

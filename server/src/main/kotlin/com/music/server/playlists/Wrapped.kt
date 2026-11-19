@@ -100,12 +100,12 @@ object WrappedReport {
     private val ARTIST_SPLIT = Regex("""\s*(,|;|\s+feat\.?\s+|\s+ft\.?\s+|\s+featuring\s+)\s*""", RegexOption.IGNORE_CASE)
 
     /** The same song from any service: its title without "(feat. …)" or " - Remastered", and its main artist. */
-    private fun songKey(track: ApiTrack) = "${normal(track.title.replace(FEATURING, "").replace(VERSION, ""))}\u0000${normal(mainArtist(track.artist))}"
+    fun songKey(track: ApiTrack) = "${normal(track.title.replace(FEATURING, "").replace(VERSION, ""))}\u0000${normal(mainArtist(track.artist))}"
 
     /** The first of several artists ("A, B" or "A feat. B"); "A & B" stays one. */
     fun mainArtist(artist: String): String = artist.split(ARTIST_SPLIT).firstOrNull { it.isNotBlank() }?.trim() ?: artist.trim()
 
-    private fun normal(text: String) = text.lowercase().replace(Regex("\\s+"), " ").trim()
+    fun normal(text: String) = text.lowercase().replace(Regex("\\s+"), " ").trim()
 
     fun build(year: Int, zone: ZoneId, listens: List<Listen>, years: List<Int>, heardBefore: Set<String>, now: Long): Wrapped {
         val songs = listens.filter { !it.track.isLiveItem() && it.track.title.isNotBlank() }

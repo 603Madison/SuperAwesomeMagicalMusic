@@ -42,15 +42,21 @@ class Artwork(private val box: SecretBox) {
     /** The server's address for [url] (an upstream image), or [url] itself if it's already one. */
     fun wrap(url: String?): String? {
         if (url.isNullOrBlank()) return null
-        if (url.startsWith(PATH)) return url
+        if (url.startsWith(PATH) || url.startsWith(LOCAL_ART)) return url
         if (!url.startsWith("https://") && !url.startsWith("http://")) return null
         return "$PATH?u=${url.encodeURLParameter()}&s=${box.sign(url)}"
     }
 
-    /** The upstream address inside one of [wrap]'s, if it's genuine. */
+    /**
+     * The upstream address inside one of [wrap]'s, if it's genuine. Anything else a client sends
+     * as artwork is dropped: the server only fetches images it handed out itself, so it can't be
+     * made to fetch (and sign a link to) an address someone made up.
+     */
     fun unwrap(url: String?): String? {
         if (url.isNullOrBlank()) return null
-        if (!url.startsWith(PATH)) return url.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+        // The server's own images (personal stations' logos) stay as they are.
+        if (url.startsWith(LOCAL_ART)) return url
+        if (!url.startsWith(PATH)) return null
         val query = url.substringAfter('?', "")
         val params = query.split('&').mapNotNull { part ->
             val key = part.substringBefore('=', "")
@@ -70,6 +76,9 @@ class Artwork(private val box: SecretBox) {
 
     companion object {
         const val PATH = "/api/art"
+
+        /** The server's own images, served as they are. */
+        const val LOCAL_ART = "/api/radio/art?"
 
         fun sized(upstream: String, px: Int?): String = if (px == null) upstream else ArtworkUrls.sized(upstream, px)
     }

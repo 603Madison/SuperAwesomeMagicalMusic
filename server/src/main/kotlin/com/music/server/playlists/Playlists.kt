@@ -55,7 +55,7 @@ class PlaylistStore(private val db: Database, private val clock: () -> Long = Sy
                 "INSERT INTO playlists (id, user_id, name, description, created_at, updated_at, revision) VALUES (?, ?, ?, ?, ?, ?, 1)",
                 playlistId, userId, cleanName(name), description.take(2000), now, now,
             )
-            insertEntries(playlistId, tracks, 0, now)
+            insertEntries(playlistId, tracks.take(MAX_ENTRIES), 0, now)
         }
         return get(userId, playlistId)
     }

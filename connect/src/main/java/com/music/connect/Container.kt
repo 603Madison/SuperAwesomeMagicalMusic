@@ -53,7 +53,10 @@ class Container(val context: Context) {
 
     val network = NetworkMonitor(context)
 
-    val http = Http.createClient().newBuilder()
+    /** Without the sign-in: for anything that isn't the server (speakers on the Wi-Fi, YouTube). */
+    private val plainHttp = Http.createClient()
+
+    val http = plainHttp.newBuilder()
         .addInterceptor(ServerApi.authInterceptor({ settings.value.server }, { settings.value.token }))
         .build()
 
@@ -61,7 +64,7 @@ class Container(val context: Context) {
 
     /** YouTube Music, asked from the phone itself: the backup when the server can't play a song. */
     @Volatile
-    var youtube: MusicSource = YouTubeMusicSource(http)
+    var youtube: MusicSource = YouTubeMusicSource(plainHttp)
     val db = ConnectDb.build(context)
     val library = Library(db, api) { SyncWorker.enqueue(context) }
     val downloads = Downloads(context, db, api, http, prefs) { DownloadWorker.enqueue(context, settings.value.downloadOnWifiOnly) }
@@ -73,7 +76,7 @@ class Container(val context: Context) {
     val devices = ConnectClient(context, http, { settings.value.server }, { settings.value.token }, scope)
 
     /** MusicCast speakers on the Wi-Fi, as the person's devices (see Speakers). */
-    val speakers = Speakers(context, http, api, settings, network.state, scope) { tell(it) }
+    val speakers = Speakers(context, http, plainHttp, api, settings, network.state, scope) { tell(it) }
 
     /** The person's favourite channels and stations, shared with the web player (see [refreshFavorites]). */
     val favorites = MutableStateFlow<List<ApiTrack>>(emptyList())

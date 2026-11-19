@@ -417,7 +417,7 @@ class SiriusXmClient(
      */
     suspend fun artistStation(artist: SxmArtist): SxmStation {
         val stationId = artist.stationId ?: runCatching {
-            val page = call("GET", "page/v1/page/${artist.entityType}/${artist.id}")
+            val page = call("GET", "page/v1/page/${segment(artist.entityType)}/${segment(artist.id)}")
             recordDiagnostics("artist page ${artist.id}", page.toString())
             SiriusXmParser.findEntityId(page, ARTIST_STATION)
         }.onFailure { recordDiagnostics("artist page ${artist.id} failed", it.toString()) }.getOrNull()
@@ -575,7 +575,11 @@ class SiriusXmClient(
      * A line in the timeline from outside: the server relaying the stream (a segment or key it
      * couldn't fetch) or the player playing it (an error it hit), under [channelId] if known.
      */
-    fun note(channelId: String?, text: String) = xtraNote(channelId?.takeIf { it.isNotBlank() } ?: "stream", text.take(500))
+    fun note(channelId: String?, text: String) = xtraNote(
+        channelId?.take(64)?.filter { it.isLetterOrDigit() || it in "-_." }?.takeIf { it.isNotBlank() } ?: "stream",
+        // From players too: one line, no control characters.
+        text.take(500).replace(Regex("[\\r\\n\\u2028\\u2029]+"), " | ").filter { it.code >= 0x20 && it.code != 0x7f },
+    )
 
     private fun xtraNote(channelId: String, text: String) {
         com.music.player.CoreLog.i("SiriusXM", "$channelId: ${text.replace("\n", " | ")}")
@@ -602,7 +606,7 @@ class SiriusXmClient(
     /** The 16-byte AES-128 key for an encrypted segment. */
     suspend fun key(guid: String): ByteArray {
         keys[guid]?.let { return it }
-        val data = call("GET", "playback/key/v1/$guid")
+        val data = call("GET", "playback/key/v1/${segment(guid)}")
         val key = Base64.getDecoder().decode((data["key"] as? JsonPrimitive)?.contentOrNull.orEmpty())
         if (key.size != 16) throw IllegalStateException("Unexpected SiriusXM key length ${key.size}")
         keys[guid] = key
@@ -663,6 +667,15 @@ class SiriusXmClient(
      * holds [mutex]: requests run side by side, so a slow one (telemetry on satellite, say) never
      * holds up a stream key the player is waiting for.
      */
+    /**
+     * An id that goes in an API path, checked: ids come from players too, and one like "../x"
+     * would otherwise reach some other part of SiriusXM's API with this account.
+     */
+    private fun segment(id: String): String {
+        if (!SAFE_ID.matches(id)) throw IllegalArgumentException("That isn't a SiriusXM id")
+        return id
+    }
+
     private suspend fun call(
         method: String,
         path: String,
@@ -813,6 +826,9 @@ class SiriusXmClient(
     private fun JsonObject.string(name: String): String? = (get(name) as? JsonPrimitive)?.contentOrNull
 
     companion object {
+        /** What SiriusXM's ids look like (uuids, "talent", "artist-station"…): nothing that changes a path. */
+        private val SAFE_ID = Regex("[A-Za-z0-9_-]{1,128}")
+
         const val LINEAR = "channel-linear"
         /** Pandora artist stations, a source type SiriusXM's apps tune like channels. */
         const val ARTIST_STATION = "artist-station"

@@ -76,8 +76,10 @@ class LibraryTest {
     @Test
     fun `a personal Jellyfin is signed in to, searched and streamed with seeking, its token never sent back`() {
         val server = jellyfin()
+        // The mock Jellyfin is on this machine, which people's own sources can't be unless allowed.
+        val config = ServerConfig(dataDir = java.nio.file.Files.createTempDirectory("samm-test").toFile(), adminPassword = "break-glass-pw", localSources = true)
         try {
-            serverTest { services ->
+            serverTest(testServices(config)) { services ->
                 services.users.create("maddie", password = "correct horse")
                 val user = browser()
                 user.post("/api/auth/login") { json("""{"username":"maddie","password":"correct horse"}""") }

@@ -6,6 +6,8 @@ import com.music.server.db.Row
 import com.music.server.util.Passwords
 import com.music.server.util.Random
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
@@ -36,6 +38,8 @@ class UserStore(
     private val passwords: Passwords,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
+    private val hashing = Semaphore(4)
+
     suspend fun count(): Long = db.tx { long("SELECT COUNT(*) FROM users") }
 
     suspend fun list(): List<User> = db.tx { query("SELECT * FROM users ORDER BY username COLLATE NOCASE", map = ::toUser) }
@@ -53,7 +57,8 @@ class UserStore(
         val found = db.tx {
             one("SELECT * FROM users WHERE username = ?", username.trim()) { toUser(it) to it.stringOrNull("password_hash") }
         }
-        val ok = withContext(Dispatchers.Default) { passwords.verify(password, found?.second) }
+        // A few at a time: each takes real work, and a flood of them shouldn't take every core.
+        val ok = hashing.withPermit { withContext(Dispatchers.Default) { passwords.verify(password, found?.second) } }
         return found?.first?.takeIf { ok }
     }
 

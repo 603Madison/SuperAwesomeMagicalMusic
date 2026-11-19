@@ -136,8 +136,9 @@ pub struct Player {
     live_mark: Cell<f64>,
     failures: Cell<u32>,
     buffering: Cell<bool>,
-    /// The sign-in as a cookie, for GStreamer's HTTP sources (on its own threads).
-    cookie: Arc<Mutex<String>>,
+    /// The server (its scheme, name and port) and the sign-in as a cookie for it, for GStreamer's
+    /// HTTP sources (on its own threads). Only requests for that server get it.
+    cookie: Arc<Mutex<(String, String)>>,
     _bus: RefCell<Option<gst::bus::BusWatchGuard>>,
     /// The sleep timer: its clock, or pausing at the end of the song.
     sleep_clock: RefCell<Option<glib::SourceId>>,
@@ -170,7 +171,7 @@ impl Player {
         {
             playbin.set_property("audio-sink", &sink);
         }
-        let cookie = Arc::new(Mutex::new(String::new()));
+        let cookie = Arc::new(Mutex::new((String::new(), String::new())));
         let player = Rc::new(Player {
             playbin,
             state: RefCell::new(State {
@@ -198,8 +199,13 @@ impl Player {
         let cookie_for_source = cookie;
         player.playbin.connect("source-setup", false, move |values| {
             if let Ok(source) = values[1].get::<gst::Element>() {
-                let cookie = cookie_for_source.lock().map(|c| c.clone()).unwrap_or_default();
-                if !cookie.is_empty() && source.has_property("cookies") {
+                let (server, cookie) = cookie_for_source.lock().map(|c| c.clone()).unwrap_or_default();
+                let location = source
+                    .has_property("location")
+                    .then(|| source.property_value("location").get::<Option<String>>().ok().flatten())
+                    .flatten();
+                let for_server = location.as_deref().and_then(origin).is_some_and(|o| o == server);
+                if for_server && !cookie.is_empty() && source.has_property("cookies") {
                     source.set_property("cookies", [cookie.as_str()].to_value());
                 }
                 if source.has_property("user-agent") {
@@ -241,8 +247,7 @@ impl Player {
         if let Ok(mut cookie) = self.cookie.lock() {
             *cookie = api
                 .as_ref()
-                .and_then(|a| a.token())
-                .map(|t| format!("samm_session={t}"))
+                .and_then(|a| Some((origin(a.base())?, format!("samm_session={}", a.token()?))))
                 .unwrap_or_default();
         }
         if api.is_none() {
@@ -829,6 +834,18 @@ fn station_track_path(track: &Track) -> Option<String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_sign_in_goes_only_to_the_server() {
+        let server = origin("https://Music.example.com").unwrap();
+        assert_eq!(server, "https://music.example.com:443");
+        assert_eq!(origin("https://music.example.com:443/api/stream?x=1").as_deref(), Some(server.as_str()));
+        // Plain HTTP, another port or another name: not the server.
+        assert_ne!(origin("http://music.example.com/api/stream").unwrap(), server);
+        assert_ne!(origin("https://music.example.com:8443/").unwrap(), server);
+        assert_ne!(origin("https://music.example.com.evil.example/").unwrap(), server);
+        assert_eq!(origin("not a url"), None);
+    }
+
     fn song(id: &str) -> Track {
         Track {
             source: "JELLYFIN".into(),
@@ -856,4 +873,10 @@ mod tests {
         assert_eq!(Repeat::All.next(), Repeat::One);
         assert_eq!(Repeat::One.next(), Repeat::Off);
     }
+}
+
+/// A web address's scheme, name and port ("https://music.example.com:443"): which server it's on.
+fn origin(address: &str) -> Option<String> {
+    let url = url::Url::parse(address).ok()?;
+    Some(format!("{}://{}:{}", url.scheme(), url.host_str()?.to_ascii_lowercase(), url.port_or_known_default()?))
 }

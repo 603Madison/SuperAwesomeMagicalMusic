@@ -4,11 +4,13 @@ import android.os.Bundle
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService.LibraryParams
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommands
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -37,6 +39,24 @@ class LibraryCallback(
 
     private val server: String get() = c.settings.value.server
     private fun art(url: String?) = MediaItems.artworkUri(server, url, 256)
+
+    override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
+        if (mayBrowse(controller)) return MediaSession.ConnectionResult.AcceptedResultBuilder(session).build()
+        // Any app can connect to a media service. Others get play/pause/skip, as for any media
+        // app, but can't read the library, search with your account or queue things.
+        return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            .setAvailableSessionCommands(SessionCommands.EMPTY)
+            .setAvailablePlayerCommands(
+                MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
+                    .removeAll(Player.COMMAND_SET_MEDIA_ITEM, Player.COMMAND_CHANGE_MEDIA_ITEMS)
+                    .build(),
+            )
+            .build()
+    }
+
+    /** This app, the system, and the car, Assistant and watch apps (only names Android vouches for). */
+    internal fun mayBrowse(controller: MediaSession.ControllerInfo): Boolean =
+        controller.isTrusted || (controller.isPackageNameVerified && controller.packageName in MEDIA_CLIENTS)
 
     // Android Auto's older connection waits for this on the main thread: answer at once.
     override fun onGetLibraryRoot(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, params: LibraryParams?): ListenableFuture<LibraryResult<MediaItem>> =
@@ -227,6 +247,15 @@ class LibraryCallback(
         .build()
 
     companion object {
+        /** Android Auto, Android Automotive's media app, the Assistant and Wear OS. */
+        val MEDIA_CLIENTS = setOf(
+            "com.google.android.projection.gearhead",
+            "com.android.car.media",
+            "com.google.android.carassistant",
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.wearable.app",
+        )
+
         const val ROOT = "root"
         const val PLAYLISTS = "playlists"
         const val PLAYLIST = "playlist:"

@@ -60,7 +60,7 @@ fun Route.sourceRoutes(services: Services) {
                     throw ApiError.forbidden("This server doesn't let people add their own sources")
             }
             val id = Random.id()
-            val (settings, secrets) = services.setup.configure(request.kind, id, request.fields, previous = null)
+            val (settings, secrets) = services.setup.configure(request.kind, id, request.fields, previous = null, untrusted = !user.isAdmin && !services.config.localSources)
             val created = services.sources.create(
                 id = id,
                 ownerId = if (global) null else user.id,
@@ -77,7 +77,7 @@ fun Route.sourceRoutes(services: Services) {
                 val user = call.requireUser(services)
                 val source = editable(services, user, call.parameters["id"])
                 val change = call.receive<SourceChange>()
-                val configured = change.fields?.let { services.setup.configure(source.kind, source.id, it, previous = source) }
+                val configured = change.fields?.let { services.setup.configure(source.kind, source.id, it, previous = source, untrusted = !user.isAdmin && !services.config.localSources) }
                 services.sources.update(
                     source.id,
                     name = change.name,

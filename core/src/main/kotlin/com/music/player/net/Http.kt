@@ -87,7 +87,8 @@ object Http {
         override fun intercept(chain: Interceptor.Chain): Response {
             val request = chain.request()
             val original = chain.call().request().url
-            if (request.url.host == original.host) return chain.proceed(request)
+            // The same server as asked: the same scheme, name and port (so not to plain HTTP).
+            if (request.url.scheme == original.scheme && request.url.host == original.host && request.url.port == original.port) return chain.proceed(request)
             val stripped = request.newBuilder().apply { HEADERS.forEach(::removeHeader) }.build()
             return chain.proceed(stripped)
         }

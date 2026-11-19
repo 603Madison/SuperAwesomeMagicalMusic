@@ -339,6 +339,8 @@ class McpServer(private val services: Services) {
             caller.everyone -> services.sources.all().filter { it.enabled }
             else -> services.sources.activeFor(caller.user)
         }.filter { it.kind == SourceKind.SIRIUSXM }
+            // What SiriusXM answered a shared account is its owner's (an admin's) business.
+            .filter { caller.everyone || it.canEdit(caller.user) }
         if (sources.isEmpty()) return if (caller.everyone || named != null) "No SiriusXM source is turned on." else "This account has no SiriusXM source turned on."
         val names = if (caller.everyone) services.users.list().associate { it.id to it.username } else emptyMap()
         return sources.joinToString("\n\n") { source ->

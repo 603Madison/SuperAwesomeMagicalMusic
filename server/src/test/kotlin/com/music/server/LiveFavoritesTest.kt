@@ -19,7 +19,7 @@ class LiveFavoritesTest {
         val radio = services.sources.allGlobal().single { it.kind == com.music.server.sources.SourceKind.RADIO }.id
         val maddie = browser()
         maddie.post("/api/auth/login") { json("""{"username":"maddie","password":"correct horse"}""") }
-        val station = """{"source":"RADIO","sourceId":"st1","title":"Lake FM","artist":"Burlington","artworkUrl":"https://example.com/logo.png","via":"$radio"}"""
+        val station = """{"source":"RADIO","sourceId":"st1","title":"Lake FM","artist":"Burlington","artworkUrl":"${services.artwork.wrap("https://example.com/logo.png")}","via":"$radio"}"""
 
         val added = maddie.put("/api/live/favorites") { csrf(); json("""{"track":$station,"favorite":true}""") }.json().jsonArray
         assertEquals("Lake FM", added.single().jsonObject.str("title"))

@@ -7,6 +7,8 @@ import com.music.server.ApiError
 import com.music.server.util.SecretBox
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import com.music.server.util.NetworkGuard
+import com.music.server.util.NetworkGuard.reach
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.encodeURLParameter
 import io.ktor.server.application.ApplicationCall
@@ -77,7 +79,8 @@ class LiveProxy(http: OkHttpClient, private val box: SecretBox, private val cloc
 
     /** Fetches an upstream playlist, returning its text and final address (after redirects). */
     suspend fun fetchPlaylist(url: String, headers: Map<String, String> = emptyMap()): Pair<String, String> = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
+        // Live streams are on the internet (radio stations anyone can list among them): only there.
+        val request = Request.Builder().url(url).reach(NetworkGuard.Reach.PUBLIC).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
         try {
             http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
@@ -115,9 +118,8 @@ class LiveProxy(http: OkHttpClient, private val box: SecretBox, private val cloc
             val body = response.body ?: throw ApiError.upstream("The stream sent nothing")
             response.header(HttpHeaders.ContentRange)?.let { call.response.header(HttpHeaders.ContentRange, it) }
             response.header(HttpHeaders.AcceptRanges)?.let { call.response.header(HttpHeaders.AcceptRanges, it) }
-            val type = response.header(HttpHeaders.ContentType)?.let { runCatching { ContentType.parse(it) }.getOrNull() }
-                ?.takeIf { it.contentType in setOf("audio", "video", "application") && !it.match(ContentType.Text.Html) }
-                ?: ContentType.Application.OctetStream
+            val type = MediaTypes.relayed(response.header(HttpHeaders.ContentType)) ?: ContentType.Application.OctetStream
+            MediaTypes.sandbox(call)
             handedOff = true
             call.respondOutputStream(type, HttpStatusCode.fromValue(response.code), body.contentLength().takeIf { it >= 0 }) {
                 try {
@@ -146,10 +148,12 @@ class LiveProxy(http: OkHttpClient, private val box: SecretBox, private val cloc
             val metaInterval = response.header("icy-metaint")?.toIntOrNull()?.takeIf { it in 1..1_000_000 }
             val type = when (val raw = response.header(HttpHeaders.ContentType)?.substringBefore(';')?.trim()?.lowercase()) {
                 "audio/aacp", "audio/x-aac" -> ContentType("audio", "aac")
-                null, "", "text/html" -> ContentType("audio", "mpeg")
-                else -> runCatching { ContentType.parse(raw) }.getOrDefault(ContentType("audio", "mpeg"))
+                // Only sound goes on (whatever a station says it sends): never a page or a script.
+                else -> MediaTypes.relayed(raw)?.takeIf { it.contentType == "audio" || it.contentType == "video" || it.match(MediaTypes.OGG) }
+                    ?: ContentType("audio", "mpeg")
             }
             call.response.header(HttpHeaders.CacheControl, "no-store")
+            MediaTypes.sandbox(call)
             handedOff = true
             call.respondOutputStream(type, HttpStatusCode.OK) {
                 try {
@@ -173,7 +177,8 @@ class LiveProxy(http: OkHttpClient, private val box: SecretBox, private val cloc
     fun radioTitle(titleKey: String): String? = titles[titleKey]?.takeIf { clock() - it.second < 3_600_000 }?.first
 
     private suspend fun open(url: String, headers: Map<String, String>): Response = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
+        // Live streams are on the internet (radio stations anyone can list among them): only there.
+        val request = Request.Builder().url(url).reach(NetworkGuard.Reach.PUBLIC).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
         try {
             http.newCall(request).execute()
         } catch (e: IOException) {
@@ -216,5 +221,29 @@ class LiveProxy(http: OkHttpClient, private val box: SecretBox, private val cloc
 
         /** Headers SiriusXM's web player sends for playlists and segments. */
         val SXM_HEADERS = mapOf("User-Agent" to SiriusXmClient.USER_AGENT)
+    }
+}
+
+/**
+ * What relayed streams may be sent as: sound, video, playlists, or plain bytes. Never a page,
+ * an image or a script, since anything relayed is served from the server's own address.
+ */
+object MediaTypes {
+    val OGG = ContentType("application", "ogg")
+    private val ALLOWED_APPLICATION = setOf("ogg", "vnd.apple.mpegurl", "x-mpegurl", "octet-stream", "mp4", "dash+xml")
+
+    fun relayed(raw: String?): ContentType? {
+        val type = raw?.let { runCatching { ContentType.parse(it) }.getOrNull() } ?: return null
+        val sub = type.contentSubtype.lowercase()
+        return when (type.contentType.lowercase()) {
+            "audio", "video" -> type.takeIf { !sub.contains("xml") && !sub.contains("html") }
+            "application" -> type.takeIf { sub in ALLOWED_APPLICATION }
+            else -> null
+        }
+    }
+
+    /** Relayed content can't run anything, even if a browser is pointed straight at it. */
+    fun sandbox(call: ApplicationCall) {
+        call.response.header("Content-Security-Policy", "default-src 'none'; sandbox")
     }
 }
