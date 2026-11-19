@@ -67,6 +67,7 @@ class TunerRadio(private val services: Services) {
     var internetReach: NetworkGuard.Reach = NetworkGuard.Reach.PUBLIC
 
     private val blends = ConcurrentHashMap<String, Blend>()
+    private val starting = ConcurrentHashMap<String, Any>()
     private val scores = ConcurrentHashMap<String, Double?>()
     private val titles = ConcurrentHashMap<String, Pair<String, Long>>()
     private val regions = ConcurrentHashMap<String, Pair<Long, String>>()
@@ -214,7 +215,8 @@ class TunerRadio(private val services: Services) {
     }
 
     private fun blendFor(key: String, source: StoredSource, client: TunerClient, stationId: String, internet: RadioStation): Blend? {
-        synchronized(blends) {
+        // One start at a time for each station (starting can take seconds; other stations needn't wait).
+        synchronized(starting.computeIfAbsent(key) { Any() }) {
             blends[key]?.takeIf { it.isRunning }?.let { return it }
             val ffmpeg = services.config.ffmpeg
             scores[key] = runCatching { runBlocking { client.station(stationId)?.signal?.score } }.getOrNull()

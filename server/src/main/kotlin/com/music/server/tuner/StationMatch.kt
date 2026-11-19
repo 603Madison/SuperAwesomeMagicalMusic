@@ -36,8 +36,11 @@ object StationMatch {
 
         val callLetters = tuner.callLetters?.uppercase(Locale.ROOT)
         if (callLetters != null && (callLetters in words || "${callLetters}FM" in words)) return 100
-        // A station listed with call letters that aren't these is another station.
-        val otherCallLetters = callLetters != null && words.any { it.length == 4 && it[0] in "KW" && it.all { c -> c in 'A'..'Z' } && it != callLetters && it !in COMMON_WORDS }
+        // A station listed with call letters that aren't these is another station (the same
+        // frequency in another town). A word of the station's own name ("KISS 108") isn't that.
+        val ownWords = words(tuner.name)
+        val otherCallLetters = callLetters != null &&
+            words.any { it.length == 4 && it[0] in "KW" && it.all { c -> c in 'A'..'Z' } && it != callLetters && it !in COMMON_WORDS && it !in ownWords }
 
         val frequency = Regex("(?<![\\d.])${Regex.escape(tuner.frequency)}(?![\\d])").containsMatchIn(internet.name)
         val name = normal(tuner.name.replace(Regex("(?i)\\bHD[1-8]\\b"), ""))

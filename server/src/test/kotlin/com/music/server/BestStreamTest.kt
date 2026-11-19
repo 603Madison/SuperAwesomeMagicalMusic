@@ -30,6 +30,8 @@ class StationMatchTest {
         assertEquals(100, StationMatch.score(wxyz, internet("WXYZFM"), "US"))
         // Another station's call letters: not this one, even on the same frequency.
         assertEquals(0, StationMatch.score(wxyz, internet("WABC 97.1 FM"), "US"))
+        // A station known by a name that looks like call letters: its name and frequency.
+        assertTrue(StationMatch.score(tuner("KISS 108", "WXKS", frequency = "107.9"), internet("Kiss 108 FM 107.9 Boston"), "US") >= StationMatch.SAME)
         assertEquals(0, StationMatch.score(wxyz, internet("KQED"), "US"))
         // HLS streams aren't blended; and in the Americas, a station abroad isn't it.
         assertEquals(0, StationMatch.score(wxyz, internet("WXYZ-FM", hls = true), "US"))

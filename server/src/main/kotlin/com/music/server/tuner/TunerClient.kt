@@ -1,7 +1,6 @@
 package com.music.server.tuner
 
 import com.music.player.net.fetchString
-import com.music.server.ApiError
 import com.music.server.ApiJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -86,12 +85,30 @@ class TunerClient(
         return Request.Builder().url(url).apply { token?.let { header("Authorization", "Bearer $it") } }
     }
 
-    suspend fun status(): TunerStatus = ApiJson.decodeFromString(TunerStatus.serializer(), http.fetchString(request("/api/status").build()))
+    /** A tuner that didn't answer isn't asked again for a little while (every radio search would wait on it). */
+    @Volatile
+    private var downUntil = 0L
+
+    private suspend fun <T> unlessDown(block: suspend () -> T): T {
+        if (clock() < downUntil) throw IOException("The tuner didn't answer a moment ago")
+        return try {
+            block()
+        } catch (e: IOException) {
+            if (e !is com.music.player.net.HttpException) downUntil = clock() + DOWN_MS
+            throw e
+        }
+    }
+
+    suspend fun status(): TunerStatus = unlessDown {
+        ApiJson.decodeFromString(TunerStatus.serializer(), http.fetchString(request("/api/status").build()))
+    }
 
     /** The tuner's stations (with what's on), kept for [maxAgeMs]. */
     suspend fun stations(maxAgeMs: Long = 8_000): List<TunerStation> {
         cached?.let { (at, list) -> if (clock() - at < maxAgeMs) return list }
-        val list = ApiJson.decodeFromString(ListSerializer(TunerStation.serializer()), http.fetchString(request("/api/stations").build()))
+        val list = unlessDown {
+            ApiJson.decodeFromString(ListSerializer(TunerStation.serializer()), http.fetchString(request("/api/stations").build()))
+        }
         cached = clock() to list
         return list
     }
@@ -141,10 +158,8 @@ class TunerClient(
 
     companion object {
         private const val MAX_IMAGE_BYTES = 5 * 1024 * 1024
+        private const val DOWN_MS = 30_000L
 
         private fun String.encodePath(): String = java.net.URLEncoder.encode(this, Charsets.UTF_8).replace("+", "%20")
-
-        /** Throws the right error for the person when the tuner can't be reached. */
-        fun unreachable(e: Exception): Nothing = throw ApiError.upstream("Couldn't reach the tuner: ${e.message ?: e.javaClass.simpleName}")
     }
 }

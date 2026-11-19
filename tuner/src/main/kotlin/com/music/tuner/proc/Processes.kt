@@ -21,8 +21,10 @@ class Child private constructor(val name: String, val process: Process, onLine: 
     val stdout: InputStream get() = process.inputStream
     val alive: Boolean get() = process.isAlive
 
+    private val logReader: Thread
+
     init {
-        Thread({
+        logReader = Thread({
             try {
                 process.errorStream.bufferedReader().useLines { lines ->
                     lines.forEach { line ->
@@ -40,14 +42,20 @@ class Child private constructor(val name: String, val process: Process, onLine: 
             } catch (e: IOException) {
                 // It's gone.
             }
-        }, "$name-log").apply { isDaemon = true }.start()
+        }, "$name-log").apply { isDaemon = true }
+        logReader.start()
     }
 
-    /** What it said last (for "stopped because…"). */
-    fun lastWords(): String = synchronized(recent) { recent.lastOrNull().orEmpty() }
+    /** What it said last (for "stopped because…"), once it's had a moment to say it. */
+    fun lastWords(): String {
+        if (!process.isAlive) runCatching { logReader.join(500) }
+        return synchronized(recent) { recent.lastOrNull().orEmpty() }
+    }
 
     /** Asks it to stop (closing its input, then SIGTERM), and makes it stop after [graceMs]. */
     fun stop(graceMs: Long = 2_000) {
+        // Stopping closes its output: what it said as it ended is read first.
+        if (!process.isAlive) runCatching { logReader.join(500) }
         val descendants = runCatching { process.descendants().toList() }.getOrDefault(emptyList())
         runCatching { process.outputStream.close() }
         process.destroy()
