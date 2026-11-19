@@ -7,6 +7,7 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.music.connect.data.Prefs
+import kotlinx.coroutines.delay
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
@@ -56,6 +57,42 @@ class SignIn(private val context: Context, private val api: ServerApi, private v
         val config = api.authConfig(server)
         val signedIn = api.exchangeCode(server, code, verifier, deviceName())
         prefs.signIn(server, signedIn.token ?: throw ServerException(0, "The server sent no sign-in"), signedIn.user, config.serverName)
+    }
+
+    /**
+     * Signing in with a code: [showCode] gets the code to type on a phone or computer that's
+     * signed in (at the server's /link page), and this asks the server every few seconds until
+     * it's allowed there (then it's signed in), turned down, or the code runs out.
+     */
+    suspend fun signInWithCode(server: String, showCode: (DeviceStart) -> Unit) {
+        val config = api.authConfig(server)
+        val started = api.startCodeSignIn(server, deviceName())
+        showCode(started)
+        var intervalMs = started.interval.coerceIn(1, 60) * 1000L
+        val until = System.currentTimeMillis() + started.expiresIn * 1000L
+        while (System.currentTimeMillis() < until) {
+            delay(intervalMs)
+            val poll = try {
+                api.pollCodeSignIn(server, started.deviceCode)
+            } catch (e: ServerException) {
+                if (e.code in 400..499 && e.code != 429) throw e
+                continue
+            } catch (_: java.io.IOException) {
+                // A dropped connection: asked again next time round.
+                continue
+            }
+            when (poll.status) {
+                "pending" -> Unit
+                "slow_down" -> intervalMs = (poll.interval?.times(1000L) ?: (intervalMs + 5_000)).coerceAtMost(60_000)
+                "approved" -> {
+                    val token = poll.token ?: throw ServerException(0, "The server sent no sign-in")
+                    prefs.signIn(server, token, poll.user ?: throw ServerException(0, "The server sent no sign-in"), config.serverName)
+                    return
+                }
+                else -> throw ServerException(0, poll.message ?: "The sign-in was turned down")
+            }
+        }
+        throw ServerException(0, "The code expired. Get a new one.")
     }
 
     private fun deviceName(): String = listOf(Build.MANUFACTURER.replaceFirstChar { it.uppercase() }, Build.MODEL)

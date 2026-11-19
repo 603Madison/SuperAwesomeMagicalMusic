@@ -37,10 +37,15 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.music.connect.R
 import com.music.connect.net.AuthConfig
+import com.music.connect.net.DeviceStart
 import com.music.connect.net.ServerApi
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** Sign-in: the server's address, then single sign-on in a browser tab, or a password. */
@@ -55,6 +60,9 @@ fun SignInScreen(finishing: Boolean, error: String?) {
     var username by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
+    // Signing in with a code typed on another device: the code, once the server has given one.
+    var code by remember { mutableStateOf<DeviceStart?>(null) }
+    var codeSignIn by remember { mutableStateOf<Job?>(null) }
 
     Backdrop {
     Column(
@@ -112,6 +120,14 @@ fun SignInScreen(finishing: Boolean, error: String?) {
             ) { Text(if (busy) "Checking…" else "Continue") }
         } else {
             val (server, auth) = current
+            if (codeSignIn != null) {
+                CodeSignInPanel(code) {
+                    codeSignIn?.cancel()
+                    codeSignIn = null
+                    code = null
+                }
+                return@Column
+            }
             auth.oidc?.let { oidc ->
                 Button(onClick = { c.signIn.startBrowserSignIn(server) }, modifier = Modifier.fillMaxWidth()) { Text(oidc.label) }
             }
@@ -144,9 +160,43 @@ fun SignInScreen(finishing: Boolean, error: String?) {
             } else {
                 TextButton(onClick = { showPassword = true }) { Text("Sign in with a password (admins)") }
             }
+            // No password to type: a code, allowed on a phone or computer that's signed in.
+            TextButton(onClick = {
+                message = null
+                codeSignIn = scope.launch {
+                    try {
+                        c.signIn.signInWithCode(server) { code = it }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        message = e.message ?: "Couldn't sign in"
+                    }
+                    codeSignIn = null
+                    code = null
+                }
+            }) { Text("Sign in with a code from another device") }
             TextButton(onClick = { config = null }) { Text("Use another server") }
             Text("Server ${auth.version}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     }
+}
+
+/** The code to type on another device, while the app waits for it to be allowed there. */
+@Composable
+private fun CodeSignInPanel(code: DeviceStart?, onCancel: () -> Unit) {
+    if (code == null) {
+        CircularProgressIndicator()
+        Text("Getting a code…")
+    } else {
+        Text(code.userCode, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, letterSpacing = 4.sp, textAlign = TextAlign.Center)
+        Text(
+            "On a phone or computer where you're signed in, go to ${code.verificationUri.substringAfter("://")} and type this code.",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+        )
+        CircularProgressIndicator(Modifier.size(28.dp))
+        Text("Waiting for you to allow it…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    TextButton(onClick = onCancel) { Text("Cancel") }
 }
