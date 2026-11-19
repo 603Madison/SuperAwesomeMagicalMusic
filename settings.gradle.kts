@@ -33,6 +33,7 @@ rootProject.name = "SuperAwesomeMagicalMusic"
 // signs in to the server. Both need the Android SDK; the server's container image is built
 // without them (SAMM_SERVER_ONLY=1).
 include(":core", ":server")
-// tuner: the FM and HD Radio tuner for a Raspberry Pi with RTL-SDR dongles (its own container image).
-include(":tuner")
+// tuner: the FM and HD Radio tuner for a Raspberry Pi with RTL-SDR dongles (its own container
+// image; the server's image is built without it).
+if (file("tuner").isDirectory) include(":tuner")
 if (System.getenv("SAMM_SERVER_ONLY") == null) include(":app", ":connect")

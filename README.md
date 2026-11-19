@@ -22,6 +22,10 @@ This repository holds:
   admins or added by each person (SiriusXM and Pandora stations, radio, Jellyfin, YouTube
   Music, Lidarr), playlists and history per person, and a web player for the computer. See [server/README.md](server/README.md):
   `docker run -p 8080:8080 -v samm-data:/data ghcr.io/603madison/superawesomemagicalmusic`.
+- **The tuner** (`tuner/`): local FM and HD Radio for the server, like an HDHomeRun for the radio.
+  RTL-SDR dongles on a Raspberry Pi, in a container; stations come with what's playing (RDS and
+  HD Radio's tags, logos and album art), and one that's also online plays from whichever copy is
+  clearer. See [tuner/README.md](tuner/README.md).
 - **core** (`core/`): the music services (Jellyfin, YouTube Music, SiriusXM, radio, Lidarr,
   lyrics, scrobbling) as plain Kotlin, shared by the app and the server.
 - **SuperAwesomeMagicalMusic** (`connect/`): the Android app for the server. Enter the server's
