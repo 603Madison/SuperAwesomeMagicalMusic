@@ -73,6 +73,8 @@ class EndToEndTest {
         signInWithPassword()
         val status = api.listenStatus()
         assertTrue(status.libraries)
+        // The server hears recordings through ffmpeg (as in its own image).
+        org.junit.Assume.assumeTrue("ffmpeg isn't installed", runCatching { ProcessBuilder("ffmpeg", "-version").start().waitFor(10, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(false))
         // A second of silence: too short to tell.
         val silence = com.music.connect.listen.MicRecorder.wavOf(ByteArray(com.music.connect.listen.MicRecorder.RATE * 2), com.music.connect.listen.MicRecorder.RATE)
         val answer = api.listen(silence, final = true, candidate = null)

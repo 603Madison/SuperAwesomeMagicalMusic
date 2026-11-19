@@ -361,10 +361,15 @@ class Listen(private val services: Services, file: File?) {
     /** [input] (a file or the server's own relay) as mono samples at [Fingerprint.RATE], at most [maxSeconds]. */
     private suspend fun decode(input: String, maxSeconds: Int, untrusted: Boolean = false): FloatArray = withContext(Dispatchers.IO) {
         val guard = if (untrusted) listOf("-protocol_whitelist", "file", "-format_whitelist", UPLOAD_FORMATS) else emptyList()
-        val process = ProcessBuilder(
-            listOf(services.config.ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin") + guard +
-                listOf("-t", maxSeconds.toString(), "-i", input, "-vn", "-ac", "1", "-ar", Fingerprint.RATE.toString(), "-f", "s16le", "pipe:1"),
-        ).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+        val process = try {
+            ProcessBuilder(
+                listOf(services.config.ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin") + guard +
+                    listOf("-t", maxSeconds.toString(), "-i", input, "-vn", "-ac", "1", "-ar", Fingerprint.RATE.toString(), "-f", "s16le", "pipe:1"),
+            ).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+        } catch (e: java.io.IOException) {
+            // The server's image has it; a server run some other way may not.
+            throw com.music.server.ApiError(io.ktor.http.HttpStatusCode.ServiceUnavailable, "Listen needs ffmpeg on the server, and it isn't installed")
+        }
         try {
             val bytes = process.inputStream.use { it.readNBytes(maxSeconds * Fingerprint.RATE * 2) }
             process.waitFor(30, TimeUnit.SECONDS)
