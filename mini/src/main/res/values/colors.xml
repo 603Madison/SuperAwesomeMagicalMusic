@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="background">#FF121016</color>
+    <color name="surface">#FF201C26</color>
+    <color name="text">#FFFFFFFF</color>
+    <color name="muted">#FFC4BCCF</color>
+    <!-- What has focus: bright, so it's seen at a glance on a small, dim screen. -->
+    <color name="focus">#FFFFC94D</color>
+    <color name="on_focus">#FF121016</color>
+    <color name="accent">#FF4FC3A1</color>
+    <!-- Teal, to tell it apart from the other apps on the home screen. -->
+    <color name="launcher_background">#FF17806A</color>
+</resources>

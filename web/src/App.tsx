@@ -11,6 +11,7 @@ import { Spinner, Toasts } from "./components/ui";
 import { Artwork, Mosaic } from "./components/Artwork";
 import { Login, safeReturn } from "./pages/Login";
 import { ConnectApp } from "./pages/ConnectApp";
+import { LinkDevice } from "./pages/LinkDevice";
 import { Search } from "./pages/Search";
 import { AlbumView, ArtistView } from "./pages/Browse";
 import { PlaylistDetail, Playlists } from "./pages/Playlists";
@@ -42,6 +43,7 @@ function Root() {
   if (location.pathname === "/login") return user ? <Navigate to={safeReturn(new URLSearchParams(location.search).get("return"))} replace /> : <Login />;
   if (!user) return <Navigate to={`/login?return=${encodeURIComponent(here)}`} replace />;
   if (location.pathname === "/connect-app") return <ConnectApp />;
+  if (location.pathname === "/link") return <LinkDevice />;
   return <Shell />;
 }
 

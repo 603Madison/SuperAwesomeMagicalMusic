@@ -88,6 +88,21 @@ data class SignedIn(val user: User, val token: String? = null)
 @Serializable
 data class Me(val user: User)
 
+/** A code sign-in, started: show [userCode] and [verificationUri]; ask every [interval] seconds. */
+@Serializable
+data class DeviceStart(
+    val deviceCode: String,
+    val userCode: String,
+    val verificationUri: String,
+    val verificationUriComplete: String = verificationUri,
+    val interval: Int = 5,
+    val expiresIn: Int = 600,
+)
+
+/** How a code sign-in is going: pending, slow_down, approved (with a token), denied or expired. */
+@Serializable
+data class DevicePoll(val status: String, val interval: Int? = null, val user: User? = null, val token: String? = null, val message: String? = null)
+
 @Serializable
 data class SearchGroup(val sourceId: String, val sourceName: String, val kind: String, val tracks: List<ApiTrack>, val error: String? = null)
 
@@ -375,6 +390,13 @@ class ServerApi(
     suspend fun exchangeCode(server: String, code: String, verifier: String, deviceName: String): SignedIn =
         post("$server/api/auth/app/token", ApiJson.encodeToString(TokenBody.serializer(), TokenBody(code, verifier, deviceName)), SignedIn.serializer(), auth = false)
 
+    /** Starts signing in with a code typed on another device (the server's /link page). */
+    suspend fun startCodeSignIn(server: String, deviceName: String): DeviceStart =
+        post("$server/api/auth/device/start", ApiJson.encodeToString(DeviceNameBody.serializer(), DeviceNameBody(deviceName)), DeviceStart.serializer(), auth = false)
+
+    suspend fun pollCodeSignIn(server: String, deviceCode: String): DevicePoll =
+        post("$server/api/auth/device/poll", ApiJson.encodeToString(DeviceCodeBody.serializer(), DeviceCodeBody(deviceCode)), DevicePoll.serializer(), auth = false)
+
     suspend fun logout() = runCatching { post("${base()}/api/auth/logout", "{}", Unit.serializer()) }
 
     suspend fun me(): Me = get("${base()}/api/me", Me.serializer())
@@ -582,6 +604,8 @@ class ServerApi(
 
     @Serializable private data class LoginBody(val username: String, val password: String, val app: Boolean, val deviceName: String)
     @Serializable private data class TokenBody(val code: String, val verifier: String, val deviceName: String)
+    @Serializable private data class DeviceNameBody(val deviceName: String)
+    @Serializable private data class DeviceCodeBody(val deviceCode: String)
     @Serializable private data class FavoriteChange(val track: ApiTrack, val favorite: Boolean)
     @Serializable private data class LivePlayedBody(val track: ApiTrack)
     @Serializable private data class ResolveBody(val track: ApiTrack, val kbps: Int, val codecs: List<String>, val thorough: Boolean)

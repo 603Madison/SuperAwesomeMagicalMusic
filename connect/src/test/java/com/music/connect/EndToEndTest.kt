@@ -199,6 +199,26 @@ class EndToEndTest {
     }
 
     @Test
+    fun `signing in with a code allowed on another device`() = runBlocking {
+        val prefs = Prefs(context)
+        val signIn = SignIn(context, api, prefs)
+        // Elsewhere, already signed in: a computer's browser, here with a token.
+        val elsewhere = api.login(base, "maddie", "correct horse", "Laptop").token!!
+        val json = "application/json".toMediaType()
+        signIn.signInWithCode(base) { started ->
+            assertTrue(started.verificationUri.endsWith("/link"))
+            http.newCall(
+                Request.Builder().url("$base/api/auth/device/decide").header("Authorization", "Bearer $elsewhere")
+                    .post("""{"userCode":"${started.userCode}","allow":true}""".toRequestBody(json)).build(),
+            ).execute().use { assertTrue(it.body.string(), it.isSuccessful) }
+        }
+        val settings = prefs.settings.first()
+        assertTrue(settings.signedIn)
+        token = settings.token
+        assertEquals("maddie", api.me().user.username)
+    }
+
+    @Test
     fun `playlist changes made offline reach the server in order`() = runBlocking {
         signInWithPassword()
         val library = Library(db, api)

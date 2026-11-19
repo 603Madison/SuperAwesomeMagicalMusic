@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Bot, Copy, LogOut, Monitor, Smartphone } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Bot, Copy, LogOut, Monitor, MonitorSmartphone, Smartphone } from "lucide-react";
 import { api } from "../lib/api";
 import { when } from "../lib/format";
 import { session, useSession } from "../lib/session";
@@ -153,6 +154,7 @@ function PasswordChange() {
 }
 
 function Devices() {
+  const navigate = useNavigate();
   const { data, error, loading, setData } = useLoad(() => api.sessions(), []);
   if (loading && !data) return <Spinner />;
   if (error) return <div className="notice notice-error">{error}</div>;
@@ -174,7 +176,11 @@ function Devices() {
           </li>
         ))}
       </ul>
-      <Button variant="ghost" onClick={() => session.signOut()}><LogOut size={18} /> Sign out here</Button>
+      <div className="button-row">
+        {/* A flip phone or anything awkward to type a password on shows a code to type here. */}
+        <Button variant="tonal" onClick={() => navigate("/link")}><MonitorSmartphone size={18} /> Sign in a device with a code</Button>
+        <Button variant="ghost" onClick={() => session.signOut()}><LogOut size={18} /> Sign out here</Button>
+      </div>
     </>
   );
 }

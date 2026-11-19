@@ -917,6 +917,8 @@ input[type="range"]:disabled { cursor: default; opacity: 0.5; }
 .divider { display: flex; align-items: center; gap: 12px; color: var(--faint); font-size: 0.85rem; }
 .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--outline); }
 .connect-icon { align-self: center; width: 72px; height: 72px; border-radius: 22px; display: grid; place-items: center; background: var(--primary-container); color: var(--on-primary-container); }
+.link-code { font-size: 2rem; font-weight: var(--w-bold); letter-spacing: 0.12em; font-variant-numeric: tabular-nums; }
+.login-form input.link-code-input { font-size: 1.8rem; text-align: center; letter-spacing: 0.12em; text-transform: uppercase; padding: 12px; }
 
 /* ---------- Phones ---------- */
 

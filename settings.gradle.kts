@@ -36,3 +36,5 @@ include(":core", ":server")
 // nowplaying: recognising music playing around the phone in the background (a library the
 // connect app hosts).
 if (System.getenv("SAMM_SERVER_ONLY") == null) include(":app", ":connect", ":nowplaying")
+// mini: the server's app for flip phones (D-pad, small screens, sign-in with a code).
+if (System.getenv("SAMM_SERVER_ONLY") == null) include(":mini")

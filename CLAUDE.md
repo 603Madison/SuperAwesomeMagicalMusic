@@ -22,11 +22,15 @@ when the request doesn't mention one:
    and (its `desktop` job) adds the Linux desktop app's packages
    (`SuperAwesomeMagicalMusic-Desktop-vX.Y.Z-amd64.deb` and `-x86_64.rpm`).
    Check that all four jobs succeed. (Claude sessions can't push tags; pushing a `v*` tag also triggers the workflow.)
+   The release also gets the third APK, `SuperAwesomeMagicalMusic-Mini-vX.Y.Z.apk` (the app for
+   flip phones, from `mini/`), and the F-Droid repo lists it too.
 4. Copy `connect/build/outputs/apk/release/connect-release.apk` to `SuperAwesomeMagicalMusic-vX.Y.Z.apk` and
    `app/build/outputs/apk/release/app-release.apk` to `SuperAwesomeMagicalMusic-Standalone-vX.Y.Z.apk` in the
    scratchpad and send them to the owner in chat, and the desktop packages too when `desktop/`
    changed (`desktop/target/debian/*.deb` and `desktop/target/generate-rpm/*.rpm`, renamed like the
    release's).
+   Send Mini too: `mini/build/outputs/apk/release/mini-release.apk` as
+   `SuperAwesomeMagicalMusic-Mini-vX.Y.Z.apk`.
 5. When `desktop/` changed: `cd desktop && cargo test && cargo build --release`, then
    `cargo deb --no-build` and `cargo generate-rpm` (Rust, and `libgtk-4-dev libadwaita-1-dev
    libgstreamer1.0-dev libssl-dev` to build; see `desktop/README.md`).

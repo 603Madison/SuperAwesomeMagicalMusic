@@ -374,3 +374,10 @@ export interface ListenStatus {
   libraries: boolean;
   audd: boolean;
 }
+
+/** A device waiting to be signed in with a code (the /link page). */
+export interface DeviceRequest {
+  userCode: string;
+  deviceName: string;
+  expiresIn: number;
+}

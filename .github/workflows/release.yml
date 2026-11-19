@@ -84,6 +84,12 @@ jobs:
           cp connect/build/outputs/apk/release/connect-release.apk "SuperAwesomeMagicalMusic-$TAG.apk"
           sha256sum SuperAwesomeMagicalMusic-*.apk
 
+      # Mini, for flip phones (mini/): built above with the others, attached after them.
+      - name: Mini APK
+        run: |
+          cp mini/build/outputs/apk/release/mini-release.apk "SuperAwesomeMagicalMusic-Mini-$TAG.apk"
+          sha256sum "SuperAwesomeMagicalMusic-Mini-$TAG.apk"
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -97,6 +103,11 @@ jobs:
           else
             gh release create "$TAG" "${apks[@]}" --target "$COMMIT" --title "SuperAwesomeMagicalMusic $TAG" --notes-file notes.md
           fi
+
+      - name: Add Mini to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "SuperAwesomeMagicalMusic-Mini-$TAG.apk" --clobber
 
   # The Linux desktop app (desktop/, Rust with GTK 4 and libadwaita): a .deb for Ubuntu 24.04 and
   # later (Mint 22, Pop!_OS 24.04, Debian 13) and an .rpm for Fedora 40 and later, added to the
