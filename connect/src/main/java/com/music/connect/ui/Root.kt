@@ -68,6 +68,14 @@ fun MainScaffold() {
     val nav = rememberNavController()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { c.messages.collect { snackbar.showSnackbar(it) } }
+    // A notification asked for a screen (Now Playing's, say).
+    val open by c.openRoute.collectAsState()
+    LaunchedEffect(open) {
+        open?.let {
+            nav.navigate(it) { launchSingleTop = true }
+            c.openRoute.value = null
+        }
+    }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     val browse = remember(nav) { Browse(nav) }

@@ -88,6 +88,7 @@ dependencies {
     }
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(project(":core"))
+    implementation(project(":nowplaying"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

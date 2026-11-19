@@ -214,6 +214,8 @@ fun ListenScreen(onBack: (() -> Unit)?, startNow: Boolean = false) {
                 }
             }
         }
+        // Now Playing: the same, by itself, in the background.
+        item { AppCard(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)) { NowPlayingSettings() } }
         if (heard.isNotEmpty()) item { SectionTitle("Recently heard", Modifier.fillMaxWidth()) }
         itemsIndexed(heard, key = { _, h -> h.id }) { i, h ->
             CardItem(i, heard.size, Modifier.padding(horizontal = 16.dp)) {

@@ -501,6 +501,19 @@ class ServerApi(
         http.newCall(request).execute().use { parse(it, ListenResult.serializer()) }
     }
 
+    /**
+     * Fingerprints the phone worked out itself (Now Playing, listening in the background: no
+     * sound leaves the phone), of [heardMs] of sound; [candidate] is the song it heard last.
+     */
+    suspend fun listenHashes(hashes: LongArray, heardMs: Long, candidate: String?): ListenResult = withContext(Dispatchers.IO) {
+        val body = java.nio.ByteBuffer.allocate(hashes.size * 8).apply { hashes.forEach(::putLong) }.array()
+        val url = "${base()}/api/listen/hashes?ms=$heardMs" + (candidate?.let { "&candidate=${enc(it)}" } ?: "")
+        val request = Request.Builder().url(url).post(body.toRequestBody("application/octet-stream".toMediaType())).apply {
+            token()?.let { header("Authorization", "Bearer $it") }
+        }.build()
+        http.newCall(request).execute().use { parse(it, ListenResult.serializer()) }
+    }
+
     suspend fun listenHeard(): List<Heard> = get("${base()}/api/listen/heard", ListSerializer(Heard.serializer()))
 
     suspend fun forgetHeard(id: String) = send("DELETE", "${base()}/api/listen/heard/${enc(id)}", null, Unit.serializer())

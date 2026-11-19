@@ -1,5 +1,6 @@
 package com.music.server.listen
 
+import com.music.player.listen.Fingerprint
 import com.music.player.model.SourceType
 import com.music.player.model.Track
 import com.music.player.quality.StreamQuality
@@ -206,32 +207,9 @@ class Listen(private val services: Services, file: File?) {
         val heardMs = samples.size * 1000L / Fingerprint.RATE
         if (heardMs < MIN_CLIP_MS) return ListenResult(found = false, message = "That was too short to tell")
         val sources = services.sources.activeFor(user)
-        val libraries = sources.filter { it.kind == SourceKind.JELLYFIN }.map { it.id }
-        var leaning: String? = null
-        if (libraries.isNotEmpty()) {
-            val clip = withContext(Dispatchers.Default) { Fingerprint.hashes(samples, Fingerprint.CLIP) }
-            val distinct = clip.map(Fingerprint::hash).distinct().toIntArray()
-            val match = withContext(Dispatchers.Default) { Fingerprint.match(clip, store.lookup(distinct, libraries)) }
-            if (match != null && match.promising) leaning = match.item.toString()
-            if (match != null && match.confident(candidate?.toLongOrNull())) {
-                store.item(match.item)?.let { item ->
-                    val song = services.artwork.outgoing(item.track)
-                    return remember(
-                        user,
-                        ListenResult(
-                            found = true,
-                            title = song.title,
-                            artist = song.artist,
-                            album = song.album,
-                            artworkUrl = song.artworkUrl,
-                            song = song,
-                            positionMs = match.offsetMs + heardMs,
-                            via = "library",
-                        ),
-                    )
-                }
-            }
-        }
+        val clip = withContext(Dispatchers.Default) { Fingerprint.hashes(samples, Fingerprint.CLIP) }
+        val (found, leaning) = inLibrary(user, clip, heardMs, candidate)
+        if (found != null) return found
         val audd = sources.firstOrNull { it.kind == SourceKind.AUDD }
         if (final && audd != null) {
             val heard = try {
@@ -273,6 +251,47 @@ class Listen(private val services: Services, file: File?) {
             else -> "Not in your library. Add AudD in Settings › Sources to recognise any song."
         }
         return ListenResult(found = false, message = message)
+    }
+
+    /**
+     * What [clip] (fingerprints of [heardMs] of sound) is in the person's libraries: the song, if
+     * sure (kept in their Recently heard), and the one it leans towards if not.
+     */
+    private suspend fun inLibrary(user: User, clip: LongArray, heardMs: Long, candidate: String?): Pair<ListenResult?, String?> {
+        val libraries = services.sources.activeFor(user).filter { it.kind == SourceKind.JELLYFIN }.map { it.id }
+        if (libraries.isEmpty() || clip.isEmpty()) return null to null
+        val distinct = clip.map(Fingerprint::hash).distinct().toIntArray()
+        val match = withContext(Dispatchers.Default) { Fingerprint.match(clip, store.lookup(distinct, libraries)) } ?: return null to null
+        val leaning = match.item.toString().takeIf { match.promising }
+        if (!match.confident(candidate?.toLongOrNull())) return null to leaning
+        val item = store.item(match.item) ?: return null to leaning
+        val song = services.artwork.outgoing(item.track)
+        val result = ListenResult(
+            found = true,
+            title = song.title,
+            artist = song.artist,
+            album = song.album,
+            artworkUrl = song.artworkUrl,
+            song = song,
+            positionMs = match.offsetMs + heardMs,
+            via = "library",
+            candidate = match.item.toString(),
+        )
+        return remember(user, result) to leaning
+    }
+
+    /**
+     * What a phone heard, from the fingerprints it worked out itself ([hashes], as
+     * `Fingerprint.hashes` gives them, of [heardMs] of sound): Now Playing, which listens in the
+     * background and sends no sound. Only the person's libraries are asked (AudD needs the sound).
+     */
+    suspend fun recogniseHashes(user: User, hashes: LongArray, heardMs: Long, candidate: String? = null): ListenResult {
+        if (heardMs < MIN_CLIP_MS) return ListenResult(found = false, message = "That was too short to tell")
+        val frames = heardMs / Fingerprint.FRAME_MS + 2
+        // Fingerprints from beyond what was heard aren't from this recording.
+        val clip = hashes.filter { (it and 0xffffffffL) <= frames }.toLongArray()
+        val (found, leaning) = inLibrary(user, clip, heardMs, candidate)
+        return found ?: ListenResult(found = false, candidate = leaning)
     }
 
     /** A copy of [heard] that plays: in a library, then on a streaming service. */

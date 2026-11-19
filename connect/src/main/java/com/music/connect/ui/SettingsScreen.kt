@@ -117,6 +117,8 @@ fun SettingsScreen() {
             ToggleRow("Only on Wi-Fi", "Downloads wait for Wi-Fi or another unmetered network.", settings.downloadOnWifiOnly) { v -> update { it.copy(downloadOnWifiOnly = v) } }
         }
 
+        Panel("Listen") { NowPlayingSettings() }
+
         Panel("Speakers") { SpeakerSettings(settings, ::update) }
 
         Panel("Account") {

@@ -33,4 +33,6 @@ rootProject.name = "SuperAwesomeMagicalMusic"
 // signs in to the server. Both need the Android SDK; the server's container image is built
 // without them (SAMM_SERVER_ONLY=1).
 include(":core", ":server")
-if (System.getenv("SAMM_SERVER_ONLY") == null) include(":app", ":connect")
+// nowplaying: recognising music playing around the phone in the background (a library the
+// connect app hosts).
+if (System.getenv("SAMM_SERVER_ONLY") == null) include(":app", ":connect", ":nowplaying")

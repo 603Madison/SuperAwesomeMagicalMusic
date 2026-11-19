@@ -1,5 +1,6 @@
 package com.music.server.listen
 
+import com.music.player.listen.Fingerprint
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File

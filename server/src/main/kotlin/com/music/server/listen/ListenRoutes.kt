@@ -37,6 +37,21 @@ fun Route.listenRoutes(services: Services) {
             call.respond(listen.recognise(user, audio, type, final, candidate))
         }
 
+        // Fingerprints a phone worked out itself (Now Playing, in the background): the body is
+        // big-endian 64-bit numbers, as Fingerprint.hashes gives them; ?ms= is how long it heard.
+        post("/hashes") {
+            val user = call.requireUser(services)
+            if (!tries.allow(user.id)) throw ApiError.tooMany("That's a lot of listening: try again in a minute")
+            val body = call.receive<ByteArray>()
+            if (body.isEmpty() || body.size % 8 != 0 || body.size > MAX_HASHES * 8) throw ApiError.badRequest("Those aren't fingerprints")
+            val heardMs = call.request.queryParameters["ms"]?.toLongOrNull()?.takeIf { it in 1..MAX_HEARD_MS }
+                ?: throw ApiError.badRequest("How long was heard?")
+            val buffer = java.nio.ByteBuffer.wrap(body)
+            val hashes = LongArray(body.size / 8) { buffer.getLong() }
+            val candidate = call.request.queryParameters["candidate"]?.takeIf { it.length <= 20 }
+            call.respond(listen.recogniseHashes(user, hashes, heardMs, candidate))
+        }
+
         get("/heard") {
             call.respond(listen.heard(call.requireUser(services)))
         }
@@ -48,3 +63,7 @@ fun Route.listenRoutes(services: Services) {
         }
     }
 }
+
+/** At most this many fingerprints, of at most this much sound, in one go. */
+private const val MAX_HASHES = 200_000
+private const val MAX_HEARD_MS = 30_000L

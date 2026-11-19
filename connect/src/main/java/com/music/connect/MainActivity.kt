@@ -47,6 +47,9 @@ class MainActivity : ComponentActivity() {
         player = PlayerConnection(this) { c.settings.value.server }
         player.connect()
         handle(intent)
+        // Now Playing was on (the phone restarted, or the app updated): carries on, now the app is open.
+        com.music.nowplaying.NowPlaying.resume(this)
+        com.music.nowplaying.NowPlayingRestart.dismiss(this)
         setContent {
             val settings by c.settings.collectAsState()
             // The status and navigation bars' icons follow the app's theme, which may not be the phone's.
@@ -86,6 +89,11 @@ class MainActivity : ComponentActivity() {
 
     /** The server's sign-in page sends the app back here with its one-time code. */
     private fun handle(intent: Intent?) {
+        // Now Playing's notification: to Listen, where what it heard is.
+        if (intent?.action == OPEN_LISTEN) {
+            container.openRoute.value = "listen"
+            return
+        }
         val link = intent?.data ?: return
         if (link.scheme != "sammusic" || link.host != "signed-in") return
         finishing.value = true
@@ -99,5 +107,9 @@ class MainActivity : ComponentActivity() {
             }
             finishing.value = false
         }
+    }
+
+    companion object {
+        const val OPEN_LISTEN = "com.music.connect.OPEN_LISTEN"
     }
 }

@@ -1,5 +1,6 @@
 package com.music.server.listen
 
+import com.music.player.listen.Fingerprint
 import com.music.server.module
 import com.music.server.sources.SourceKind
 import com.music.server.testServices
@@ -266,6 +267,25 @@ class ListenTest {
             val recent = get("/api/listen/heard").jsonArray
             assertEquals(1, recent.size)
             assertEquals("Glasshouse Summer", recent[0].jsonObject["title"]!!.jsonPrimitive.content)
+
+            // Now Playing: a phone sends fingerprints it worked out itself, ten seconds' worth, not sound.
+            fun ambient(clip: FloatArray): kotlinx.serialization.json.JsonObject {
+                val hashes = Fingerprint.hashes(clip, Fingerprint.CLIP)
+                val body = java.nio.ByteBuffer.allocate(hashes.size * 8).apply { hashes.forEach(::putLong) }.array()
+                return http.newCall(
+                    Request.Builder().url("http://127.0.0.1:$port/api/listen/hashes?ms=${clip.size * 1000L / Fingerprint.RATE}")
+                        .header("Authorization", "Bearer $token")
+                        .post(body.toRequestBody("application/octet-stream".toMediaType())).build(),
+                ).execute().use { Json.parseToJsonElement(it.body.string()).jsonObject }
+            }
+            val nearby = ambient(heard(song(13, 40), 5 * Fingerprint.RATE, 10 * Fingerprint.RATE, noise = 0.4, seed = 5))
+            assertEquals(nearby.toString(), "Coastline Radio", nearby["title"]?.jsonPrimitive?.content)
+            assertEquals("false", ambient(heard(song(78, 20), 2 * Fingerprint.RATE, 10 * Fingerprint.RATE, noise = 0.4))["found"]!!.jsonPrimitive.content)
+            val nonsense = http.newCall(
+                Request.Builder().url("http://127.0.0.1:$port/api/listen/hashes?ms=5000").header("Authorization", "Bearer $token")
+                    .post(ByteArray(7).toRequestBody("application/octet-stream".toMediaType())).build(),
+            ).execute().use { it.code }
+            assertEquals(400, nonsense)
 
             // A playlist pretending to be a recording isn't followed anywhere.
             val sneaky = http.newCall(
