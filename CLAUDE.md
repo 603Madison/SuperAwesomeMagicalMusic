@@ -9,7 +9,7 @@ when the request doesn't mention one:
    update whose `versionCode` isn't higher than the installed one. That `versionName` is the whole
    project's version: the server and its container image use it too, and so does the Linux desktop
    app: set the same `version` in `desktop/Cargo.toml` (the release checks they match).
-2. Run `./gradlew testDebugUnitTest lintDebug assembleRelease :server:test`; all must pass (it covers
+2. Run `./gradlew testDebugUnitTest lintDebug assembleRelease :server:test :core:test :tuner:test`; all must pass (it covers
    both apps; `connect`'s tests run the real server in-process). When
    `web/` changed, also `cd web && npm ci && npm run build` (it type-checks the web player).
 3. Write the release notes to `release-notes/vX.Y.Z.md`, then commit and push. Start the
@@ -21,7 +21,9 @@ when the request doesn't mention one:
    job) pushes the server's container image to `ghcr.io/603madison/superawesomemagicalmusic`,
    and (its `desktop` job) adds the Linux desktop app's packages
    (`SuperAwesomeMagicalMusic-Desktop-vX.Y.Z-amd64.deb` and `-x86_64.rpm`).
-   Check that all four jobs succeed. (Claude sessions can't push tags; pushing a `v*` tag also triggers the workflow.)
+   and (its `tuner-image` job) pushes the RTL-SDR tuner's image (amd64 and arm64) to
+   `ghcr.io/603madison/superawesomemagicalmusic-tuner`.
+   Check that all five jobs succeed. (Claude sessions can't push tags; pushing a `v*` tag also triggers the workflow.)
    The release also gets the third APK, `SuperAwesomeMagicalMusic-Mini-vX.Y.Z.apk` (the app for
    flip phones, from `mini/`), and the F-Droid repo lists it too.
 4. Copy `connect/build/outputs/apk/release/connect-release.apk` to `SuperAwesomeMagicalMusic-vX.Y.Z.apk` and

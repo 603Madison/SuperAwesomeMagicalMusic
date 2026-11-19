@@ -777,15 +777,22 @@ impl Api {
         self.get(&format!("/api/live/radio/{}/search?q={}", enc(source), enc(query))).await
     }
 
-    pub async fn radio_now(&self, source: &str, id: &str) -> Result<Option<String>> {
+    /// What's on a radio station: "Artist - Title", and the song in full where the station says
+    /// (your FM tuner's stations: its cover, and the song for lyrics).
+    pub async fn radio_now(&self, source: &str, id: &str) -> Result<Option<(String, Option<NowView>)>> {
         #[derive(Deserialize)]
         struct Now {
             title: Option<String>,
+            #[serde(default)]
+            now: Option<NowView>,
         }
         let now: Option<Now> = self
             .get(&format!("/api/live/radio/{}/station/{}/now", enc(source), enc(id)))
             .await?;
-        Ok(now.and_then(|n| n.title).filter(|t| !t.trim().is_empty()))
+        Ok(now.and_then(|n| {
+            let title = n.title.filter(|t| !t.trim().is_empty()).or_else(|| n.now.as_ref().map(|s| format!("{} - {}", s.artist, s.title)))?;
+            Some((title, n.now))
+        }))
     }
 
     pub async fn live_favorites(&self) -> Result<Vec<Track>> {

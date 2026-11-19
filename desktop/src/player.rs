@@ -872,13 +872,19 @@ impl Player {
                             .await
                             .ok()
                             .flatten()
-                            .map(|title| match title.split_once(" - ") {
-                                Some((artist, song)) => OnAir {
+                            .map(|(title, now)| match (now, title.split_once(" - ")) {
+                                (Some(now), _) => OnAir {
+                                    title: now.title,
+                                    artist: now.artist,
+                                    artwork_url: now.artwork_url,
+                                    song: now.song,
+                                },
+                                (None, Some((artist, song))) => OnAir {
                                     title: song.trim().into(),
                                     artist: artist.trim().into(),
                                     ..Default::default()
                                 },
-                                None => OnAir {
+                                (None, None) => OnAir {
                                     title: title.trim().into(),
                                     ..Default::default()
                                 },

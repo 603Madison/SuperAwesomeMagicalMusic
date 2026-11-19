@@ -547,7 +547,8 @@ class PlaybackService : MediaLibraryService() {
                             val (type, id) = MediaItems.split(track.sourceId.removePrefix("channel:"))
                             c.api.channelNow(via, type, id, System.currentTimeMillis() - behindMs)?.let { LiveNow(it.title, it.artist, it.artworkUrl, it.song) }
                         } else {
-                            c.api.radioNow(via, track.sourceId.removePrefix("hls:")).title?.let { title ->
+                            val radio = c.api.radioNow(via, track.sourceId.removePrefix("hls:"))
+                            radio.now?.let { LiveNow(it.title, it.artist, it.artworkUrl, it.song) } ?: radio.title?.let { title ->
                                 val at = title.indexOf(" - ")
                                 if (at > 0) LiveNow(title.substring(at + 3).trim(), title.substring(0, at).trim(), null, null) else LiveNow(title, "", null, null)
                             }

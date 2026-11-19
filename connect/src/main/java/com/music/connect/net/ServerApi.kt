@@ -263,7 +263,11 @@ data class ArtistView(val id: String, val name: String, val artworkUrl: String? 
 data class StationTracks(val station: ApiTrack, val tracks: List<ApiTrack>)
 
 @Serializable
-data class RadioNow(val title: String? = null)
+data class RadioNow(
+    val title: String? = null,
+    /** The song in full, where the station says (your FM tuner's stations): its cover, and the song for lyrics. */
+    val now: NowView? = null,
+)
 
 /** One of the person's own stations, as the Radio tab lists it. */
 @Serializable
