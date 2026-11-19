@@ -110,6 +110,7 @@ class LoginThrottle(
     private val maxFailuresPerAccount: Int = 100,
     private val windowMs: Long = 15L * 60 * 1000,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val message: String = "Too many wrong passwords. Try again in a few minutes.",
 ) {
     private val failures = ConcurrentHashMap<String, List<Long>>()
 
@@ -132,7 +133,7 @@ class LoginThrottle(
     fun attempt(attempt: Attempt) {
         val now = clock()
         if (attempt.keys.any { key -> recent(key, now) >= limitOf(key) }) {
-            throw ApiError.tooMany("Too many wrong passwords. Try again in a few minutes.")
+            throw ApiError.tooMany(message)
         }
         attempt.keys.forEach { key -> failures.compute(key) { _, list -> list.orEmpty().filter { now - it <= windowMs } + now } }
         if (failures.size > 10_000) failures.entries.removeIf { (_, list) -> list.all { now - it > windowMs } }

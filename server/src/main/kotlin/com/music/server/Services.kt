@@ -61,6 +61,13 @@ class Services(
     val oidc = OidcClient(http, clock)
     val pending = PendingLogins(clock)
     val throttle = LoginThrottle(clock = clock)
+    /** Signing in with a code shown on another device (see DeviceRoutes). */
+    val deviceLogins = com.music.server.auth.DeviceLogins(clock)
+    /** Wrong codes typed to approve a device: 10 for one person from one place, fewer than passwords. */
+    val codeThrottle = LoginThrottle(
+        maxFailures = 10, maxFailuresPerAddress = 30, maxFailuresPerAccount = 20, clock = clock,
+        message = "Too many wrong codes. Try again in a few minutes.",
+    )
     val sources = SourceStore(db, box, clock)
     val setup = SourceSetup(http)
     val registry = SourceRegistry(http, sources) { owner -> config.localSources || kotlinx.coroutines.runBlocking { users.byId(owner) }?.isAdmin == true }

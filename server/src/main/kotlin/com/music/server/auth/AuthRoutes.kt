@@ -167,6 +167,9 @@ fun Route.authRoutes(services: Services) {
         }
     }
 
+    // Signing in with a code shown on another device (a flip phone, say).
+    deviceRoutes(services)
+
     route("/api/me") {
         get {
             val principal = call.principal(services) ?: throw ApiError.unauthorized()
