@@ -1,0 +1,40 @@
+18:36:36 Synchronized
+18:36:36 Frequency offset: 99 Hz
+18:36:36 Primary service mode: 1
+18:36:36 Station name: KUT 
+18:36:36 Country: AB, FCC facility ID: 21
+18:36:36 MER: -13.4 dB (lower), -13.2 dB (upper)
+18:36:36 BER: 0.197004, avg: 0.197004, min: 0.197004, max: 0.197004
+18:36:36 Lost synchronization
+18:36:36 Synchronized
+18:36:36 Frequency offset: 95 Hz
+18:36:36 Primary service mode: 1
+18:36:36 Station name: KUT 
+18:36:36 Country: AB, FCC facility ID: 21
+18:36:36 MER: -14.9 dB (lower), -17.4 dB (upper)
+18:36:36 Station location: 1.0383, -4.0933, 0m
+18:36:36 MER: 13.4 dB (lower), 12.4 dB (upper)
+18:36:36 BER: 0.000186, avg: 0.098595, min: 0.000186, max: 0.197004
+18:36:36 Audio service 0: public, type: None, codec: 0, blend: 2, gain: 0 dB, delay: 96, latency: 8
+18:36:36 Title: You're Listening to Q with Jian Ghomeshi
+18:36:36 Artist:  
+18:36:36 Audio service 1: public, type: Public, codec: 0, blend: 0, gain: 0 dB, delay: 0, latency: 8
+18:36:36 Slogan: The University of Texas at Austin
+18:36:36 MER: 13.7 dB (lower), 12.4 dB (upper)
+18:36:36 BER: 0.000077, avg: 0.065755, min: 0.000077, max: 0.197004
+18:36:36 Title: You're Listening to Q with Jian Ghomeshi
+18:36:36 Artist:  
+18:36:36 Audio bit rate: 63.7 kbps
+18:36:36 MER: 13.3 dB (lower), 12.2 dB (upper)
+18:36:36 BER: 0.000148, avg: 0.049354, min: 0.000077, max: 0.197004
+18:36:36 Title: You're Listening to Q with Jian Ghomeshi
+18:36:36 Artist:  
+18:36:36 Audio bit rate: 64.5 kbps
+18:36:36 MER: 13.2 dB (lower), 12.1 dB (upper)
+18:36:36 BER: 0.000118, avg: 0.039506, min: 0.000077, max: 0.197004
+18:36:36 Title: You're Listening to Q with Jian Ghomeshi
+18:36:36 Artist:  
+18:36:36 Audio bit rate: 63.5 kbps
+18:36:36 MER: 13.3 dB (lower), 12.5 dB (upper)
+18:36:36 BER: 0.000140, avg: 0.032945, min: 0.000077, max: 0.197004
+18:36:36 Title: You're Listening to Q with Jian Ghomeshi
