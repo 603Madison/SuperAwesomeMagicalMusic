@@ -14,7 +14,7 @@ use gst::prelude::*;
 use gtk::glib;
 use rand::seq::SliceRandom;
 
-use crate::api::{Api, Listen, LiveKind, Track, enc};
+use crate::api::{Api, Listen, LiveKind, PersonalNow, Track, enc};
 use crate::rt::bg;
 
 /// What's on a live channel or station.
@@ -57,6 +57,8 @@ pub struct State {
     pub position: f64,
     pub duration: f64,
     pub on_air: Option<OnAir>,
+    /// On one of the person's own stations: what's next, its thumbs and what the DJ says.
+    pub personal: Option<PersonalNow>,
     /// How it's playing ("Jellyfin FLAC", "YouTube Music → Opus 160 kbps").
     pub description: String,
     pub volume: f64,
@@ -92,7 +94,10 @@ impl State {
     }
 
     pub fn has_next(&self) -> bool {
-        self.index.is_some_and(|i| i + 1 < self.queue.len()) || (self.repeat == Repeat::All && !self.queue.is_empty())
+        // One of the person's own stations moves on to its next song.
+        self.current().is_some_and(Track::is_personal)
+            || self.index.is_some_and(|i| i + 1 < self.queue.len())
+            || (self.repeat == Repeat::All && !self.queue.is_empty())
     }
 
     /// What plays after the current song: the next one, or the first again when repeating all.
@@ -416,6 +421,18 @@ impl Player {
     }
 
     pub fn next(self: &Rc<Self>) {
+        // One of the person's own stations: the station skips to its next song (the stream goes on).
+        let personal = self.state.borrow().current().filter(|t| t.is_personal()).map(|t| t.source_id.clone());
+        if let Some(id) = personal {
+            let Some(api) = self.api.borrow().clone() else { return };
+            let me = self.clone();
+            glib::spawn_future_local(async move {
+                if let Err(e) = bg(async move { api.personal_skip(&id).await }).await {
+                    me.tell_error(&format!("The station didn't skip: {e}"));
+                }
+            });
+            return;
+        }
         let following = self.state.borrow().following();
         if let Some(i) = following {
             self.load(i, true);
@@ -494,6 +511,7 @@ impl Player {
             state.position = 0.0;
             state.duration = track.duration_ms.unwrap_or(0) as f64 / 1000.0;
             state.on_air = None;
+            state.personal = None;
             state.description = String::new();
         }
         self.notify();
@@ -502,10 +520,10 @@ impl Player {
         let me = self.clone();
         glib::spawn_future_local(async move {
             let uri = if let Some(live) = track.live_stream() {
-                me.state.borrow_mut().description = if live.kind == LiveKind::Channel {
-                    "SiriusXM".into()
-                } else {
-                    "Radio".into()
+                me.state.borrow_mut().description = match live.kind {
+                    LiveKind::Channel => "SiriusXM".into(),
+                    LiveKind::Radio => "Radio".into(),
+                    LiveKind::Personal => "Made for you".into(),
                 };
                 let played = track.clone();
                 let api_for_played = api.clone();
@@ -559,7 +577,8 @@ impl Player {
         self.tell_error(&format!("Couldn't play “{title}”: {message}"));
         self.failures.set(self.failures.get() + 1);
         self.state.borrow_mut().loading = false;
-        let has_next = self.state.borrow().has_next();
+        // Not on a personal station, where "next" skips a song on the air.
+        let has_next = self.state.borrow().has_next() && !self.state.borrow().live();
         if has_next && self.failures.get() < 4 {
             self.next();
         } else {
@@ -676,6 +695,30 @@ impl Player {
 
     // ---- Live radio ----
 
+    /// Thumbs the song on one of the person's own stations: "UP" (more like it), "DOWN" (never
+    /// again, and it moves on) or, given again, takes it back.
+    pub fn thumb(self: &Rc<Self>, direction: &str) {
+        let (id, key, next) = {
+            let state = self.state.borrow();
+            let Some(track) = state.current().filter(|t| t.is_personal()) else { return };
+            let Some(info) = &state.personal else { return };
+            let Some(key) = info.song_key.clone() else { return };
+            let next = if info.thumb.as_deref() == Some(direction) { "NONE" } else { direction };
+            (track.source_id.clone(), key, next.to_string())
+        };
+        if let Some(info) = self.state.borrow_mut().personal.as_mut() {
+            info.thumb = (next != "NONE").then(|| next.clone());
+        }
+        self.notify();
+        let Some(api) = self.api.borrow().clone() else { return };
+        let me = self.clone();
+        glib::spawn_future_local(async move {
+            if let Err(e) = bg(async move { api.personal_thumb(&id, &key, &next).await }).await {
+                me.tell_error(&format!("The station didn't take the thumb: {e}"));
+            }
+        });
+    }
+
     /// What's on, every so often while the channel or station plays.
     fn watch_on_air(self: &Rc<Self>, generation: u64, track: Track, kind: LiveKind) {
         let Some(api) = self.api.borrow().clone() else { return };
@@ -689,6 +732,28 @@ impl Player {
                 }
                 let asking = api.clone();
                 let on_air = match kind {
+                    LiveKind::Personal => {
+                        let id = track.source_id.clone();
+                        let info = bg(async move { asking.personal_now(&id).await }).await.ok();
+                        if player.generation.get() != generation {
+                            return;
+                        }
+                        let on_air = info.as_ref().and_then(|i| i.now.clone()).map(|now| OnAir {
+                            title: now.title,
+                            artist: now.artist,
+                            artwork_url: now.artwork_url,
+                            song: now.song,
+                        });
+                        if let Some(info) = info {
+                            let changed = player.state.borrow().personal.as_ref().map(|p| (p.dj.clone(), p.next.len(), p.thumb.clone()))
+                                != Some((info.dj.clone(), info.next.len(), info.thumb.clone()));
+                            player.state.borrow_mut().personal = Some(info);
+                            if changed {
+                                player.notify();
+                            }
+                        }
+                        on_air
+                    }
                     LiveKind::Channel => {
                         let Some((kind, id)) = track.channel_parts() else { return };
                         let via = via.clone();
@@ -741,7 +806,12 @@ impl Player {
                     player.state.borrow_mut().on_air = on_air;
                 }
                 drop(player);
-                glib::timeout_future(Duration::from_secs(if kind == LiveKind::Channel { 15 } else { 20 })).await;
+                let every = match kind {
+                    LiveKind::Channel => 15,
+                    LiveKind::Personal => 5,
+                    LiveKind::Radio => 20,
+                };
+                glib::timeout_future(Duration::from_secs(every)).await;
             }
         });
     }

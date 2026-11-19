@@ -283,6 +283,40 @@ export interface NowView {
   artistId?: string;
 }
 
+/** One of the person's own stations (their Radio, Rewind and Discovery). */
+export interface PersonalStation {
+  track: Track;
+  kind: string;
+  name: string;
+  tagline: string;
+  /** There's listening to make it from. */
+  ready: boolean;
+  /** What's on, while it's on the air. */
+  onAir?: NowView;
+}
+
+export interface DjLine {
+  id: string;
+  text: string;
+  /** When it's said, on the station's clock. */
+  atMs: number;
+}
+
+/** What's on a personal station, what's coming up and what the DJ says. */
+export interface PersonalNow {
+  station: Track;
+  now?: NowView;
+  songKey?: string;
+  thumb?: "UP" | "DOWN";
+  next: NowView[];
+  recent: NowView[];
+  dj?: DjLine;
+  welcome?: string;
+  /** The server's clock, and how far behind it the station is heard. */
+  serverTime: number;
+  heardDelayMs: number;
+}
+
 export interface ArtistView {
   id: string;
   name: string;

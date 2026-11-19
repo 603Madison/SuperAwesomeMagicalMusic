@@ -89,7 +89,7 @@ interface Programme {
     fun encoder(): Process
 
     /** [now] went on the air (became audible at [atMs]) after [before]: kept, and what the DJ says over it. */
-    fun aired(now: Transmitter.OnAir, before: Transmitter.OnAir?, coming: List<Candidate>, atMs: Long): DjLine?
+    fun aired(now: Transmitter.OnAir, before: Transmitter.OnAir?, coming: List<Candidate>, atMs: Long, skipped: Boolean = false): DjLine?
 }
 
 /**
@@ -163,6 +163,9 @@ class Transmitter(
 
     @Volatile private var running = false
     @Volatile private var skipRequested = false
+
+    /** The song before the one starting was skipped (so the DJ doesn't announce it). */
+    @Volatile private var endedBySkip = false
     @Volatile var failed: String? = null
         private set
     private var playoutThread: Thread? = null
@@ -271,6 +274,7 @@ class Transmitter(
                 if (read <= 0) {
                     // The end (or a skip): its last moments (silence cut) crossfade into the next song.
                     skipRequested = false
+                    endedBySkip = skipped
                     song.source.close()
                     playing = transition(song, window.copyOf(held), pipe, skipped, opening ?: next(joinMidSong = false)) ?: return
                     opening = null
@@ -372,7 +376,9 @@ class Transmitter(
         current = onAir
         if (openingSong?.key == playing.song.key) openingSong = null
         previous?.let { synchronized(recentSongs) { recentSongs.addLast(it); while (recentSongs.size > RECENT) recentSongs.removeFirst() } }
-        dj = runCatching { programme.aired(onAir, if (before != null) previous else null, lined, onAirAt(writtenFrames)) }.getOrNull() ?: dj
+        val skipped = before != null && endedBySkip
+        endedBySkip = false
+        dj = runCatching { programme.aired(onAir, if (before != null) previous else null, lined, onAirAt(writtenFrames), skipped) }.getOrNull() ?: dj
         return playing
     }
 

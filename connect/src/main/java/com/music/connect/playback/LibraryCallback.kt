@@ -109,7 +109,9 @@ class LibraryCallback(
     private suspend fun radioFolders(): List<MediaItem> = online {
         c.refreshFavorites()
         val favorites = if (c.favorites.value.isNotEmpty()) listOf(folder(FAVORITES, "Favourites", "Your channels and stations")) else emptyList()
-        favorites + c.api.sources().filter { it.enabled && !it.hidden }.mapNotNull { source ->
+        // The person's own stations first: one tap to tune in.
+        val mine = runCatching { c.api.personalStations().filter { it.ready }.map { browseItem(MediaItems.id(it.track), it.track) } }.getOrDefault(emptyList())
+        mine + favorites + c.api.sources().filter { it.enabled && !it.hidden }.mapNotNull { source ->
             when (source.kind) {
                 "SIRIUSXM" -> folder("$SXM${source.id}", source.name, "Channels")
                 "RADIO" -> folder("$LOCAL_RADIO${source.id}", "Popular radio", "Stations near you")

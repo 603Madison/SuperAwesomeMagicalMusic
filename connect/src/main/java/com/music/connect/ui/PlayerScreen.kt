@@ -30,6 +30,9 @@ import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.ThumbDown
+import com.music.connect.net.ApiTrack
+import com.music.player.model.SourceType
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -77,6 +80,7 @@ fun PlayerScreen(onClose: () -> Unit) {
     val player = LocalPlayer.current
     val state by player.state.collectAsState()
     val live by c.liveNow.collectAsState()
+    val personal by c.personalNow.collectAsState()
     val descriptions by c.playingDescription.collectAsState()
     val downloaded by c.downloads.doneKeys.collectAsState(initial = emptySet())
     val favorites by c.favorites.collectAsState()
@@ -93,6 +97,18 @@ fun PlayerScreen(onClose: () -> Unit) {
     val title = if (state.live && live != null) live!!.title else track.title
     val artist = if (state.live && live != null) live!!.artist else track.artist
     val artwork = if (state.live) live?.artworkUrl ?: track.artworkUrl else track.artworkUrl
+    // One of the person's own stations: its songs can be skipped and thumbed, and its DJ talks.
+    val station = personal?.takeIf { track.isPersonal }
+    fun stationThumb(direction: String) {
+        val info = station ?: return
+        val key = info.songKey ?: return
+        val next = if (info.thumb == direction) "NONE" else direction
+        c.personalNow.value = info.copy(thumb = next.takeIf { it != "NONE" })
+        scope.launch {
+            runCatching { c.api.personalThumb(track.sourceId, key, next) }
+                .onFailure { c.personalNow.value = info; c.tell(it.message ?: "The station didn't take the thumb") }
+        }
+    }
 
     LazyColumn(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
         item {
@@ -140,6 +156,16 @@ fun PlayerScreen(onClose: () -> Unit) {
             if (!state.live) Progress(state.positionMs, state.durationMs) { player.seek(it) }
             else Spacer(Modifier.height(24.dp))
         }
+        station?.dj?.let { line ->
+            item {
+                AppCard(Modifier.padding(horizontal = 24.dp, vertical = 4.dp), padding = 12.dp) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(Icons.Rounded.Mic, "The DJ", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Text(line.text, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
         item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (track.isStationTrack && track.via != null) {
@@ -154,6 +180,10 @@ fun PlayerScreen(onClose: () -> Unit) {
                         }
                     }
                     IconButton(onClick = { thumb("DOWN") }) { Icon(Icons.Rounded.ThumbDown, "Thumbs down", tint = if (thumbs[trackId] == "DOWN") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                } else if (station != null) {
+                    IconButton(onClick = { stationThumb("DOWN") }, enabled = station.songKey != null) {
+                        Icon(Icons.Rounded.ThumbDown, "Thumbs down: never play it again", tint = if (station.thumb == "DOWN") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 } else if (!state.live) {
                     IconButton(onClick = { player.toggleShuffle() }) { Icon(Icons.Rounded.Shuffle, "Shuffle", tint = if (state.shuffle) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
@@ -161,7 +191,9 @@ fun PlayerScreen(onClose: () -> Unit) {
                 FilledIconButton(onClick = { player.toggle() }, modifier = Modifier.size(72.dp), colors = IconButtonDefaults.filledIconButtonColors()) {
                     Icon(if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (state.playing) "Pause" else "Play", Modifier.size(40.dp))
                 }
-                IconButton(onClick = { player.next() }, enabled = !state.live) { Icon(Icons.Rounded.SkipNext, "Next", Modifier.size(32.dp)) }
+                IconButton(onClick = { player.next() }, enabled = !state.live || track.isPersonal) {
+                    Icon(Icons.Rounded.SkipNext, if (track.isPersonal) "Skip this song" else "Next", Modifier.size(32.dp))
+                }
                 if (track.isStationTrack && track.via != null) {
                     val (stationId, trackId) = MediaItems.split(track.sourceId.removePrefix("stationtrack:"))
                     IconButton(onClick = {
@@ -169,6 +201,10 @@ fun PlayerScreen(onClose: () -> Unit) {
                         thumbs = thumbs + (trackId to next)
                         scope.launch { runCatching { c.api.stationThumb(track.via, stationId, trackId, next, state.positionMs) }.onFailure { c.tell(it.message ?: "SiriusXM didn't take the thumb") } }
                     }) { Icon(Icons.Rounded.ThumbUp, "Thumbs up", tint = if (thumbs[trackId] == "UP") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                } else if (station != null) {
+                    IconButton(onClick = { stationThumb("UP") }, enabled = station.songKey != null) {
+                        Icon(Icons.Rounded.ThumbUp, "Thumbs up: more like this", tint = if (station.thumb == "UP") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 } else if (!state.live) {
                     IconButton(onClick = { player.cycleRepeat() }) {
                         Icon(
@@ -186,7 +222,20 @@ fun PlayerScreen(onClose: () -> Unit) {
                 }
             }
         }
-        if (tab == 0) {
+        if (tab == 0 && station != null) {
+            // The station's line-up: what's coming, then what it played.
+            val rows = station.next.map { it to "Coming up" } + station.recent.map { it to "Played" }
+            itemsIndexed(rows, key = { i, (now, _) -> "$i-${now.title}" }) { i, (now, label) ->
+                if (i == 0 || rows[i - 1].second != label) SectionTitle(label)
+                val first = i == 0 || rows[i - 1].second != label
+                val count = rows.count { it.second == label }
+                val at = if (first) 0 else rows.take(i).count { it.second == label }
+                CardItem(at, count) {
+                    val song = now.song ?: ApiTrack(SourceType.RADIO, "", now.title, now.artist, artworkUrl = now.artworkUrl)
+                    TrackRow(song.copy(artworkUrl = now.artworkUrl ?: song.artworkUrl), onClick = {})
+                }
+            }
+        } else if (tab == 0) {
             val upcoming = state.queue.size - state.index.coerceAtLeast(0)
             itemsIndexed(state.queue, key = { i, t -> "$i-${t.key}" }) { i, queued ->
                 if (i < state.index) return@itemsIndexed

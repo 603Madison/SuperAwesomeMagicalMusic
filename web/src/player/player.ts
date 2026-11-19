@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import { api, ApiError, art } from "../lib/api";
 import { isMissing, trackKey } from "../lib/format";
-import type { ResolvedStream, Track } from "../lib/types";
+import type { PersonalNow, ResolvedStream, Track } from "../lib/types";
 import { Leveller } from "./leveller";
-import { asSong, liveStreamOf, splitRadioTitle, splitTwo } from "./live";
+import { asSong, isPersonal, liveStreamOf, splitRadioTitle, splitTwo, timeZone } from "./live";
 import { usePrefs } from "./prefs";
 import type Hls from "hls.js";
 
@@ -36,6 +36,10 @@ export interface PlayerState {
   liveHistory: LiveNow[];
   /** Thumbs given to Pandora station tracks, by track id. */
   thumbs: Record<string, "UP" | "DOWN">;
+  /** On one of the person's own stations: what's coming up, and what the DJ says. */
+  personal: PersonalNow | null;
+  /** What the DJ is saying (or last said), to show as it's spoken. */
+  djSaid: string | null;
 }
 
 export interface LiveNow {
@@ -68,6 +72,8 @@ export const usePlayer = create<PlayerState>(() => ({
   liveNow: null,
   liveHistory: [],
   thumbs: {},
+  personal: null,
+  djSaid: null,
 }));
 
 const set = usePlayer.setState;
@@ -169,7 +175,8 @@ async function load(index: number, autoplay: boolean, startAt = 0) {
   reported = false;
   const token = ++loadToken;
   audio.pause();
-  set({ index, current: null, buffering: true, error: null, position: startAt, duration: (item.track.durationMs ?? 0) / 1000, playing: autoplay, liveNow: null, liveHistory: [] });
+  set({ index, current: null, buffering: true, error: null, position: startAt, duration: (item.track.durationMs ?? 0) / 1000, playing: autoplay, liveNow: null, liveHistory: [], personal: null, djSaid: null });
+  quiet();
   try {
     const live = liveStreamOf(item.track);
     const resolved: ResolvedStream = live
@@ -312,7 +319,103 @@ function onLiveStart(track: Track) {
     void moreFromStation();
   }
   void pollLive();
-  livePoll = window.setInterval(() => void pollLive(), live.kind === "station-track" ? 30_000 : 10_000);
+  livePoll = window.setInterval(() => void pollLive(), live.kind === "station-track" ? 30_000 : live.kind === "personal" ? 5_000 : 10_000);
+}
+
+// ---- One of the person's own stations: its clock, and its DJ ----
+
+/** The server's clock less this one's. */
+let clockOffset = 0;
+const spoken = new Set<string>();
+let welcomed: Track | null = null;
+let djTimers: number[] = [];
+
+/** The station's time [serverMs] as heard here (its stream runs a few seconds behind). */
+function heardAt(info: PersonalNow, serverMs: number) {
+  return serverMs - clockOffset + info.heardDelayMs;
+}
+
+function personalHeard(track: Track, info: PersonalNow) {
+  clockOffset = info.serverTime - Date.now();
+  const now = info.now;
+  heard(now ? { title: now.title, artist: now.artist, album: now.album, artworkUrl: now.artworkUrl, song: now.song, startMs: heardAt(info, now.startMs), durationMs: now.durationMs } : null);
+  set({ personal: info });
+  if (!usePrefs.getState().djVoice) return;
+  if (welcomed !== track && info.welcome) {
+    welcomed = track;
+    say(info.welcome, Date.now() + 1200);
+  }
+  if (info.dj && !spoken.has(info.dj.id)) {
+    spoken.add(info.dj.id);
+    say(info.dj.text, heardAt(info, info.dj.atMs));
+  }
+}
+
+/** Has the DJ say [text] at [at] (this clock): over the start of the song, the music dipped under. */
+function say(text: string, at: number) {
+  const wait = at - Date.now();
+  // Too late to say over the song's start (tuned in after it): it's left unsaid.
+  if (wait < -10_000) return;
+  djTimers.push(window.setTimeout(() => speak(text), Math.max(0, wait)));
+}
+
+function speak(text: string) {
+  const { queue, index, playing } = state();
+  if (!playing || !isPersonal(queue[index]?.track) || !("speechSynthesis" in window)) return;
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voice = djVoice();
+  if (voice) utterance.voice = voice;
+  utterance.rate = 1.03;
+  utterance.onstart = () => {
+    set({ djSaid: text });
+    duckTo(0.3);
+  };
+  const done = () => {
+    if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) duckTo(1);
+  };
+  utterance.onend = done;
+  utterance.onerror = done;
+  window.speechSynthesis.speak(utterance);
+}
+
+/** A voice for the DJ: the language of the page, a natural-sounding one where there's a choice. */
+function djVoice(): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
+  const lang = (navigator.language || "en").slice(0, 2);
+  const mine = voices.filter((v) => v.lang.startsWith(lang));
+  const pool = mine.length ? mine : voices.filter((v) => v.lang.startsWith("en"));
+  return pool.find((v) => /natural|neural|online/i.test(v.name)) ?? pool.find((v) => /google/i.test(v.name)) ?? pool.find((v) => v.default) ?? pool[0] ?? null;
+}
+
+/** Stops the DJ (another song, a pause, another station). */
+function quiet() {
+  djTimers.forEach((t) => clearTimeout(t));
+  djTimers = [];
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  duckTo(1);
+}
+
+// The music dips while the DJ talks: [duck] scales the volume, eased in and out.
+let duck = 1;
+let duckTimer: number | null = null;
+
+function duckTo(target: number) {
+  if (duckTimer != null) clearInterval(duckTimer);
+  duckTimer = window.setInterval(() => {
+    const step = 0.07;
+    duck = Math.abs(target - duck) <= step ? target : duck + Math.sign(target - duck) * step;
+    applyVolume();
+    if (duck === target && duckTimer != null) {
+      clearInterval(duckTimer);
+      duckTimer = null;
+    }
+  }, 30);
+}
+
+/** The volume as chosen, muted or dipped under the DJ. */
+function applyVolume(scale = 1) {
+  const { volume, muted } = state();
+  audio.volume = Math.min(1, Math.max(0, (muted ? 0 : volume) * duck * scale));
 }
 
 /** What's on now; the song before goes into the history when it changes. */
@@ -341,6 +444,10 @@ async function pollLive() {
       const now = await api.channelNow(track.via!, type, id, at);
       if (state().queue[state().index]?.track !== track) return;
       heard(now ? { title: now.title, artist: now.artist, album: now.album, artworkUrl: now.artworkUrl, song: now.song, startMs: now.startMs, durationMs: now.durationMs } : null);
+    } else if (live.kind === "personal") {
+      const info = await api.personalNow(track.sourceId, timeZone());
+      if (state().queue[state().index]?.track !== track) return;
+      personalHeard(track, info);
     } else if (live.kind === "radio") {
       const { title } = await api.radioNow(track.via!, track.sourceId.replace(/^hls:/, ""));
       if (state().queue[state().index]?.track !== track) return;
@@ -472,15 +579,15 @@ audio.volume = state().volume;
 
 // The sleep timer fades out over the last 10 seconds.
 setInterval(() => {
-  const { sleepAt, volume, muted } = state();
+  const { sleepAt } = state();
   if (typeof sleepAt !== "number") return;
   const left = sleepAt - Date.now();
   if (left <= 0) {
     audio.pause();
-    audio.volume = muted ? 0 : volume;
     set({ sleepAt: null });
+    applyVolume();
   } else if (left < 10_000) {
-    audio.volume = (muted ? 0 : volume) * (left / 10_000);
+    applyVolume(left / 10_000);
   }
 }, 250);
 
@@ -587,6 +694,8 @@ leveller.setEnabled(usePrefs.getState().levelling);
 export const player = {
   /** Where a live stream is, as a time (what's heard, not what's newest); null when it can't say. */
   liveClock(): number | null {
+    // A personal station's times are already on this clock, as heard.
+    if (isPersonal(state().queue[state().index]?.track)) return Date.now();
     return hls?.playingDate?.getTime() ?? null;
   },
 
@@ -688,6 +797,7 @@ export const player = {
   pause() {
     pausing = true;
     audio.pause();
+    quiet();
   },
 
   toggle() {
@@ -696,6 +806,13 @@ export const player = {
   },
 
   next() {
+    // One of the person's own stations: the station moves on to its next song.
+    const track = state().queue[state().index]?.track;
+    if (track && isPersonal(track)) {
+      quiet();
+      api.personalSkip(track.sourceId).then(() => setTimeout(() => void pollLive(), 1500), () => undefined);
+      return;
+    }
     const next = nextIndex();
     if (next != null) void load(next, true);
   },
@@ -727,14 +844,13 @@ export const player = {
 
   setVolume(volume: number) {
     const v = Math.min(1, Math.max(0, volume));
-    audio.volume = v;
     set({ volume: v, muted: false });
+    applyVolume();
   },
 
   toggleMute() {
-    const muted = !state().muted;
-    audio.volume = muted ? 0 : state().volume;
-    set({ muted });
+    set({ muted: !state().muted });
+    applyVolume();
   },
 
   cycleRepeat() {
@@ -743,7 +859,7 @@ export const player = {
   },
 
   sleepIn(minutes: number | "track" | null) {
-    audio.volume = state().muted ? 0 : state().volume;
+    applyVolume();
     set({ sleepAt: minutes == null ? null : minutes === "track" ? "track" : Date.now() + minutes * 60_000 });
   },
 
@@ -759,8 +875,26 @@ export const player = {
 
   /** Thumbs a Pandora station track up or down (down skips it, as Pandora does). */
   async thumb(direction: "UP" | "DOWN") {
-    const { queue, index, thumbs } = state();
+    const { queue, index, thumbs, personal } = state();
     const track = queue[index]?.track;
+    // One of the person's own stations: up plays it more, down never again (and moves on).
+    if (track && isPersonal(track)) {
+      const key = personal?.songKey;
+      if (!personal || !key) return;
+      const next = personal.thumb === direction ? "NONE" : direction;
+      set({ personal: { ...personal, thumb: next === "NONE" ? undefined : next } });
+      try {
+        await api.personalThumb(track.sourceId, key, next);
+        if (next === "DOWN") {
+          quiet();
+          setTimeout(() => void pollLive(), 1500);
+        }
+      } catch (e) {
+        set({ personal });
+        throw e;
+      }
+      return;
+    }
     if (!track?.via || !track.sourceId.startsWith("stationtrack:")) return;
     const [stationId, trackId] = splitTwo(track.sourceId.slice("stationtrack:".length));
     const next = thumbs[trackId] === direction ? "NONE" : direction;

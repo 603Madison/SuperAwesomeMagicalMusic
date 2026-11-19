@@ -13,6 +13,8 @@ interface Prefs {
   palette: Palette;
   /** Light, dark, or as the system is. */
   scheme: "system" | "light" | "dark";
+  /** The DJ on the person's own stations speaks (otherwise its words are only shown). */
+  djVoice: boolean;
 }
 
 export type Palette = "aurora" | "violet" | "ocean" | "ember";
@@ -28,7 +30,7 @@ export const PALETTES: { id: Palette; name: string; swatch: [string, string] }[]
 const KEY = "samm.prefs";
 
 function load(): Prefs {
-  const defaults: Prefs = { kbps: 0, levelling: true, thorough: true, boldText: false, palette: "aurora", scheme: "system" };
+  const defaults: Prefs = { kbps: 0, levelling: true, thorough: true, boldText: false, palette: "aurora", scheme: "system", djVoice: true };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) ?? "{}") };
   } catch {

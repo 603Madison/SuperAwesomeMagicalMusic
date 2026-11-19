@@ -91,11 +91,19 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
     play.add_css_class("play-button");
     let next = icon_button("media-skip-forward-symbolic", "Next (Ctrl+→)");
     let repeat = icon_button("media-playlist-repeat-symbolic", "Repeat: off");
-    for b in [&shuffle, &previous] {
+    // On one of the person's own stations: thumbs for the song on the air.
+    let thumb_down = icon_button("samm-thumb-down-symbolic", "Thumbs down: never play it again");
+    let thumb_up = icon_button("samm-thumb-up-symbolic", "Thumbs up: more like this");
+    for (button, direction) in [(&thumb_down, "DOWN"), (&thumb_up, "UP")] {
+        button.set_visible(false);
+        let player = player.clone();
+        button.connect_clicked(move |_| player.thumb(direction));
+    }
+    for b in [&thumb_down, &shuffle, &previous] {
         buttons.append(b);
     }
     buttons.append(&play);
-    for b in [&next, &repeat] {
+    for b in [&next, &repeat, &thumb_up] {
         buttons.append(b);
     }
     let progress_row = gtk::Box::builder().spacing(10).build();
@@ -284,8 +292,34 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
                 artist.set_text("");
             }
         }
-        detail.set_text(&state.description);
-        detail.set_visible(!state.description.is_empty());
+        // On one of the person's own stations, what the DJ said over this song (as the web shows it).
+        let personal = state.current().is_some_and(crate::api::Track::is_personal);
+        let dj = state.personal.as_ref().and_then(|p| p.dj.as_ref()).filter(|_| personal).map(|d| d.text.clone());
+        match &dj {
+            Some(said) => {
+                detail.set_text(&format!("DJ: {said}"));
+                detail.set_tooltip_text(Some(said));
+                detail.add_css_class("dj");
+            }
+            None => {
+                detail.set_text(&state.description);
+                detail.set_tooltip_text(None);
+                detail.remove_css_class("dj");
+            }
+        }
+        detail.set_visible(!detail.text().is_empty());
+        let thumb = state.personal.as_ref().filter(|_| personal).map(|p| (p.song_key.is_some(), p.thumb.clone()));
+        for (button, direction) in [(&thumb_down, "DOWN"), (&thumb_up, "UP")] {
+            button.set_visible(thumb.is_some());
+            button.set_sensitive(thumb.as_ref().is_some_and(|(known, _)| *known));
+            if thumb.as_ref().and_then(|(_, t)| t.as_deref()) == Some(direction) {
+                button.add_css_class("on");
+            } else {
+                button.remove_css_class("on");
+            }
+        }
+        shuffle.set_visible(!personal);
+        repeat.set_visible(!personal);
         let is_live = state.live();
         live.set_visible(is_live);
         play_icon.set_icon_name(Some(if state.playing {
@@ -298,6 +332,7 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
         play.set_sensitive(state.index.is_some());
         previous.set_sensitive(state.index.is_some() && !is_live);
         next.set_sensitive(state.has_next());
+        next.set_tooltip_text(Some(if personal { "Skip this song" } else { "Next (Ctrl+→)" }));
         shuffle.set_sensitive(state.index.is_some_and(|i| i + 2 < state.queue.len()));
         let (icon, said) = match state.repeat {
             Repeat::Off => ("media-playlist-repeat-symbolic", "Repeat: off"),

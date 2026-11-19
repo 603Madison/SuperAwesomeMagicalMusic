@@ -44,6 +44,25 @@ pub enum LiveKind {
     Channel,
     /// A radio station, with what's on from its stream's title.
     Radio,
+    /// One of the person's own stations, made by the server: what's on, what's next and its DJ.
+    Personal,
+}
+
+/// The time zone here ("Europe/London"), so a personal station's DJ gives the local time.
+pub fn time_zone() -> String {
+    let from_env = std::env::var("TZ").ok().map(|tz| tz.trim_start_matches(':').to_string());
+    let from_file = || std::fs::read_to_string("/etc/timezone").ok().map(|s| s.trim().to_string());
+    let from_link = || {
+        std::fs::read_link("/etc/localtime")
+            .ok()
+            .and_then(|p| p.to_string_lossy().split_once("zoneinfo/").map(|(_, zone)| zone.to_string()))
+    };
+    from_env
+        .filter(|tz| !tz.is_empty() && !tz.starts_with('/'))
+        .or_else(from_file)
+        .or_else(from_link)
+        .filter(|tz| !tz.is_empty())
+        .unwrap_or_else(|| "UTC".into())
 }
 
 fn split_two(value: &str) -> (&str, &str) {
@@ -61,6 +80,11 @@ impl Track {
 
     pub fn is_live(&self) -> bool {
         self.is_channel() || self.is_radio()
+    }
+
+    /// One of the person's own stations (their Radio, Rewind or Discovery).
+    pub fn is_personal(&self) -> bool {
+        self.is_radio() && self.via.as_deref() == Some("personal")
     }
 
     /// A Pandora station's song, which plays once from the station.
@@ -84,6 +108,12 @@ impl Track {
             return Some(LiveStream {
                 path: format!("/api/live/sxm/{via}/channel/{}/{}", enc(kind), enc(id)),
                 kind: LiveKind::Channel,
+            });
+        }
+        if self.is_personal() {
+            return Some(LiveStream {
+                path: format!("/api/live/radio/{via}/station/{}/stream?tz={}", enc(&self.source_id), enc(&time_zone())),
+                kind: LiveKind::Personal,
             });
         }
         if self.is_radio() {
@@ -298,6 +328,49 @@ pub struct NowView {
     pub artwork_url: Option<String>,
     #[serde(default)]
     pub song: Option<Track>,
+    /// When it started (the server's clock) and how long it is.
+    #[serde(default)]
+    pub start_ms: i64,
+    #[serde(default)]
+    pub duration_ms: i64,
+}
+
+/// One of the person's own stations, as the Radio page lists it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonalStation {
+    pub track: Track,
+    pub kind: String,
+    pub name: String,
+    #[serde(default)]
+    pub tagline: String,
+    #[serde(default)]
+    pub ready: bool,
+    #[serde(default)]
+    pub on_air: Option<NowView>,
+}
+
+/// What the station's DJ says over the start of a song.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct DjLine {
+    pub id: String,
+    pub text: String,
+}
+
+/// What's on one of the person's own stations, what's next, its thumbs and its DJ.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonalNow {
+    #[serde(default)]
+    pub now: Option<NowView>,
+    #[serde(default)]
+    pub song_key: Option<String>,
+    #[serde(default)]
+    pub thumb: Option<String>,
+    #[serde(default)]
+    pub next: Vec<NowView>,
+    #[serde(default)]
+    pub dj: Option<DjLine>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -547,6 +620,30 @@ impl Api {
         .await
     }
 
+    pub async fn personal_stations(&self) -> Result<Vec<PersonalStation>> {
+        self.get("/api/radio/personal").await
+    }
+
+    pub async fn personal_now(&self, id: &str) -> Result<PersonalNow> {
+        self.get(&format!("/api/radio/personal/{}/now?tz={}", enc(id), enc(&time_zone()))).await
+    }
+
+    pub async fn personal_skip(&self, id: &str) -> Result<()> {
+        self.send::<serde_json::Value>(Method::POST, &format!("/api/radio/personal/{}/skip", enc(id)), Some(json!({})))
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn personal_thumb(&self, id: &str, key: &str, thumb: &str) -> Result<()> {
+        self.send::<serde_json::Value>(
+            Method::POST,
+            &format!("/api/radio/personal/{}/thumb", enc(id)),
+            Some(json!({ "key": key, "thumb": thumb })),
+        )
+        .await
+        .map(|_| ())
+    }
+
     pub async fn radio_search(&self, source: &str, query: &str) -> Result<Vec<Track>> {
         self.get(&format!("/api/live/radio/{}/search?q={}", enc(source), enc(query))).await
     }
@@ -672,6 +769,17 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(radio.live_stream().unwrap().path, "/api/live/radio/r/station/abc/stream");
+        // One of the person's own stations: the server's broadcast, told the time zone.
+        let mine = Track {
+            source: "RADIO".into(),
+            source_id: "mine".into(),
+            via: Some("personal".into()),
+            ..Default::default()
+        };
+        let stream = mine.live_stream().unwrap();
+        assert_eq!(stream.kind, LiveKind::Personal);
+        assert!(stream.path.starts_with("/api/live/radio/personal/station/mine/stream?tz="), "{}", stream.path);
+        assert!(!time_zone().is_empty());
         let song = Track {
             source: "JELLYFIN".into(),
             source_id: "s1".into(),

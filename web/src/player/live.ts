@@ -7,10 +7,22 @@ export interface LiveStream {
   /** No end and no seeking. */
   live: boolean;
   description: string;
-  kind: "channel" | "station-track" | "radio";
+  kind: "channel" | "station-track" | "radio" | "personal";
 }
 
 const q = encodeURIComponent;
+
+/** The listener's time zone, so the DJ's time checks are theirs. */
+export const timeZone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+};
+
+/** One of the person's own stations (made by the server from their listening). */
+export const isPersonal = (track: Track | undefined) => track?.source === "RADIO" && track.via === "personal";
 
 export function liveStreamOf(track: Track): LiveStream | null {
   const via = track.via;
@@ -24,6 +36,9 @@ export function liveStreamOf(track: Track): LiveStream | null {
     const [, trackId] = splitTwo(track.sourceId.slice("stationtrack:".length));
     if (!trackId) return null;
     return { url: `/api/live/sxm/${q(via)}/station-track/${q(trackId)}`, hls: false, live: false, description: "Pandora station · SiriusXM", kind: "station-track" };
+  }
+  if (isPersonal(track)) {
+    return { url: `/api/live/radio/personal/station/${q(track.sourceId)}/stream?tz=${q(timeZone())}`, hls: false, live: true, description: "Made for you", kind: "personal" };
   }
   if (track.source === "RADIO") {
     const hls = track.sourceId.startsWith("hls:");

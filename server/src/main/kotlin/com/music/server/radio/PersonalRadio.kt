@@ -231,12 +231,12 @@ class PersonalRadio(private val services: Services) {
             "-c:a", "aac", "-b:a", "192k", "-f", "adts", "pipe:1",
         ).redirectError(ProcessBuilder.Redirect.DISCARD).start()
 
-        override fun aired(now: Transmitter.OnAir, before: Transmitter.OnAir?, coming: List<Candidate>, atMs: Long): DjLine? {
+        override fun aired(now: Transmitter.OnAir, before: Transmitter.OnAir?, coming: List<Candidate>, atMs: Long, skipped: Boolean): DjLine? {
             aired += Played(kind.id, now.song.key, now.song.artistKey, services.clock())
             while (aired.size > 50) aired.pollFirst()
             services.scope.launch { runCatching { store.played(user.id, kind.id, now.song) } }
             val transmitter = transmitters[keyOf(user.id, kind)]
-            return dj.line(transmitter?.name ?: kind.suffix, kind, before?.song, now.song, coming, atMs, transmitter?.zone ?: ZoneId.systemDefault())
+            return dj.line(transmitter?.name ?: kind.suffix, kind, before?.song, now.song, coming, atMs, transmitter?.zone ?: ZoneId.systemDefault(), skipped)
         }
     }
 

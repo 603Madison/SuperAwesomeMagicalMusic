@@ -1,6 +1,14 @@
 package com.music.connect.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import com.music.connect.net.PersonalStation
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -94,6 +102,7 @@ fun RadioScreen() {
     LaunchedEffect(Unit) { c.refreshFavorites() }
     Column(Modifier.fillMaxSize()) {
         ScreenTitle("Radio")
+        MadeForYou()
         if (favorites.isNotEmpty()) Favorites(favorites)
         val kinds = listOf("SiriusXM", "Pandora", "Local radio")
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -116,6 +125,63 @@ fun RadioScreen() {
 
 /** The person's favourite channels and stations (from here or the web player): one tap to play. */
 @OptIn(ExperimentalFoundationApi::class)
+/**
+ * The person's own stations, made by the server from what they play and like: their Radio,
+ * Rewind and Discovery, on the air like any station (a DJ included).
+ */
+@Composable
+private fun MadeForYou() {
+    val c = appContainer()
+    val player = LocalPlayer.current
+    val playing by player.state.collectAsState()
+    var stations by remember { mutableStateOf<List<PersonalStation>>(emptyList()) }
+    LaunchedEffect(Unit) { stations = runCatching { c.api.personalStations() }.getOrDefault(emptyList()) }
+    if (stations.isEmpty()) return
+    SectionTitle("Made for you")
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.padding(bottom = 12.dp).testTag("made-for-you"),
+    ) {
+        items(stations, key = { it.kind }) { station ->
+            val current = playing.track?.key == station.track.key
+            val colors = when (station.kind) {
+                "rewind" -> listOf(Color(0xFFB4471A), Color(0xFF6A3FD6))
+                "discovery" -> listOf(Color(0xFF0E8FA3), Color(0xFF12A37C))
+                else -> listOf(Color(0xFF5B3FD1), Color(0xFF0F9D77))
+            }
+            val shape = RoundedCornerShape(20.dp)
+            Row(
+                Modifier
+                    .width(276.dp)
+                    .alpha(if (station.ready) 1f else 0.7f)
+                    .clip(shape)
+                    .background(Brush.linearGradient(colors))
+                    .then(if (current) Modifier.border(3.dp, MaterialTheme.colorScheme.tertiary, shape) else Modifier)
+                    .clickable(enabled = station.ready, onClickLabel = "Tune in") { player.play(listOf(station.track)) }
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Artwork(station.track.artworkUrl, 64.dp, corner = 14.dp)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(station.name, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        if (station.ready) station.tagline else "Play some music, and it fills up with what you love",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.85f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    station.onAir?.let {
+                        Text("On air: ${it.title} · ${it.artist}", style = MaterialTheme.typography.labelSmall, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun Favorites(favorites: List<ApiTrack>) {
     val c = appContainer()

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Info, Maximize2, Minimize2, Pause, Play, SkipBack, SkipForward } from "lucide-react";
+import { Info, Maximize2, Mic, Minimize2, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { api, art } from "../lib/api";
 import { duration } from "../lib/format";
 import type { LyricsView, NowView, Track } from "../lib/types";
@@ -10,7 +10,7 @@ import { Artwork } from "../components/Artwork";
 import { albumNamed, artistNamed } from "../components/Cards";
 import { Queue } from "../components/Queue";
 import { favoriteOf, FavoriteButton } from "../components/Favorite";
-import { splitTwo } from "../player/live";
+import { isPersonal, splitTwo } from "../player/live";
 import { TrackMenu } from "../components/TrackList";
 import { Button, IconButton, Spinner } from "../components/ui";
 import { TrackInfo } from "../components/TrackInfo";
@@ -104,15 +104,16 @@ export function NowPlaying() {
               </div>
             </div>
             {live ? <LiveSong /> : <p className="np-quality">{current ? current.description : buffering ? "Finding the best copy…" : ""}</p>}
+            {live && isPersonal(base) && <DjLine />}
           </div>
-          <Controls live={live} />
+          <Controls live={live} skippable={isPersonal(base)} />
         </section>
 
         <section className="np-side">
           <div className="np-tabs" role="tablist">
             <button role="tab" aria-selected={view === "cover"} className={view === "cover" ? "is-active" : ""} onClick={() => show("cover")}>Song</button>
             <button role="tab" aria-selected={view === "lyrics"} className={view === "lyrics" ? "is-active" : ""} onClick={() => show("lyrics")}>Lyrics</button>
-            <button role="tab" aria-selected={view === "queue"} className={view === "queue" ? "is-active" : ""} onClick={() => show("queue")}>{live ? "Played" : "Up next"}</button>
+            <button role="tab" aria-selected={view === "queue"} className={view === "queue" ? "is-active" : ""} onClick={() => show("queue")}>{live && !isPersonal(base) ? "Played" : "Up next"}</button>
           </div>
           {/* On narrow screens, the song stays in view above its lyrics or queue. */}
           <button className="np-mini" onClick={() => show("cover")} aria-label="Show the cover">
@@ -123,7 +124,7 @@ export function NowPlaying() {
             </span>
           </button>
           {view === "queue" ? (
-            live && base ? <Played channel={base} /> : <div className="np-panel np-queue"><Queue /></div>
+            live && base ? (isPersonal(base) ? <ComingUp channel={base} /> : <Played channel={base} />) : <div className="np-panel np-queue"><Queue /></div>
           ) : lyricsFor ? (
             <Lyrics track={lyricsFor} seekable={!live} />
           ) : (
@@ -220,6 +221,54 @@ function Played({ channel }: { channel: Track }) {
   );
 }
 
+/** What the station's DJ said over the start of this song. */
+function DjLine() {
+  const dj = usePlayer((s) => s.personal?.dj);
+  if (!dj) return null;
+  return (
+    <p className="np-dj" key={dj.id}>
+      <Mic size={16} aria-label="The DJ" />
+      <span>{dj.text}</span>
+    </p>
+  );
+}
+
+/** On one of the person's own stations: what's coming up, and what it played before. */
+function ComingUp({ channel }: { channel: Track }) {
+  const info = usePlayer((s) => s.personal);
+  if (!info) return <div className="np-panel np-note"><Spinner /></div>;
+  const row = (r: NowView, i: number, when?: string) => (
+    <li key={`${i}-${r.title}`} className="np-played-row">
+      <Artwork url={r.artworkUrl ?? channel.artworkUrl} size={48} px={128} alt="" />
+      <div className="np-played-text">
+        <span className="np-played-title">{r.title}</span>
+        <span className="np-played-artist">{r.artist}</span>
+      </div>
+      {when && <span className="np-played-when">{when}</span>}
+      {r.song && <TrackMenu track={r.song} />}
+    </li>
+  );
+  if (!info.next.length && !info.recent.length) {
+    return <div className="np-panel np-note"><p className="np-note-title">Warming up</p><p>The station's line-up shows here in a moment.</p></div>;
+  }
+  return (
+    <div className="np-panel np-played np-coming">
+      {info.next.length > 0 && (
+        <>
+          <h3>Coming up</h3>
+          <ol>{info.next.map((r, i) => row(r, i))}</ol>
+        </>
+      )}
+      {info.recent.length > 0 && (
+        <>
+          <h3>Played</h3>
+          <ol>{info.recent.map((r, i) => row(r, i, ago(info.serverTime - r.startMs)))}</ol>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** "Just now", "4 min ago", "1 h 12 min ago". */
 function ago(ms: number): string {
   const minutes = Math.round(ms / 60_000);
@@ -253,7 +302,7 @@ function Backdrop({ url }: { url?: string }) {
 }
 
 /** Play, skip and the time: in full screen, where the player bar isn't. */
-function Controls({ live }: { live: boolean }) {
+function Controls({ live, skippable }: { live: boolean; skippable: boolean }) {
   const playing = usePlayer((s) => s.playing);
   const seek = useSeek();
   return (
@@ -270,7 +319,7 @@ function Controls({ live }: { live: boolean }) {
         <button className="np-play" onClick={() => player.toggle()} aria-label={playing ? "Pause" : "Play"}>
           {playing ? <Pause size={30} fill="currentColor" /> : <Play size={30} fill="currentColor" />}
         </button>
-        <button onClick={() => player.next()} aria-label="Next" disabled={live}><SkipForward size={26} fill="currentColor" /></button>
+        <button onClick={() => player.next()} aria-label={skippable ? "Skip this song" : "Next"} disabled={live && !skippable}><SkipForward size={26} fill="currentColor" /></button>
       </div>
     </div>
   );

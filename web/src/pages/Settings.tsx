@@ -66,6 +66,7 @@ function PlaybackSettings() {
         </select>
       </Field>
       <Toggle label="Even out volume" help="Songs from different services play at about the same loudness." checked={prefs.levelling} onChange={(levelling) => usePrefs.setState({ levelling })} />
+      <Toggle label="The DJ talks" help="On your own stations (Radio › Made for you), the DJ introduces songs and gives the time, over the music. Off: what it says is only shown." checked={prefs.djVoice} onChange={(djVoice) => usePrefs.setState({ djVoice })} />
       <Toggle label="Compare every service for the best copy" help="Starts songs a moment later, but asks every service and picks the best copy that fits your quality setting." checked={prefs.thorough} onChange={(thorough) => usePrefs.setState({ thorough })} />
     </div>
   );

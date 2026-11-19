@@ -19,6 +19,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -64,6 +66,28 @@ class EndToEndTest {
     private fun signInWithPassword() = runBlocking {
         token = api.login(base, "maddie", "correct horse", "Test phone").token
         assertNotNull(token)
+    }
+
+    @Test
+    fun `the person's own stations are listed, and play as radio stations`() = runBlocking {
+        signInWithPassword()
+        val stations = api.personalStations()
+        assertEquals(listOf("mine", "rewind", "discovery"), stations.map { it.kind })
+        val mine = stations.first().track
+        assertTrue(mine.isPersonal && mine.isLive)
+        assertTrue(stations.first().name.endsWith("’s Radio"))
+        // Its logo is the server's own picture; its stream is the station's broadcast, in this time zone.
+        assertEquals("$base/api/radio/art?station=mine", com.music.connect.playback.MediaItems.artworkUri(base, mine.artworkUrl, 256).toString())
+        val (path, hls) = com.music.connect.playback.MediaItems.livePath(mine)!!
+        assertTrue(path, path.startsWith("/api/live/radio/personal/station/mine/stream?tz="))
+        assertFalse(hls)
+        // Not on the air yet: what's on is nothing, but the station is there.
+        val now = api.personalNow("mine", "UTC")
+        assertEquals(mine.title, now.station.title)
+        assertNull(now.now)
+        // A thumb is for the song on the air: with nothing on, it's refused, plainly.
+        val refused = runCatching { api.personalThumb("mine", "velvet satellites|neon tidepool", "UP") }.exceptionOrNull()
+        assertEquals("That station isn't on", refused?.message)
     }
 
     @Test

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Heart, Lock, MapPin, Radio as RadioIcon, Search as SearchIcon } from "lucide-react";
 import { api } from "../lib/api";
-import type { ArtistView, ChannelView, SourceView, Track } from "../lib/types";
+import type { ArtistView, ChannelView, PersonalStation, SourceView, Track } from "../lib/types";
+import { isPersonal } from "../player/live";
 import { player, usePlayer } from "../player/player";
 import { Artwork } from "../components/Artwork";
 import { favoriteOf, FavoriteButton, isStation, playFavorite, rememberStation } from "../components/Favorite";
@@ -32,6 +33,7 @@ export function Radio() {
           </select>
         )}
       />
+      <MadeForYou />
       <Favorites />
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={shown === "sxm"} className={shown === "sxm" ? "is-active" : ""} onClick={() => setTab("sxm")}>SiriusXM</button>
@@ -46,6 +48,51 @@ export function Radio() {
       {shown === "sxm" && sxm && <Channels source={sxm} />}
       {shown === "pandora" && sxm && <Stations source={sxm} />}
       {shown === "radio" && (radio ? <RadioStations source={radio} /> : <Empty title="Radio is off">An admin can add the Radio source in Admin › Shared sources.</Empty>)}
+    </div>
+  );
+}
+
+/**
+ * The person's own stations, made by the server from what they play and like: their Radio, their
+ * Rewind and their Discovery, on the air for them like any station (a DJ included).
+ */
+function MadeForYou() {
+  const { data } = useLoad(() => api.personalStations(), []);
+  const playing = usePlayer((s) => { const t = s.queue[s.index]?.track; return isPersonal(t) ? t!.sourceId : null; });
+  if (!data?.length) return null;
+  return (
+    <section className="made-for-you">
+      <h2 className="section-title">Made for you</h2>
+      <div className="personal-row">
+        {data.map((station) => <PersonalCard key={station.kind} station={station} current={playing === station.kind} />)}
+      </div>
+    </section>
+  );
+}
+
+function PersonalCard({ station, current }: { station: PersonalStation; current: boolean }) {
+  const onAir = station.onAir;
+  return (
+    <div className={`personal-card personal-${station.kind} ${current ? "is-current" : ""} ${station.ready ? "" : "is-waiting"}`}>
+      <button
+        className="personal-button"
+        disabled={!station.ready}
+        onClick={() => player.playLive(station.track)}
+        title={station.ready ? `Tune in to ${station.name}` : "Listen to some music first"}
+      >
+        <Artwork url={station.track.artworkUrl} size={84} px={256} alt="" />
+        <span className="personal-text">
+          <span className="personal-name">{station.name}</span>
+          <span className="personal-tagline">{station.ready ? station.tagline : "Play some music, and it fills up with what you love"}</span>
+          {onAir && (
+            <span className="personal-on">
+              <span className="live-pill">On air</span>
+              <span className="personal-song">{onAir.title} · {onAir.artist}</span>
+            </span>
+          )}
+        </span>
+      </button>
+      {station.ready && <FavoriteButton track={station.track} size={18} className="icon-btn favorite-corner" />}
     </div>
   );
 }

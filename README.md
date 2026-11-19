@@ -143,6 +143,26 @@ search and not stored; stations within 80 km are listed, most listened to first.
 search by name, and star favourites. Favourites and the stations found near you are listed in
 Android Auto under **Radio**. Next and previous move between stations in the list you played from.
 
+### Made for you: your own radio stations
+
+The Radio tab starts with three stations the server makes for each person from what they play,
+keep in playlists and give a thumbs up (or down):
+
+- **[Your name]'s Radio**: your favourites now, the ones you loved a while back, songs from your
+  playlists, and some you haven't heard yet from artists you love.
+- **[Your name]'s Rewind**: the songs you couldn't stop playing, months ago, back on the air.
+- **[Your name]'s Discovery**: new to you, from the artists you play most.
+
+They're stations, not playlists: each is one broadcast from the server, so it's on whether you're
+listening or not, and you tune in partway through a song. Songs crossfade into each other at an
+even loudness, with a programmer's clock behind them (no artist twice in a row, no song again
+for hours), and a DJ who knows your listening: back-announcing, saying what's coming up,
+introducing a song you've had on repeat or haven't played since spring, and giving the time on
+the hour. The web player and the phone app speak its lines over the start of songs, dipping the
+music under its voice (Settings › **The DJ talks** turns that off); the desktop app shows them.
+Skip moves the station on, a thumbs up plays a song more, a thumbs down never again. They play in
+Android Auto too, at the top of **Radio**.
+
 ### Android Auto
 
 The app appears as a media source in Android Auto (and to the system, Android Automotive, the

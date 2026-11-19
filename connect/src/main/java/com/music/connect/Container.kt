@@ -72,6 +72,9 @@ class Container(val context: Context) {
 
     val liveNow = MutableStateFlow<LiveNow?>(null)
 
+    /** On one of the person's own stations: what's coming up, its thumbs and what the DJ says. */
+    val personalNow = MutableStateFlow<com.music.connect.net.PersonalNow?>(null)
+
     /** This phone among the person's devices (see ConnectClient). */
     val devices = ConnectClient(context, http, { settings.value.server }, { settings.value.token }, scope)
 

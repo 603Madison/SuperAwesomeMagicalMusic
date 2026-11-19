@@ -329,6 +329,17 @@ button.ghost:hover {{ background: alpha({primary}, 0.12); }}
 .play-button {{ min-width: 48px; min-height: 48px; border-radius: 9999px; padding: 0; }}
 .time {{ color: {faint}; font-size: 0.75em; }}
 .live-pill {{ background: {accent_container}; color: {accent}; border-radius: 6px; padding: 1px 7px; font-size: 0.72em; font-weight: 800; }}
+
+/* Made for you: the person's own stations, each in its own colours. */
+.personal-card {{ padding: 14px; border-radius: 20px; color: white; background-image: linear-gradient(135deg, #5b3fd1, #0f9d77); box-shadow: 0 8px 22px alpha(black, 0.18); }}
+.personal-card.rewind {{ background-image: linear-gradient(135deg, #b4471a, #6a3fd6); }}
+.personal-card.discovery {{ background-image: linear-gradient(135deg, #0e8fa3, #12a37c); }}
+.personal-card:hover {{ filter: brightness(1.06); }}
+.personal-card:disabled {{ opacity: 0.7; }}
+.personal-card .personal-name {{ font-weight: 700; font-size: 1.12em; color: white; }}
+.personal-card .personal-tagline {{ font-size: 0.88em; color: alpha(white, 0.88); }}
+.personal-card .personal-on {{ font-size: 0.82em; color: white; }}
+.player-bar .now-detail.dj {{ color: {muted}; font-style: italic; }}
 .player-bar scale trough {{ min-height: 5px; border-radius: 999px; background: {surface4}; }}
 .player-bar scale highlight {{ min-height: 5px; border-radius: 999px; background: {primary}; }}
 .player-bar scale slider {{ min-width: 14px; min-height: 14px; margin: -5px; background: {text}; box-shadow: none; border: none; opacity: 0; transition: opacity 120ms; }}

@@ -38,6 +38,9 @@ data class ApiTrack(
     val isStationTrack: Boolean get() = source == SourceType.SIRIUSXM && sourceId.startsWith("stationtrack:")
     val isRadio: Boolean get() = source == SourceType.RADIO
 
+    /** One of the person's own stations (their Radio, Rewind or Discovery), made by the server. */
+    val isPersonal: Boolean get() = source == SourceType.RADIO && via == PERSONAL
+
     /** A Pandora artist station itself (kept as a favourite; played by starting the station). */
     val isPandoraStation: Boolean get() = source == SourceType.SIRIUSXM && sourceId.startsWith(PANDORA_STATION)
 
@@ -50,6 +53,7 @@ data class ApiTrack(
 
     companion object {
         const val PANDORA_STATION = "channel:artist-station:"
+        const val PERSONAL = "personal"
     }
 
     /** Live: no end and no seeking (SiriusXM channels, radio stations). */
@@ -246,6 +250,39 @@ data class StationTracks(val station: ApiTrack, val tracks: List<ApiTrack>)
 @Serializable
 data class RadioNow(val title: String? = null)
 
+/** One of the person's own stations, as the Radio tab lists it. */
+@Serializable
+data class PersonalStation(
+    val track: ApiTrack,
+    val kind: String,
+    val name: String,
+    val tagline: String,
+    val ready: Boolean = true,
+    val onAir: NowView? = null,
+)
+
+@Serializable
+data class DjLine(val id: String, val text: String, val atMs: Long)
+
+/** What's on one of the person's stations, what's coming up, and what its DJ says. */
+@Serializable
+data class PersonalNow(
+    val station: ApiTrack,
+    val now: NowView? = null,
+    val songKey: String? = null,
+    val thumb: String? = null,
+    val next: List<NowView> = emptyList(),
+    val recent: List<NowView> = emptyList(),
+    val dj: DjLine? = null,
+    val welcome: String? = null,
+    /** The server's clock, and how far behind it the station is heard. */
+    val serverTime: Long = 0,
+    val heardDelayMs: Long = 3_000,
+)
+
+@Serializable
+private data class StationThumbBody(val key: String, val thumb: String)
+
 @Serializable
 data class LyricLine(val timeMs: Long? = null, val text: String)
 
@@ -396,6 +433,19 @@ class ServerApi(
     /** Adds or removes a favourite; the list as it is now. */
     suspend fun setLiveFavorite(track: ApiTrack, favorite: Boolean): List<ApiTrack> =
         send("PUT", "${base()}/api/live/favorites", ApiJson.encodeToString(FavoriteChange.serializer(), FavoriteChange(track, favorite)), ListSerializer(ApiTrack.serializer()))
+
+    suspend fun personalStations(): List<PersonalStation> = get("${base()}/api/radio/personal", ListSerializer(PersonalStation.serializer()))
+
+    suspend fun personalNow(id: String, zone: String): PersonalNow =
+        get("${base()}/api/radio/personal/${enc(id)}/now?tz=${enc(zone)}", PersonalNow.serializer())
+
+    suspend fun personalSkip(id: String) = post("${base()}/api/radio/personal/${enc(id)}/skip", "{}", Unit.serializer())
+
+    suspend fun personalThumb(id: String, key: String, thumb: String) = post(
+        "${base()}/api/radio/personal/${enc(id)}/thumb",
+        ApiJson.encodeToString(StationThumbBody.serializer(), StationThumbBody(key, thumb)),
+        Unit.serializer(),
+    )
 
     suspend fun radioNow(src: String, id: String): RadioNow = get("${base()}/api/live/radio/${enc(src)}/station/${enc(id)}/now", RadioNow.serializer())
 

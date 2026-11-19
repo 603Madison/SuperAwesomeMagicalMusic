@@ -1,5 +1,5 @@
 import type {
-  ArtistView, ChannelView, NowView, StationTracks,
+  ArtistView, ChannelView, NowView, StationTracks, PersonalNow, PersonalStation,
   AdminSettings, AuthConfig, KindsResponse, LidarrRequest, Listen, LyricsView, Wrapped, Playlist, PlaylistSummary,
   ResolvedStream, SearchResults, ArtistPage, AlbumPage, ServerSettings, SessionInfo, SourceView, Track, User, OidcSettings,
 } from "./types";
@@ -129,6 +129,10 @@ export const api = {
   liveTop: (limit = 4) => get<Track[]>(`/api/live/top?limit=${limit}`),
   liveFavorites: () => get<Track[]>("/api/live/favorites"),
   setLiveFavorite: (track: Track, favorite: boolean) => put<Track[]>("/api/live/favorites", { track, favorite }),
+  personalStations: () => get<PersonalStation[]>("/api/radio/personal"),
+  personalNow: (id: string, tz: string) => get<PersonalNow>(`/api/radio/personal/${q(id)}/now?tz=${q(tz)}`),
+  personalSkip: (id: string) => post<unknown>(`/api/radio/personal/${q(id)}/skip`, {}),
+  personalThumb: (id: string, key: string, thumb: "UP" | "DOWN" | "NONE") => post<unknown>(`/api/radio/personal/${q(id)}/thumb`, { key, thumb }),
   radioNow: (src: string, id: string) => get<{ title?: string }>(`/api/live/radio/${q(src)}/station/${q(id)}/now`),
 
   users: () => get<User[]>("/api/admin/users"),

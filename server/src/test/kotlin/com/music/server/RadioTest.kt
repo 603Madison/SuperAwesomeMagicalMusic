@@ -122,6 +122,12 @@ class RadioTest {
         val onTheHour = dj.line("Madison’s Radio", StationKind.MINE, songs[6], songs[7], songs.drop(8), ten + 11 * 60_000L, zone)
         assertNotNull(onTheHour)
         assertTrue(onTheHour!!.text, onTheHour.text.startsWith("It's 10:01 on Thursday night."))
+        // A song skipped isn't announced as if it had played.
+        repeat(20) { i ->
+            val line = Dj(Random(i)).apply { repeat(3) { line("R", StationKind.MINE, songs[0], songs[1], emptyList(), ten, zone) } }
+                .line("R", StationKind.MINE, songs[1], songs[2], emptyList(), ten + 60_000, zone, skipped = true)
+            assertFalse(line?.text.orEmpty(), line?.text.orEmpty().contains("That was"))
+        }
     }
 
     @Test
@@ -177,7 +183,7 @@ class RadioTest {
                 "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:0",
                 "-c:a", "aac", "-b:a", "128k", "-f", "adts", "pipe:1",
             ).start()
-            override fun aired(now: Transmitter.OnAir, before: Transmitter.OnAir?, coming: List<Candidate>, atMs: Long): DjLine? {
+            override fun aired(now: Transmitter.OnAir, before: Transmitter.OnAir?, coming: List<Candidate>, atMs: Long, skipped: Boolean): DjLine? {
                 synchronized(aired) { aired += now.song.key }
                 return null
             }

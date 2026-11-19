@@ -8,7 +8,7 @@ use std::rc::Rc;
 use adw::prelude::*;
 use gtk::{gio, glib};
 
-use crate::api::{AlbumSummary, ChannelView, Playlist, PlaylistSummary, SearchResults, SourceView, TopResult, Track};
+use crate::api::{AlbumSummary, ChannelView, PersonalStation, Playlist, PlaylistSummary, SearchResults, SourceView, TopResult, Track};
 use crate::rt::bg;
 use crate::ui::ctx;
 use crate::ui::widgets::{
@@ -629,6 +629,17 @@ pub fn radio_page() -> adw::NavigationPage {
         "Radio",
         "SiriusXM, local and internet radio, and your favourite stations.",
     ));
+    // The person's own stations, above the rest.
+    let made_for_you = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(8).build();
+    content.append(&made_for_you);
+    if let Some(api) = ctx().api() {
+        let holder = made_for_you.clone();
+        glib::spawn_future_local(async move {
+            if let Ok(stations) = bg(async move { api.personal_stations().await }).await {
+                show_made_for_you(&holder, stations);
+            }
+        });
+    }
     let stack = gtk::Stack::builder()
         .transition_type(gtk::StackTransitionType::Crossfade)
         .vhomogeneous(false)
@@ -684,6 +695,63 @@ pub fn radio_page() -> adw::NavigationPage {
         });
     });
     page
+}
+
+/// The person's own stations (their Radio, Rewind and Discovery), made by the server from what
+/// they play and like: one click to tune in.
+fn show_made_for_you(into: &gtk::Box, stations: Vec<PersonalStation>) {
+    if stations.is_empty() {
+        return;
+    }
+    into.append(&heading("Made for you"));
+    let row = gtk::FlowBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .homogeneous(true)
+        .min_children_per_line(1)
+        .max_children_per_line(3)
+        .column_spacing(12)
+        .row_spacing(12)
+        .build();
+    for station in stations {
+        let content = gtk::Box::builder().spacing(14).build();
+        content.append(&artwork(station.track.artwork_url.as_deref(), 72, false));
+        let text = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(3)
+            .valign(gtk::Align::Center)
+            .hexpand(true)
+            .build();
+        let label = |value: &str, class: &str, lines: i32| {
+            let l = gtk::Label::builder()
+                .label(value)
+                .xalign(0.0)
+                .wrap(lines > 1)
+                .lines(lines)
+                .max_width_chars(24)
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .build();
+            l.add_css_class(class);
+            l
+        };
+        text.append(&label(&station.name, "personal-name", 1));
+        let tagline = if station.ready { station.tagline.clone() } else { "Play some music, and it fills up with what you love".into() };
+        text.append(&label(&tagline, "personal-tagline", 2));
+        if let Some(on) = &station.on_air {
+            text.append(&label(&format!("On air: {} · {}", on.title, on.artist), "personal-on", 1));
+        }
+        content.append(&text);
+        let card = gtk::Button::builder()
+            .child(&content)
+            .sensitive(station.ready)
+            .tooltip_text(if station.ready { format!("Tune in to {}", station.name) } else { "Listen to some music first".into() })
+            .build();
+        card.add_css_class("personal-card");
+        card.add_css_class(&station.kind);
+        let track = station.track.clone();
+        card.connect_clicked(move |_| ctx().player.play_tracks(vec![track.clone()], 0));
+        row.append(&card);
+    }
+    into.append(&row);
 }
 
 /// Your favourite channels and stations (as keys), so their stars show lit.

@@ -33,6 +33,8 @@ data class Settings(
     /** Downloads wait for Wi-Fi (or another unmetered network). */
     val downloadOnWifiOnly: Boolean = true,
     val levelling: Boolean = true,
+    /** The DJ on the person's own stations speaks (otherwise its words are only shown). */
+    val djVoice: Boolean = true,
     /** Finds MusicCast speakers on the Wi-Fi, and lets the person's devices play on them. */
     val speakers: Boolean = true,
     /** Speakers' addresses typed in, for networks where they can't be found by themselves. */
@@ -96,6 +98,7 @@ class Prefs(private val context: Context) {
         prefs[KBPS_DOWNLOAD] = next.kbpsDownload
         prefs[DOWNLOAD_WIFI_ONLY] = next.downloadOnWifiOnly
         prefs[LEVELLING] = next.levelling
+        prefs[DJ_VOICE] = next.djVoice
         prefs[SPEAKERS] = next.speakers
         prefs[SPEAKER_ADDRESSES] = next.speakerAddresses.joinToString("\n")
         prefs[THEME_MODE] = next.themeMode.name
@@ -116,6 +119,7 @@ class Prefs(private val context: Context) {
         kbpsDownload = prefs[KBPS_DOWNLOAD] ?: 0,
         downloadOnWifiOnly = prefs[DOWNLOAD_WIFI_ONLY] ?: true,
         levelling = prefs[LEVELLING] ?: true,
+        djVoice = prefs[DJ_VOICE] ?: true,
         speakers = prefs[SPEAKERS] ?: true,
         speakerAddresses = prefs[SPEAKER_ADDRESSES].orEmpty().lines().map { it.trim() }.filter { it.isNotEmpty() },
         themeMode = ThemeMode.entries.firstOrNull { it.name == prefs[THEME_MODE] } ?: ThemeMode.SYSTEM,
@@ -135,6 +139,7 @@ class Prefs(private val context: Context) {
         val KBPS_DOWNLOAD = intPreferencesKey("kbps_download")
         val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("download_wifi_only")
         val LEVELLING = booleanPreferencesKey("levelling")
+        val DJ_VOICE = booleanPreferencesKey("dj_voice")
         val SPEAKERS = booleanPreferencesKey("speakers")
         val SPEAKER_ADDRESSES = stringPreferencesKey("speaker_addresses")
         val THEME_MODE = stringPreferencesKey("theme_mode")

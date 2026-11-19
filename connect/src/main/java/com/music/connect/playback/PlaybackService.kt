@@ -11,6 +11,8 @@ import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
+import kotlinx.coroutines.currentCoroutineContext
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -113,6 +115,7 @@ class PlaybackService : MediaLibraryService() {
     private var startedAt = 0L
 
     private var livePoll: Job? = null
+    private lateinit var dj: DjVoice
     private var stationRefill: Job? = null
 
     override fun onCreate() {
@@ -150,7 +153,8 @@ class PlaybackService : MediaLibraryService() {
         scope.launch { c.settings.collect { loudness.enabled = it.levelling } }
 
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        session = MediaLibrarySession.Builder(this, player, LibraryCallback(c, queueStore, scope))
+        dj = DjVoice(this, player, scope)
+        session = MediaLibrarySession.Builder(this, StationSkipping(player), LibraryCallback(c, queueStore, scope))
             .setSessionActivity(open)
             .build()
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_notification) })
@@ -231,7 +235,7 @@ class PlaybackService : MediaLibraryService() {
                 player.play()
             }
             "pause" -> player.pause()
-            "next" -> player.seekToNextMediaItem()
+            "next" -> player.currentMediaItem?.let(MediaItems::track)?.takeIf { it.isPersonal }?.let(::skipPersonal) ?: player.seekToNextMediaItem()
             "previous" -> player.seekToPrevious()
             "seek" -> command.positionMs?.let { player.seekTo(it) }
             "volume" -> command.volume?.let { volume ->
@@ -258,6 +262,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        dj.release()
         c.devices.stop()
         endListen()
         queueStore.save(player)
@@ -431,6 +436,8 @@ class PlaybackService : MediaLibraryService() {
             if (player.isPlaying) playingSince = SystemClock.elapsedRealtime()
             loudness.knownGainDb = gains[track.key]
             c.liveNow.value = null
+            c.personalNow.value = null
+            dj.quiet()
             noteLivePlayed(track)
             watchLive(track)
             if (track.isStationTrack) refillStation(track)
@@ -445,6 +452,8 @@ class PlaybackService : MediaLibraryService() {
                 playingSince = 0
                 queueStore.save(player)
             }
+            // Paused: the DJ stops too.
+            if (!isPlaying) dj.quiet()
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -502,6 +511,10 @@ class PlaybackService : MediaLibraryService() {
         livePoll?.cancel()
         if (!track.isLive && !track.isStationTrack) return
         val via = track.via ?: return
+        if (track.isPersonal) {
+            livePoll = scope.launch { watchPersonal(track) }
+            return
+        }
         if (track.isStationTrack) {
             val (stationId, trackId) = MediaItems.split(track.sourceId.removePrefix("stationtrack:"))
             c.scope.launch { runCatching { c.api.stationProgress(via, stationId, trackId, 0, true) } }
@@ -534,6 +547,67 @@ class PlaybackService : MediaLibraryService() {
                 }
                 delay(if (track.isChannel) 15_000 else 20_000)
             }
+        }
+    }
+
+    /**
+     * One of the person's own stations: what's on (for the app, the notification and the car),
+     * what's coming up, and its DJ, who speaks over the start of songs (each line timed to when
+     * the song is heard here: the stream runs a few seconds behind the station's clock).
+     */
+    private suspend fun watchPersonal(track: ApiTrack) {
+        var welcomed = false
+        val zone = java.util.TimeZone.getDefault().id
+        while (currentCoroutineContext().isActive) {
+            val info = withContext(Dispatchers.IO) { runCatching { c.api.personalNow(track.sourceId, zone) }.getOrNull() }
+            if (player.currentMediaItem?.let(MediaItems::track)?.key != track.key) break
+            if (info != null) {
+                val offset = info.serverTime - System.currentTimeMillis()
+                val now = info.now?.let { LiveNow(it.title, it.artist, it.artworkUrl, it.song) }
+                if (now != c.liveNow.value) {
+                    val before = c.liveNow.value
+                    if (now?.title != before?.title || now?.artist != before?.artist) endLiveStretch(track)
+                    c.liveNow.value = now
+                    showLive(track, now)
+                }
+                c.personalNow.value = info
+                if (c.settings.value.djVoice && player.isPlaying) {
+                    if (!welcomed) info.welcome?.let { dj.say("welcome@${System.currentTimeMillis()}", it, System.currentTimeMillis() + 1_500) }
+                    info.dj?.let { line -> dj.say(line.id, line.text, line.atMs - offset + info.heardDelayMs) }
+                }
+                welcomed = true
+            }
+            delay(5_000)
+        }
+    }
+
+    /** Skips the song on one of the person's own stations (the station moves on; the stream goes on). */
+    private fun skipPersonal(track: ApiTrack) {
+        dj.quiet()
+        c.scope.launch { runCatching { c.api.personalSkip(track.sourceId) }.onFailure { c.tell(it.message ?: "The station didn't skip") } }
+    }
+
+    /**
+     * The player as the notification, the car and the app's own controls see it: on one of the
+     * person's own stations, "next" skips the song (the station moves on) though there's no next item.
+     */
+    private inner class StationSkipping(player: Player) : ForwardingPlayer(player) {
+        private fun personal() = currentMediaItem?.let(MediaItems::track)?.takeIf { it.isPersonal }
+        private val skips = setOf(Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+
+        override fun getAvailableCommands(): Player.Commands {
+            val commands = super.getAvailableCommands()
+            return if (personal() == null) commands else commands.buildUpon().addAll(*skips.toIntArray()).build()
+        }
+
+        override fun isCommandAvailable(command: Int): Boolean = (command in skips && personal() != null) || super.isCommandAvailable(command)
+
+        override fun seekToNext() {
+            personal()?.let(::skipPersonal) ?: super.seekToNext()
+        }
+
+        override fun seekToNextMediaItem() {
+            personal()?.let(::skipPersonal) ?: super.seekToNextMediaItem()
         }
     }
 

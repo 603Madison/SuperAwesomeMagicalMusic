@@ -83,6 +83,8 @@ object MediaItems {
                 val (_, trackId) = split(track.sourceId.removePrefix("stationtrack:"))
                 "/api/live/sxm/${enc(via)}/station-track/${enc(trackId)}" to false
             }
+            // One of the person's own stations: the server's broadcast, the DJ's time checks in their time zone.
+            track.isPersonal -> "/api/live/radio/${enc(via)}/station/${enc(track.sourceId)}/stream?tz=${enc(java.util.TimeZone.getDefault().id)}" to false
             track.isRadio -> {
                 val hls = track.sourceId.startsWith("hls:")
                 "/api/live/radio/${enc(via)}/station/${enc(track.sourceId.removePrefix("hls:"))}/stream" to hls
@@ -103,6 +105,8 @@ object MediaItems {
     fun artworkUri(server: String, url: String?, px: Int): Uri? = when {
         url.isNullOrBlank() -> null
         url.startsWith("/api/art?") -> "$server$url&px=$px".toUri()
+        // The server's own pictures (its stations' logos).
+        url.startsWith("/api/radio/art?") -> "$server$url".toUri()
         url.startsWith("http") -> url.toUri()
         else -> null
     }

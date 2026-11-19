@@ -16,17 +16,21 @@ on:
         description: Commit to build (defaults to the selected branch's latest commit)
         required: false
 
+# Nothing by default; each job asks for what it needs.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       TAG: ${{ inputs.version || github.ref_name }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           ref: ${{ inputs.commit || github.sha }}
 
       - name: Check version
@@ -43,24 +47,21 @@ jobs:
           fi
           echo "COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+      - name: Unit tests (both apps and the server)
+        run: ./gradlew --no-daemon testDebugUnitTest :server:test
 
-      # The key belongs in repository secrets. (Older setups put it in repository variables,
-      # which aren't meant for secrets; that still works, with a warning, until it's moved.)
+      # From repository secrets, after the tests: code under test never runs beside the key.
       - name: Restore signing key
         env:
-          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 || vars.RELEASE_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD || vars.RELEASE_KEYSTORE_PASSWORD }}
-          FROM_VARIABLES: ${{ (vars.RELEASE_KEYSTORE_BASE64 != '' || vars.RELEASE_KEYSTORE_PASSWORD != '') && 'yes' || '' }}
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
         run: |
-          if [ -n "$FROM_VARIABLES" ]; then
-            echo "::warning::RELEASE_KEYSTORE_* are set as repository variables, which aren't secret. Move them to Settings > Secrets and variables > Actions > Secrets and delete the variables."
-          fi
           [ -n "$KEYSTORE_BASE64" ] && echo "RELEASE_KEYSTORE_BASE64: found" || echo "RELEASE_KEYSTORE_BASE64: missing"
           [ -n "$KEYSTORE_PASSWORD" ] && echo "RELEASE_KEYSTORE_PASSWORD: found" || echo "RELEASE_KEYSTORE_PASSWORD: missing"
           if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
@@ -74,12 +75,9 @@ jobs:
           fi
           echo "RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
-      - name: Unit tests (both apps and the server)
-        run: ./gradlew --no-daemon testDebugUnitTest :server:test
-
       - name: Build signed release APKs
         env:
-          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD || vars.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
         run: |
           ./gradlew --no-daemon assembleRelease
           cp app/build/outputs/apk/release/app-release.apk "SuperAwesomeMagicalMusic-Lite-$TAG.apk"
@@ -106,21 +104,24 @@ jobs:
   desktop:
     needs: release
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     env:
       TAG: ${{ inputs.version || github.ref_name }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           ref: ${{ inputs.commit || github.sha }}
 
       - name: GTK 4, libadwaita and GStreamer to build against
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libgtk-4-dev libadwaita-1-dev libgstreamer1.0-dev libssl-dev pkg-config
 
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: desktop
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2
         with:
           tool: cargo-deb,cargo-generate-rpm
 
@@ -162,8 +163,9 @@ jobs:
     env:
       TAG: ${{ inputs.version || github.ref_name }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           ref: ${{ inputs.commit || github.sha }}
 
       - name: Image name and tags
@@ -179,16 +181,15 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
 
-      - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
-
-      - uses: docker/login-action@v4
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64

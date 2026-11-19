@@ -155,17 +155,26 @@ impl Ctx {
     }
 }
 
-/// The app's icon, when it isn't installed (run from the build, or the icon theme's cache is old).
+/// Thumbs for the songs on a personal station: not every icon theme has them, so the app brings its own.
+const THUMB_UP: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="#2e3436" d="M1 7h3v8H1zm4 0 3-6c1.1 0 2 .9 2 2v3h3.5c.9 0 1.6.8 1.5 1.7l-.9 5.6c-.1.8-.8 1.7-1.6 1.7H5z"/></svg>"##;
+
+/// The app's icon when it isn't installed (run from the build, or the icon theme's cache is
+/// old), and the icons it brings itself.
 fn register_icon() {
     let Some(display) = gdk::Display::default() else { return };
     let theme = gtk::IconTheme::for_display(&display);
-    if theme.has_icon(crate::APP_ID) {
+    let dir = glib::user_cache_dir().join("SuperAwesomeMagicalMusic").join("icons");
+    if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
-    let dir = glib::user_cache_dir().join("SuperAwesomeMagicalMusic").join("icons");
-    let file = dir.join(format!("{}.png", crate::APP_ID));
-    let png: &[u8] = include_bytes!("../../data/icons/hicolor/256x256/apps/io.github._603madison.SuperAwesomeMagicalMusic.png");
-    if std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&file, png).is_ok() {
+    let down = THUMB_UP.replace("<path ", r#"<path transform="rotate(180 8 8)" "#);
+    let mut ok = std::fs::write(dir.join("samm-thumb-up-symbolic.svg"), THUMB_UP).is_ok();
+    ok &= std::fs::write(dir.join("samm-thumb-down-symbolic.svg"), down).is_ok();
+    if !theme.has_icon(crate::APP_ID) {
+        let png: &[u8] = include_bytes!("../../data/icons/hicolor/256x256/apps/io.github._603madison.SuperAwesomeMagicalMusic.png");
+        ok |= std::fs::write(dir.join(format!("{}.png", crate::APP_ID)), png).is_ok();
+    }
+    if ok {
         theme.add_search_path(&dir);
     }
 }

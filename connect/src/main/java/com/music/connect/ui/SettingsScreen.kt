@@ -109,6 +109,7 @@ fun SettingsScreen() {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             ToggleRow("Even out volume", "Songs from different services play at about the same loudness.", settings.levelling) { v -> update { it.copy(levelling = v) } }
+            ToggleRow("The DJ talks", "On your own stations (Radio, Made for you), the DJ introduces songs and gives the time, over the music. Off: what it says is only shown.", settings.djVoice) { v -> update { it.copy(djVoice = v) } }
         }
 
         Panel("Downloads") {

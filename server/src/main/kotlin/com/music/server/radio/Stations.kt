@@ -62,10 +62,10 @@ class Dj(private val random: Random = Random.Default) {
     private var nextTalkAfter = 3
 
     /**
-     * The line for the start of [now] (just after [before] ended), or null to let the music
-     * play. [coming] is what's lined up after it.
+     * The line for the start of [now] (just after [before] ended, or was [skipped]: a skipped
+     * song isn't announced), or null to let the music play. [coming] is what's lined up after it.
      */
-    fun line(station: String, kind: StationKind, before: Candidate?, now: Candidate, coming: List<Candidate>, atMs: Long, zone: ZoneId): DjLine? {
+    fun line(station: String, kind: StationKind, before: Candidate?, now: Candidate, coming: List<Candidate>, atMs: Long, zone: ZoneId, skipped: Boolean = false): DjLine? {
         val time = Instant.ofEpochMilli(atMs).atZone(zone)
         val topOfHour = lastHour != null && time.hour != lastHour
         lastHour = time.hour
@@ -82,6 +82,8 @@ class Dj(private val random: Random = Random.Default) {
         if (topOfHour) {
             parts += "It's ${clock(time)} on ${weekday(time)} ${partOfDay(time.hour)}."
             parts += id
+        } else if (skipped) {
+            if (random.nextBoolean()) parts += id
         } else {
             when (random.nextInt(3)) {
                 0 -> parts += that
