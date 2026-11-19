@@ -34,6 +34,8 @@ data class ServerSettings(
     val localLogin: Boolean = true,
     /** Whether users may add their own sources (their own Jellyfin, SiriusXM account…). */
     val allowPersonalSources: Boolean = true,
+    /** Whether the server learns the Jellyfin libraries' songs, so Listen can recognise them. */
+    val learnLibrary: Boolean = true,
     val oidc: OidcSettings = OidcSettings(),
 )
 

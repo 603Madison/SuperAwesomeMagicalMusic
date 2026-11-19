@@ -2,6 +2,7 @@ package com.music.server
 
 import com.music.server.connect.connectRoutes
 import com.music.server.mcp.mcpRoutes
+import com.music.server.listen.listenRoutes
 import com.music.server.radio.radioRoutes
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
@@ -108,6 +109,7 @@ fun Application.module(services: Services) {
         musicRoutes(services)
         liveRoutes(services)
         radioRoutes(services)
+        listenRoutes(services)
         playlistRoutes(services)
         wrappedRoutes(services)
         connectRoutes(services)

@@ -340,6 +340,19 @@ button.ghost:hover {{ background: alpha({primary}, 0.12); }}
 .personal-card .personal-tagline {{ font-size: 0.88em; color: alpha(white, 0.88); }}
 .personal-card .personal-on {{ font-size: 0.82em; color: white; }}
 .player-bar .now-detail.dj {{ color: {muted}; font-style: italic; }}
+
+/* Listen: the big round button (pulsing while it listens), and what it found. */
+.listen-button {{ min-width: 168px; min-height: 168px; border-radius: 9999px; padding: 0; color: white;
+  background-image: linear-gradient(135deg, {hero_a}, {hero_b}); box-shadow: 0 12px 36px alpha({hero_a}, 0.4); transition: box-shadow 400ms; }}
+.listen-button:hover {{ filter: brightness(1.06); }}
+.listen-button.is-listening {{ animation: listen-pulse 1.4s ease-in-out infinite; }}
+@keyframes listen-pulse {{ 0% {{ box-shadow: 0 0 0 0 alpha({hero_a}, 0.45); }} 70% {{ box-shadow: 0 0 0 36px alpha({hero_a}, 0); }} 100% {{ box-shadow: 0 0 0 0 alpha({hero_a}, 0); }} }}
+.listen-state {{ font-size: 1.15em; font-weight: {w600}; }}
+.listen-found {{ background: {card}; border-radius: 22px; padding: 18px; box-shadow: 0 8px 26px {shade}; }}
+.listen-found .artwork {{ border-radius: 16px; }}
+.listen-title {{ font-size: 1.5em; font-weight: 700; }}
+.listen-heard {{ padding: 6px 8px; border-radius: 14px; }}
+.listen-heard:hover {{ background: alpha(currentColor, 0.05); }}
 .player-bar scale trough {{ min-height: 5px; border-radius: 999px; background: {surface4}; }}
 .player-bar scale highlight {{ min-height: 5px; border-radius: 999px; background: {primary}; }}
 .player-bar scale slider {{ min-width: 14px; min-height: 14px; margin: -5px; background: {text}; box-shadow: none; border: none; opacity: 0; transition: opacity 120ms; }}
@@ -363,6 +376,9 @@ button.ghost:hover {{ background: alpha({primary}, 0.12); }}
         accent_container = t.accent_container,
         glow_a_color = t.glow_a,
         glow_b_color = t.glow_b,
+        // The theme's saturated pair (the dark scheme's glows) for things drawn in it, in either scheme.
+        hero_a = palette.dark.glow_a,
+        hero_b = palette.dark.glow_b,
         bg = n.bg,
         sidebar = n.sidebar,
         card = n.card,

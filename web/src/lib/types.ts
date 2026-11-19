@@ -254,6 +254,8 @@ export interface ServerSettings {
   publicUrl: string;
   localLogin: boolean;
   allowPersonalSources: boolean;
+  /** The server learns the Jellyfin libraries' songs, so Listen can recognise them. */
+  learnLibrary: boolean;
   oidc: OidcSettings;
 }
 
@@ -328,4 +330,45 @@ export interface ArtistView {
 export interface StationTracks {
   station: Track;
   tracks: Track[];
+}
+
+/** What Listen heard. */
+export interface ListenResult {
+  found: boolean;
+  title?: string;
+  artist?: string;
+  album?: string;
+  artworkUrl?: string;
+  /** A copy that plays, from your sources. */
+  song?: Track;
+  /** Where the song was when the recording ended. */
+  positionMs?: number;
+  via?: "library" | "audd";
+  link?: string;
+  message?: string;
+  heardId?: string;
+  /** Not sure yet: sent back with the next, longer try. */
+  candidate?: string;
+}
+
+/** A song Listen recognised (Recently heard). */
+export interface Heard {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  artworkUrl?: string;
+  song?: Track;
+  via: string;
+  link?: string;
+  at: number;
+}
+
+export interface ListenStatus {
+  learned: number;
+  total: number;
+  learning: boolean;
+  enabled: boolean;
+  libraries: boolean;
+  audd: boolean;
 }

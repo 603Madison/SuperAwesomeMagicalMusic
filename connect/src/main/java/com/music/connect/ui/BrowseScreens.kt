@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Download
@@ -79,6 +81,9 @@ class Browse(private val nav: NavHostController) {
 
     fun wrapped() = nav.navigate("wrapped")
 
+    /** Listen: what's playing around you ([start]: straight away). */
+    fun listen(start: Boolean = true) = nav.navigate("listen?start=${if (start) "1" else "0"}")
+
     private fun params(vararg pairs: Pair<String, String?>) = pairs.filter { it.second != null }.joinToString("&") { (k, v) -> "$k=${Uri.encode(v)}" }
 }
 
@@ -132,8 +137,12 @@ fun SearchScreen() {
         busy = false
     }
 
+    val browse = LocalBrowse.current
     Column(Modifier.fillMaxSize()) {
-        ScreenTitle("Search")
+        ScreenTitle("Search") {
+            // Listen: what's playing around you (it needs the server).
+            if (online) IconButton(onClick = { browse?.listen() }) { Icon(Icons.Rounded.GraphicEq, "Listen: what's playing around you?", tint = MaterialTheme.colorScheme.primary) }
+        }
         SearchField(query, { query = it }, if (online) "Artists, albums, songs" else "Search your downloads", busy = busy)
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp)) }
         LazyColumn(Modifier.fillMaxSize()) {

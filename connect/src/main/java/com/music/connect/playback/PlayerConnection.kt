@@ -89,6 +89,14 @@ class PlayerConnection(private val context: Context, private val server: () -> S
         c.play()
     }
 
+    /** Plays [track] from [positionMs] in (a song Listen heard, from where it is in the room). */
+    fun playFrom(track: ApiTrack, positionMs: Long) {
+        val c = controller ?: return
+        c.setMediaItems(items(listOf(track)), 0, positionMs.coerceAtLeast(0))
+        c.prepare()
+        c.play()
+    }
+
     fun playShuffled(tracks: List<ApiTrack>) = play(tracks.shuffled())
 
     fun playNext(tracks: List<ApiTrack>) {

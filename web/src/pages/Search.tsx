@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Play, Search as SearchIcon } from "lucide-react";
+import { AudioLines, Play, Search as SearchIcon } from "lucide-react";
 import { api } from "../lib/api";
 import type { SearchResults, TopResult, Track } from "../lib/types";
 import { TrackList } from "../components/TrackList";
@@ -18,6 +18,7 @@ const SONGS_AT_FIRST = 5;
  * of your sources has it.
  */
 export function Search() {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const query = params.get("q") ?? "";
   const [text, setText] = useState(query);
@@ -60,6 +61,9 @@ export function Search() {
         <SearchIcon size={20} aria-hidden />
         <input ref={input} type="search" placeholder="Artists, albums, songs…" value={text} onChange={(e) => setText(e.target.value)} aria-label="Search" />
         {loading && <Spinner size={18} />}
+        <button type="button" className="search-listen" onClick={() => navigate("/listen?start=1")} aria-label="Listen: what's playing around you?" title="Listen: what's playing around you?">
+          <AudioLines size={20} />
+        </button>
       </form>
 
       {error && <div className="notice notice-error">{error}</div>}

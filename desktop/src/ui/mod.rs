@@ -1,5 +1,6 @@
 //! The window: signing in, then the music (a sidebar, pages, and the player along the bottom).
 
+mod listen;
 mod login;
 mod pages;
 mod player_bar;

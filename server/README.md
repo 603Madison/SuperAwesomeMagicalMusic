@@ -179,7 +179,8 @@ location / {
 
 - **Back up** the data folder: `samm.db` (accounts, playlists, sources) and `secret.key`. Without
   the key, saved sign-ins (Jellyfin tokens, SiriusXM passwords, API keys) can't be read and must be entered
-  again; keep it as private as a password.
+  again; keep it as private as a password. `listen.db` (what Listen learned of your libraries,
+  about 15 MB for every 100 songs) needn't be backed up: the server learns it again if it's gone.
 - **Update**: `docker pull ghcr.io/603madison/superawesomemagicalmusic:latest` and recreate the
   container (with Quadlet: `podman auto-update`, or pull and `systemctl --user restart
   superawesomemagicalmusic`). The database updates itself. Each release is also tagged with its

@@ -69,6 +69,19 @@ class EndToEndTest {
     }
 
     @Test
+    fun `Listen sends what the microphone heard, and says when it can't tell`() = runBlocking {
+        signInWithPassword()
+        val status = api.listenStatus()
+        assertTrue(status.libraries)
+        // A second of silence: too short to tell.
+        val silence = com.music.connect.listen.MicRecorder.wavOf(ByteArray(com.music.connect.listen.MicRecorder.RATE * 2), com.music.connect.listen.MicRecorder.RATE)
+        val answer = api.listen(silence, final = true, candidate = null)
+        assertFalse(answer.found)
+        assertEquals("That was too short to tell", answer.message)
+        assertTrue(api.listenHeard().isEmpty())
+    }
+
+    @Test
     fun `the person's own stations are listed, and play as radio stations`() = runBlocking {
         signInWithPassword()
         val stations = api.personalStations()

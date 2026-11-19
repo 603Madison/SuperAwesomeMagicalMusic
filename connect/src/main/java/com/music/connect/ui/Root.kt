@@ -137,6 +137,9 @@ private fun Routes(nav: NavHostController) {
         ) { back -> AlbumScreen(back.arguments?.getString("id"), back.arguments?.getString("title"), back.arguments?.getString("artist")) }
         composable("downloads") { DownloadsScreen() }
         composable("wrapped") { WrappedScreen() }
+        composable("listen?start={start}", arguments = listOf(optional("start"))) { back ->
+            ListenScreen(onBack = { nav.popBackStack() }, startNow = back.arguments?.getString("start") == "1")
+        }
         composable("settings") { SettingsScreen() }
         composable("player") { PlayerScreen(onClose = { nav.popBackStack() }) }
     }

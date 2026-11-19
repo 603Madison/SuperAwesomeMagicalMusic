@@ -25,6 +25,8 @@ enum class SourceKind(val label: String, val type: SourceType?) {
     LIDARR("Lidarr", null),
     SIRIUSXM("SiriusXM", SourceType.SIRIUSXM),
     RADIO("Radio", SourceType.RADIO),
+    /** Recognises songs Listen hears that aren't in the library (a paid service, with its own key). */
+    AUDD("AudD", null),
     ;
 
     /** Live radio: channels and stations rather than songs on demand. */

@@ -163,6 +163,24 @@ music under its voice (Settings › **The DJ talks** turns that off); the deskto
 Skip moves the station on, a thumbs up plays a song more, a thumbs down never again. They play in
 Android Auto too, at the top of **Radio**.
 
+### Listen: what's playing around you
+
+Like Shazam: tap **Listen** (the web player's sidebar or its search box, the phone app's Search
+tab, or the desktop app's sidebar), hold your device near the music, and a few seconds later it
+says what song it is, with **Play**, and **Play from here** to carry on from the moment it's at
+in the room. Everything it recognises is kept under **Recently heard**.
+
+- **Your library first, on your server.** The server learns every song in your Jellyfin
+  libraries in the background (their audio fingerprints, the technique Shazam uses), so it can
+  recognise them from a few seconds through a phone's microphone, noise and all, without anything
+  leaving the server. It takes a few seconds a song, and about 15 MB of space for every 100 songs
+  (in `listen.db`, which can always be made again). Admins can turn this off in **Admin ›
+  Settings**.
+- **Anything else, with AudD (optional).** Add [AudD](https://audd.io/) in **Settings ›
+  Sources**, like any other source, with your own API token (300 recognitions free, then paid per
+  recognition). It's only asked about what your library didn't recognise, and Listen then finds
+  the song on your sources to play.
+
 ### Android Auto
 
 The app appears as a media source in Android Auto (and to the system, Android Automotive, the

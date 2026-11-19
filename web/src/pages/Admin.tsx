@@ -178,6 +178,7 @@ function ServerForm({ initial, onSaved }: { initial: AdminSettings; onSaved: (s:
           </Field>
           <Toggle label="People can sign in with a password" help="Off: everyone but the break-glass admin signs in through single sign-on." checked={settings.localLogin} onChange={(localLogin) => setSettings({ ...settings, localLogin })} />
           <Toggle label="People can add their own sources" help="Their own Jellyfin, Lidarr, SiriusXM… Their sign-ins are encrypted and only they can use them." checked={settings.allowPersonalSources} onChange={(allowPersonalSources) => setSettings({ ...settings, allowPersonalSources })} />
+          <Toggle label="Learn the libraries for Listen" help="The server goes through every song in your Jellyfin libraries (in the background, a few seconds each) so Listen can recognise them, without anything leaving the server. It takes about 15 MB for every 100 songs. Off: it stops learning, and keeps using what it learned." checked={settings.learnLibrary} onChange={(learnLibrary) => setSettings({ ...settings, learnLibrary })} />
         </div>
       </section>
 

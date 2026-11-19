@@ -23,7 +23,7 @@ object BodyLimit {
     const val LARGE = 16L * 1024 * 1024
 
     fun limitFor(path: String): Long =
-        if (path.startsWith("/api/playlists") || path.startsWith("/api/history")) LARGE else DEFAULT
+        if (path.startsWith("/api/playlists") || path.startsWith("/api/history") || path.startsWith("/api/listen")) LARGE else DEFAULT
 
     private fun tooLarge() = ApiError(HttpStatusCode.PayloadTooLarge, "That's too much to send at once")
 

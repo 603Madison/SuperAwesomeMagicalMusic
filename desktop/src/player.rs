@@ -145,6 +145,13 @@ pub struct Player {
     /// HTTP sources (on its own threads). Only requests for that server get it.
     cookie: Arc<Mutex<(String, String)>>,
     _bus: RefCell<Option<gst::bus::BusWatchGuard>>,
+    /// The song's stream, whether it can be jumped about in, and (when the server started it
+    /// partway, as it does for those that can't) how far in it starts.
+    stream: RefCell<String>,
+    seekable: Cell<bool>,
+    offset: Cell<f64>,
+    /// Where the next song loaded starts (Listen's "Play from here").
+    start_at: Cell<f64>,
     /// The sleep timer: its clock, or pausing at the end of the song.
     sleep_clock: RefCell<Option<glib::SourceId>>,
     sleep_at_end: Cell<bool>,
@@ -196,6 +203,10 @@ impl Player {
             buffering: Cell::new(false),
             cookie: cookie.clone(),
             _bus: RefCell::new(None),
+            stream: RefCell::new(String::new()),
+            seekable: Cell::new(true),
+            offset: Cell::new(0.0),
+            start_at: Cell::new(0.0),
             sleep_clock: RefCell::new(None),
             sleep_at_end: Cell::new(false),
         });
@@ -451,12 +462,49 @@ impl Player {
         }
     }
 
+    /// Plays [track] from [seconds] in (a song Listen heard, from where it is in the room).
+    pub fn play_from(self: &Rc<Self>, track: Track, seconds: f64) {
+        self.start_at.set(seconds.max(0.0));
+        self.play_tracks(vec![track], 0);
+    }
+
+    /// Jumps to [seconds] once the song has loaded far enough to (the time that takes counts too).
+    fn seek_when_ready(self: &Rc<Self>, generation: u64, seconds: f64) {
+        let me = Rc::downgrade(self);
+        let started = Instant::now();
+        glib::timeout_add_local(Duration::from_millis(200), move || {
+            let Some(player) = me.upgrade() else { return glib::ControlFlow::Break };
+            if player.generation.get() != generation || started.elapsed() > Duration::from_secs(15) {
+                return glib::ControlFlow::Break;
+            }
+            let ready = {
+                let state = player.state.borrow();
+                !state.loading && state.duration > 0.0
+            };
+            if !ready {
+                return glib::ControlFlow::Continue;
+            }
+            player.seek(seconds + started.elapsed().as_secs_f64());
+            glib::ControlFlow::Break
+        });
+    }
+
     pub fn seek(&self, seconds: f64) {
         if self.state.borrow().live() {
             return;
         }
-        let target = gst::ClockTime::from_mseconds((seconds.max(0.0) * 1000.0) as u64);
-        let _ = self.playbin.seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, target);
+        let seconds = seconds.max(0.0);
+        if self.seekable.get() {
+            let target = gst::ClockTime::from_mseconds((seconds * 1000.0) as u64);
+            let _ = self.playbin.seek_simple(gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT, target);
+        } else {
+            // A conversion can't be jumped about in: the server starts it again from there.
+            let playing = self.state.borrow().playing;
+            let _ = self.playbin.set_state(gst::State::Null);
+            self.playbin.set_property("uri", with_start(&self.stream.borrow(), seconds));
+            self.offset.set(seconds);
+            let _ = self.playbin.set_state(if playing { gst::State::Playing } else { gst::State::Paused });
+        }
         self.state.borrow_mut().position = seconds;
         self.notify();
     }
@@ -500,6 +548,9 @@ impl Player {
         self.reported.set(false);
         self.last_tick.set(None);
         let _ = self.playbin.set_state(gst::State::Null);
+        let start_at = self.start_at.replace(0.0);
+        self.offset.set(0.0);
+        self.seekable.set(true);
         let Some(track) = self.state.borrow().queue.get(index).cloned() else {
             return;
         };
@@ -548,6 +599,7 @@ impl Player {
                         {
                             current.artwork_url = resolved.track.artwork_url.clone();
                         }
+                        me.seekable.set(resolved.seekable);
                         api.url(&resolved.stream_url)
                     }
                     Err(e) => return me.failed(generation, &e.to_string()),
@@ -555,6 +607,19 @@ impl Player {
             };
             if me.generation.get() != generation {
                 return;
+            }
+            me.stream.replace(uri.clone());
+            // Starting partway (Listen's "Play from here"): from there, by the server if the
+            // stream can't be jumped about in, or by a jump once it's ready.
+            let mut uri = uri;
+            if start_at > 0.0 && track.live_stream().is_none() {
+                if me.seekable.get() {
+                    me.seek_when_ready(generation, start_at);
+                } else {
+                    uri = with_start(&uri, start_at);
+                    me.offset.set(start_at);
+                    me.state.borrow_mut().position = start_at;
+                }
             }
             me.playbin.set_property("uri", &uri);
             let _ = me
@@ -684,9 +749,10 @@ impl Player {
         {
             let mut state = self.state.borrow_mut();
             if let Some(p) = position {
-                state.position = p;
+                state.position = p + self.offset.get();
             }
-            if let Some(d) = duration.filter(|d| *d > 0.0 && !state.live()) {
+            // (Started partway by the server, the stream knows only what's left: the song's own length stands.)
+            if let Some(d) = duration.filter(|d| *d > 0.0 && !state.live() && self.offset.get() == 0.0) {
                 state.duration = d;
             }
         }
@@ -905,6 +971,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn streams_that_cant_be_jumped_about_in_start_again_from_there() {
+        assert_eq!(with_start("http://s/api/stream?via=a&id=b", 92.04), "http://s/api/stream?via=a&id=b&start=92.0");
+        assert_eq!(with_start("http://s/x.flac", 5.0), "http://s/x.flac?start=5.0");
+    }
+
+    #[test]
     fn the_sign_in_goes_only_to_the_server() {
         let server = origin("https://Music.example.com").unwrap();
         assert_eq!(server, "https://music.example.com:443");
@@ -949,4 +1021,10 @@ mod tests {
 fn origin(address: &str) -> Option<String> {
     let url = url::Url::parse(address).ok()?;
     Some(format!("{}://{}:{}", url.scheme(), url.host_str()?.to_ascii_lowercase(), url.port_or_known_default()?))
+}
+
+/// [uri] started [seconds] in, by the server (for streams that can't be jumped about in).
+fn with_start(uri: &str, seconds: f64) -> String {
+    let joiner = if uri.contains('?') { '&' } else { '?' };
+    format!("{uri}{joiner}start={seconds:.1}")
 }

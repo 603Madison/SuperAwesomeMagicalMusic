@@ -264,6 +264,51 @@ data class PersonalStation(
 @Serializable
 data class DjLine(val id: String, val text: String, val atMs: Long)
 
+/** What Listen heard. */
+@Serializable
+data class ListenResult(
+    val found: Boolean,
+    val title: String? = null,
+    val artist: String? = null,
+    val album: String? = null,
+    val artworkUrl: String? = null,
+    /** A copy that plays, from the person's sources. */
+    val song: ApiTrack? = null,
+    /** Where the song was when the recording ended. */
+    val positionMs: Long? = null,
+    /** "library" or "audd". */
+    val via: String? = null,
+    val link: String? = null,
+    val message: String? = null,
+    val heardId: String? = null,
+    /** Not sure yet: sent back with the next, longer try. */
+    val candidate: String? = null,
+)
+
+/** A song Listen recognised (Recently heard). */
+@Serializable
+data class Heard(
+    val id: String,
+    val title: String,
+    val artist: String,
+    val album: String? = null,
+    val artworkUrl: String? = null,
+    val song: ApiTrack? = null,
+    val via: String = "library",
+    val link: String? = null,
+    val at: Long = 0,
+)
+
+@Serializable
+data class ListenStatus(
+    val learned: Int = 0,
+    val total: Int = 0,
+    val learning: Boolean = false,
+    val enabled: Boolean = true,
+    val libraries: Boolean = false,
+    val audd: Boolean = false,
+)
+
 /** What's on one of the person's stations, what's coming up, and what its DJ says. */
 @Serializable
 data class PersonalNow(
@@ -433,6 +478,21 @@ class ServerApi(
     /** Adds or removes a favourite; the list as it is now. */
     suspend fun setLiveFavorite(track: ApiTrack, favorite: Boolean): List<ApiTrack> =
         send("PUT", "${base()}/api/live/favorites", ApiJson.encodeToString(FavoriteChange.serializer(), FavoriteChange(track, favorite)), ListSerializer(ApiTrack.serializer()))
+
+    suspend fun listenStatus(): ListenStatus = get("${base()}/api/listen/status", ListenStatus.serializer())
+
+    /** A recording ([wav], what's been heard so far) to recognise; [final] on the last try. */
+    suspend fun listen(wav: ByteArray, final: Boolean, candidate: String?): ListenResult = withContext(Dispatchers.IO) {
+        val url = "${base()}/api/listen?final=$final" + (candidate?.let { "&candidate=${enc(it)}" } ?: "")
+        val request = Request.Builder().url(url).post(wav.toRequestBody("audio/wav".toMediaType())).apply {
+            token()?.let { header("Authorization", "Bearer $it") }
+        }.build()
+        http.newCall(request).execute().use { parse(it, ListenResult.serializer()) }
+    }
+
+    suspend fun listenHeard(): List<Heard> = get("${base()}/api/listen/heard", ListSerializer(Heard.serializer()))
+
+    suspend fun forgetHeard(id: String) = send("DELETE", "${base()}/api/listen/heard/${enc(id)}", null, Unit.serializer())
 
     suspend fun personalStations(): List<PersonalStation> = get("${base()}/api/radio/personal", ListSerializer(PersonalStation.serializer()))
 

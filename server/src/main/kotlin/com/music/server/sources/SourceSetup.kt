@@ -83,6 +83,14 @@ class SourceSetup(private val http: OkHttpClient) {
             emptyList(),
         ),
         KindSpec(
+            SourceKind.AUDD, "AudD",
+            "For Listen: recognises songs that aren't in your library, from what the microphone hears. " +
+                "Your own library is always tried first; only then is the recording sent to AudD.",
+            listOf(
+                FieldSpec("apiToken", "API token", "password", required = true, secret = true, help = "From dashboard.audd.io. AudD gives 300 recognitions free, then charges per recognition."),
+            ),
+        ),
+        KindSpec(
             SourceKind.LIDARR, "Lidarr",
             "Adds artists to Lidarr when their songs are played from outside your Jellyfin library.",
             listOf(
@@ -145,6 +153,11 @@ class SourceSetup(private val http: OkHttpClient) {
                 if (channels == 0) throw ApiError.badRequest("SiriusXM signed in but listed no channels")
                 buildJsonObject { put("username", username) } to buildJsonObject { put("password", password) }
             }
+            SourceKind.AUDD -> {
+                val token = text("apiToken") ?: previous?.secret("apiToken")?.ifEmpty { null } ?: throw ApiError.badRequest("The API token is needed")
+                service("AudD") { com.music.server.listen.AudD(http).check(token) }
+                JsonObject(emptyMap()) to buildJsonObject { put("apiToken", token) }
+            }
             SourceKind.LIDARR -> {
                 val serverUrl = url(required("serverUrl", "The server address"))
                 val apiKey = text("apiKey") ?: previous?.secret("apiKey")?.ifEmpty { null } ?: throw ApiError.badRequest("The API key is needed")
@@ -172,6 +185,10 @@ class SourceSetup(private val http: OkHttpClient) {
         SourceKind.RADIO -> {
             val found = service("Radio Browser") { registry.radio.search("jazz", limit = 5) }
             "Working: Radio Browser answered with ${found.size} stations"
+        }
+        SourceKind.AUDD -> {
+            service("AudD") { com.music.server.listen.AudD(registry.http).check(source.secret("apiToken")) }
+            "Working: AudD accepted the API token"
         }
         else -> {
             val music = registry.music(source) ?: throw ApiError.badRequest("Nothing to test")
@@ -223,7 +240,7 @@ class SourceSetup(private val http: OkHttpClient) {
  * their sign-ins and caches are shared by everyone using the source.
  */
 class SourceRegistry(
-    private val http: OkHttpClient,
+    val http: OkHttpClient,
     private val store: SourceStore,
     /** Whether a person's own sources are trusted to reach anywhere (an admin's are). */
     private val ownerTrusted: (String) -> Boolean = { true },
@@ -276,7 +293,7 @@ class SourceRegistry(
             QobuzSource(clientFor(source)) { config }
         }
         SourceKind.YOUTUBE_MUSIC -> youtube
-        SourceKind.LIDARR, SourceKind.SIRIUSXM, SourceKind.RADIO -> null
+        SourceKind.LIDARR, SourceKind.SIRIUSXM, SourceKind.RADIO, SourceKind.AUDD -> null
     }
 
     fun jellyfin(source: StoredSource): JellyfinSource? = music(source) as? JellyfinSource

@@ -31,6 +31,8 @@ private fun serve(config: ServerConfig) {
     runBlocking { services.bootstrap() }
     // Songs imported playlists named that weren't found are looked for again every few hours.
     services.missingFinder.start()
+    // Listen learns the libraries' songs in the background.
+    services.listen.start()
     log.info("SuperAwesomeMagicalMusic server {} listening on {}:{}, data in {}", Services.version, config.host, config.port, config.dataDir)
     val server = embeddedServer(Netty, port = config.port, host = config.host) { module(services) }
     Runtime.getRuntime().addShutdownHook(

@@ -79,6 +79,8 @@ class Services(
     val songArt = SongArt(sources, registry, scope, clock)
     val missingFinder = com.music.server.playlists.MissingFinder(playlists, users, importer, scope)
     val personalRadio = com.music.server.radio.PersonalRadio(this)
+    /** Listen: recognising songs, from the libraries it learns (kept in listen.db) and AudD. */
+    val listen = com.music.server.listen.Listen(this, java.io.File(config.dataDir, "listen.db"))
 
     override fun close() {
         scope.cancel()

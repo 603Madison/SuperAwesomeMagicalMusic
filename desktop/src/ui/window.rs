@@ -18,7 +18,7 @@ struct Section {
     make: fn() -> adw::NavigationPage,
 }
 
-const SECTIONS: [Section; 4] = [
+const SECTIONS: [Section; 5] = [
     Section {
         title: "Search",
         icon: "system-search-symbolic",
@@ -28,6 +28,11 @@ const SECTIONS: [Section; 4] = [
         title: "Radio",
         icon: "network-wireless-signal-excellent-symbolic",
         make: pages::radio_page,
+    },
+    Section {
+        title: "Listen",
+        icon: "audio-input-microphone-symbolic",
+        make: crate::ui::listen::listen_page,
     },
     Section {
         title: "Playlists",

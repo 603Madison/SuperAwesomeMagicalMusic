@@ -1,5 +1,5 @@
 import type {
-  ArtistView, ChannelView, NowView, StationTracks, PersonalNow, PersonalStation,
+  ArtistView, ChannelView, NowView, StationTracks, PersonalNow, PersonalStation, Heard, ListenResult, ListenStatus,
   AdminSettings, AuthConfig, KindsResponse, LidarrRequest, Listen, LyricsView, Wrapped, Playlist, PlaylistSummary,
   ResolvedStream, SearchResults, ArtistPage, AlbumPage, ServerSettings, SessionInfo, SourceView, Track, User, OidcSettings,
 } from "./types";
@@ -129,6 +129,27 @@ export const api = {
   liveTop: (limit = 4) => get<Track[]>(`/api/live/top?limit=${limit}`),
   liveFavorites: () => get<Track[]>("/api/live/favorites"),
   setLiveFavorite: (track: Track, favorite: boolean) => put<Track[]>("/api/live/favorites", { track, favorite }),
+  listenStatus: () => get<ListenStatus>("/api/listen/status"),
+  /** A recording (what's been heard so far) to recognise; [final] on the last try. */
+  listen: async (audio: Blob, final: boolean, candidate?: string): Promise<ListenResult> => {
+    const query = `final=${final}${candidate ? `&candidate=${q(candidate)}` : ""}`;
+    let response: Response;
+    try {
+      response = await fetch(`/api/listen?${query}`, {
+        method: "POST",
+        headers: { "X-SAMM": "1", "Content-Type": audio.type || "application/octet-stream" },
+        body: audio,
+        credentials: "same-origin",
+      });
+    } catch {
+      throw new ApiError(0, "Can't reach the server");
+    }
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new ApiError(response.status, (data && typeof data.error === "string") ? data.error : `The server answered ${response.status}`);
+    return data as ListenResult;
+  },
+  listenHeard: () => get<Heard[]>("/api/listen/heard"),
+  forgetHeard: (id: string) => del<unknown>(`/api/listen/heard/${q(id)}`),
   personalStations: () => get<PersonalStation[]>("/api/radio/personal"),
   personalNow: (id: string, tz: string) => get<PersonalNow>(`/api/radio/personal/${q(id)}/now?tz=${q(tz)}`),
   personalSkip: (id: string) => post<unknown>(`/api/radio/personal/${q(id)}/skip`, {}),

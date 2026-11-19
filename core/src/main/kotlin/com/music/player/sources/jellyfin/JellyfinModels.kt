@@ -16,7 +16,10 @@ data class JfAuthResult(
 data class JfUser(@SerialName("Id") val id: String, @SerialName("Name") val name: String? = null)
 
 @Serializable
-data class JfItemsResult(@SerialName("Items") val items: List<JfItem> = emptyList())
+data class JfItemsResult(
+    @SerialName("Items") val items: List<JfItem> = emptyList(),
+    @SerialName("TotalRecordCount") val total: Int? = null,
+)
 
 @Serializable
 data class JfItem(

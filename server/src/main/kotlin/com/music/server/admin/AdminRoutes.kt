@@ -108,6 +108,7 @@ fun Route.adminRoutes(services: Services) {
             val change = call.receive<SettingsChange>()
             val next = validated(change.settings)
             services.settings.update { next }
+            if (next.learnLibrary) services.listen.learnSoon()
             change.oidcClientSecret?.let { services.settings.setOidcClientSecret(it.trim()) }
             call.respond(adminSettings(services, call))
         }

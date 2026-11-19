@@ -69,6 +69,8 @@ fun Route.sourceRoutes(services: Services) {
                 settings = settings,
                 secrets = secrets,
             )
+            // A new library: Listen learns its songs.
+            if (created.kind == SourceKind.JELLYFIN) services.listen.learnSoon()
             call.respond(services.sources.visibleTo(user).first { it.id == created.id })
         }
 

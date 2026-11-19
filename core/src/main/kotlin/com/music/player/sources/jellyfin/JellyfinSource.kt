@@ -284,6 +284,23 @@ class JellyfinSource(
         }
     }
 
+    /**
+     * A page of every song in the library ([start], [limit]), in a stable order, with how many
+     * there are in all: for going through the whole library (to learn it for recognising songs).
+     */
+    suspend fun allSongs(start: Int, limit: Int): Pair<List<Track>, Int> {
+        val (config, deviceId) = requireConfig()
+        val url = itemsUrl(config)
+            .addQueryParameter("sortBy", "SortName")
+            .addQueryParameter("sortOrder", "Ascending")
+            .addQueryParameter("startIndex", start.toString())
+            .addQueryParameter("limit", limit.toString())
+            .build()
+        val request = Request.Builder().url(url).header("Authorization", authorization(deviceId, config.accessToken)).build()
+        val page = AppJson.decodeFromString<JfItemsResult>(http.fetchString(request))
+        return page.items.map { it.toTrack(config.serverUrl) } to (page.total ?: (start + page.items.size))
+    }
+
     private fun itemsUrl(config: JellyfinConfig): HttpUrl.Builder =
         "${config.serverUrl}/Items".toHttpUrl().newBuilder()
             .addQueryParameter("userId", config.userId)

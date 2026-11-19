@@ -149,6 +149,22 @@ object Schema {
             PRIMARY KEY (user_id, song_key)
         );
         """,
+        // 7: songs Listen recognised (each person's Recently heard).
+        """
+        CREATE TABLE heard (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            artist TEXT NOT NULL,
+            album TEXT,
+            artwork TEXT,
+            song TEXT,
+            via TEXT NOT NULL,
+            link TEXT,
+            at INTEGER NOT NULL
+        );
+        CREATE INDEX heard_user ON heard (user_id, at);
+        """,
     )
 
     val version: Int get() = migrations.size

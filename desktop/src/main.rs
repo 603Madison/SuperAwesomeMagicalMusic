@@ -2,6 +2,7 @@
 
 mod api;
 mod config;
+mod mic;
 mod mpris;
 mod player;
 mod rt;

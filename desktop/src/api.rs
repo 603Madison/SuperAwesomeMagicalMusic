@@ -292,6 +292,14 @@ pub struct ResolvedStream {
     pub stream_url: String,
     #[serde(default)]
     pub description: String,
+    /// It can be jumped about in (a file); otherwise (a conversion) the server starts it again
+    /// from where asked.
+    #[serde(default = "yes")]
+    pub seekable: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -333,6 +341,66 @@ pub struct NowView {
     pub start_ms: i64,
     #[serde(default)]
     pub duration_ms: i64,
+}
+
+/// What Listen heard.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenResult {
+    #[serde(default)]
+    pub found: bool,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub artist: Option<String>,
+    #[serde(default)]
+    pub album: Option<String>,
+    #[serde(default)]
+    pub artwork_url: Option<String>,
+    /// A copy that plays, from your sources.
+    #[serde(default)]
+    pub song: Option<Track>,
+    /// Where the song was when the recording ended.
+    #[serde(default)]
+    pub position_ms: Option<i64>,
+    #[serde(default)]
+    pub via: Option<String>,
+    #[serde(default)]
+    pub message: Option<String>,
+    /// Not sure yet: sent back with the next, longer try.
+    #[serde(default)]
+    pub candidate: Option<String>,
+}
+
+/// A song Listen recognised (Recently heard).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Heard {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub artist: String,
+    #[serde(default)]
+    pub artwork_url: Option<String>,
+    #[serde(default)]
+    pub song: Option<Track>,
+    #[serde(default)]
+    pub at: i64,
+}
+
+/// How much of your library Listen knows, and whether AudD is there for the rest.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ListenStatus {
+    #[serde(default)]
+    pub learned: i64,
+    #[serde(default)]
+    pub total: i64,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub libraries: bool,
+    #[serde(default)]
+    pub audd: bool,
 }
 
 /// One of the person's own stations, as the Radio page lists it.
@@ -450,6 +518,11 @@ impl Api {
             request = request.json(&body);
         }
         let response = request.send().await.map_err(|e| anyhow!(describe(&e)))?;
+        Self::answer(response, path).await
+    }
+
+    /// What the server answered: the value, or its error as a message for people.
+    async fn answer<T: DeserializeOwned>(response: reqwest::Response, path: &str) -> Result<T> {
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -464,6 +537,39 @@ impl Api {
             return serde_json::from_slice(b"null").context("an empty answer");
         }
         serde_json::from_slice(&bytes).with_context(|| format!("an unexpected answer from {path}"))
+    }
+
+    // Listen: what's playing around you.
+
+    pub async fn listen_status(&self) -> Result<ListenStatus> {
+        self.get("/api/listen/status").await
+    }
+
+    /// A recording ([wav], what's been heard so far) to recognise; [last] on the last try.
+    pub async fn listen(&self, wav: Vec<u8>, last: bool, candidate: Option<&str>) -> Result<ListenResult> {
+        let mut path = format!("/api/listen?final={last}");
+        if let Some(candidate) = candidate {
+            path += &format!("&candidate={}", enc(candidate));
+        }
+        let mut request = self
+            .http
+            .post(self.url(&path))
+            .header("Accept", "application/json")
+            .header("Content-Type", "audio/wav")
+            .body(wav);
+        if let Some(token) = &self.token {
+            request = request.bearer_auth(token);
+        }
+        let response = request.send().await.map_err(|e| anyhow!(describe(&e)))?;
+        Self::answer(response, &path).await
+    }
+
+    pub async fn listen_heard(&self) -> Result<Vec<Heard>> {
+        self.get("/api/listen/heard").await
+    }
+
+    pub async fn forget_heard(&self, id: &str) -> Result<serde_json::Value> {
+        self.send(Method::DELETE, &format!("/api/listen/heard/{}", enc(id)), None).await
     }
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {

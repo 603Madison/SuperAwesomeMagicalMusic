@@ -70,9 +70,25 @@ class Tx(private val connection: Connection) {
 
     fun <T> one(sql: String, vararg args: Any?, map: (Row) -> T): T? = query(sql, *args, map = map).firstOrNull()
 
+    /** Runs [sql] once for each of [rows] (its arguments), as one batch: for many rows at once. */
+    fun batch(sql: String, rows: Iterator<Array<out Any?>>): Int {
+        var count = 0
+        connection.prepareStatement(sql).use { statement ->
+            for (row in rows) {
+                bind(statement, row)
+                statement.addBatch()
+                if (++count % 5_000 == 0) statement.executeBatch()
+            }
+            statement.executeBatch()
+        }
+        return count
+    }
+
     fun long(sql: String, vararg args: Any?): Long = one(sql, *args) { it.long(1) } ?: 0
 
-    private fun prepare(sql: String, args: Array<out Any?>): PreparedStatement = connection.prepareStatement(sql).apply {
+    private fun prepare(sql: String, args: Array<out Any?>): PreparedStatement = connection.prepareStatement(sql).also { bind(it, args) }
+
+    private fun bind(statement: PreparedStatement, args: Array<out Any?>) = statement.apply {
         args.forEachIndexed { index, value ->
             val position = index + 1
             when (value) {
