@@ -77,12 +77,15 @@ class Services(
     val liveFavorites = LiveFavorites(db, clock)
     val connect = com.music.server.connect.ConnectHub(clock)
     val songArt = SongArt(sources, registry, scope, clock)
+    /** Local FM and HD Radio from tuners on the network, alongside internet radio. */
+    val tunerRadio = com.music.server.tuner.TunerRadio(this)
     val missingFinder = com.music.server.playlists.MissingFinder(playlists, users, importer, scope)
     val personalRadio = com.music.server.radio.PersonalRadio(this)
     /** Listen: recognising songs, from the libraries it learns (kept in listen.db) and AudD. */
     val listen = com.music.server.listen.Listen(this, java.io.File(config.dataDir, "listen.db"))
 
     override fun close() {
+        tunerRadio.close()
         scope.cancel()
         db.close()
     }

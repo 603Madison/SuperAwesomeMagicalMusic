@@ -84,8 +84,16 @@ class ReportLimiter(private val perMinute: Int = 30, private val clock: () -> Lo
     }
 }
 
+/**
+ * What's on a radio station. [title] is "Artist - Title" as stations send it (every player reads
+ * that); tuner stations also give the song itself ([now], with its cover) and their [signal].
+ */
 @Serializable
-data class RadioNow(val title: String? = null)
+data class RadioNow(
+    val title: String? = null,
+    val now: NowView? = null,
+    val signal: com.music.server.tuner.SignalView? = null,
+)
 
 /** A live channel or station that started playing. */
 @Serializable
@@ -108,13 +116,20 @@ fun Route.liveRoutes(services: Services) {
         return source to services.registry.siriusXm(source)!!
     }
 
+    /** The radio source [call] names: Radio Browser, or a tuner. */
     suspend fun ApplicationCall.radioSource(user: User): StoredSource =
-        services.sources.accessible(user, parameters["src"].orEmpty())?.takeIf { it.enabled && it.kind == SourceKind.RADIO }
+        services.sources.accessible(user, parameters["src"].orEmpty())?.takeIf { it.enabled && (it.kind == SourceKind.RADIO || it.kind == SourceKind.TUNER) }
             ?: throw ApiError.notFound("Radio isn't available")
+
+    val tuners = services.tunerRadio
 
     fun keyPath(source: StoredSource) = { guid: String -> "/api/live/sxm/${source.id.encodeURLPathPart()}/key/${guid.encodeURLPathPart()}" }
 
     fun stationsOut(source: StoredSource, stations: List<RadioStation>) = stations.map { art.outgoing(ApiTrack.of(it.toTrack(), source.id)) }
+
+    /** Radio Browser's stations with the person's tuner stations merged in (see TunerRadio). */
+    suspend fun withTuners(user: User, source: StoredSource, stations: List<RadioStation>, query: String?): List<ApiTrack> =
+        tuners.merge(user, stations, source.id, query).map(art::outgoing)
 
     /** What's (or what was) on, with the song's own cover when the channel has none. */
     suspend fun nowView(user: User, cut: SxmCut, waitMs: Long): NowView {
@@ -362,8 +377,9 @@ fun Route.liveRoutes(services: Services) {
             val source = call.radioSource(user)
             val params = call.request.queryParameters
             val query = params["q"]?.trim().orEmpty()
+            if (source.kind == SourceKind.TUNER) return@get call.respond(tuners.own(source, query).map(art::outgoing))
             val stations = SourceSetup.service("Radio Browser") { services.registry.radio.search(query, params["country"]) }
-            call.respond(stationsOut(source, stations))
+            call.respond(withTuners(user, source, stations, query))
         }
 
         get("/radio/{src}/nearby") {
@@ -372,10 +388,12 @@ fun Route.liveRoutes(services: Services) {
             val params = call.request.queryParameters
             val lat = params["lat"]?.toDoubleOrNull()?.takeIf { it in -90.0..90.0 } ?: throw ApiError.badRequest("Where? (lat and lon)")
             val lon = params["lon"]?.toDoubleOrNull()?.takeIf { it in -180.0..180.0 } ?: throw ApiError.badRequest("Where? (lat and lon)")
+            // A tuner's stations are all near: they're the ones it hears.
+            if (source.kind == SourceKind.TUNER) return@get call.respond(tuners.own(source).map(art::outgoing))
             val stations = SourceSetup.service("Radio Browser") {
                 services.registry.radio.nearby(lat, lon, params["state"], params["country"])
             }
-            call.respond(stationsOut(source, stations))
+            call.respond(withTuners(user, source, stations, null))
         }
 
         get("/radio/{src}/station/{id}/stream") {
@@ -383,6 +401,7 @@ fun Route.liveRoutes(services: Services) {
             // A personal station: the person's own broadcast.
             if (call.parameters["src"] == Stations.VIA) return@get services.personalRadio.respondStream(call, user, call.parameters["id"].orEmpty())
             val source = call.radioSource(user)
+            if (source.kind == SourceKind.TUNER) return@get tuners.respondStream(call, user, source, call.parameters["id"].orEmpty())
             val id = call.parameters["id"].orEmpty().removePrefix("hls:")
             val station = SourceSetup.service("Radio Browser") { services.registry.radio.station(id) }
             // The directory ranks stations by plays: count each person's once a day.
@@ -402,8 +421,21 @@ fun Route.liveRoutes(services: Services) {
             val user = call.requireUser(services)
             if (call.parameters["src"] == Stations.VIA) return@get call.respond(RadioNow(services.personalRadio.radioTitle(user, call.parameters["id"].orEmpty())))
             val source = call.radioSource(user)
+            if (source.kind == SourceKind.TUNER) {
+                val now = tuners.now(user, source, call.parameters["id"].orEmpty())
+                call.response.header(HttpHeaders.CacheControl, "no-store")
+                return@get call.respond(RadioNow(now.title, now.now, now.signal))
+            }
             val id = call.parameters["id"].orEmpty().removePrefix("hls:")
             call.respond(RadioNow(proxy.radioTitle("${source.id}|$id")))
+        }
+
+        // A tuner station's logo or cover (the tuner is on the home network; players reach the server).
+        get("/tuner/{src}/image/{station}/{kind}") {
+            val user = call.requireUser(services)
+            val source = services.sources.accessible(user, call.parameters["src"].orEmpty())?.takeIf { it.enabled && it.kind == SourceKind.TUNER }
+                ?: throw ApiError.notFound()
+            tuners.respondImage(call, source, call.parameters["station"].orEmpty(), call.parameters["kind"].orEmpty())
         }
     }
 }
