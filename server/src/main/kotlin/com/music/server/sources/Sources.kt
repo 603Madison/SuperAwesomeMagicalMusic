@@ -29,6 +29,10 @@ enum class SourceKind(val label: String, val type: SourceType?) {
     TUNER("FM tuner", SourceType.RADIO),
     /** Recognises songs Listen hears that aren't in the library (a paid service, with its own key). */
     AUDD("AudD", null),
+    /** Sonos speakers, as places to play (see speakers/). */
+    SONOS("Sonos", null),
+    /** Music Assistant's players, as places to play (see speakers/). */
+    MUSIC_ASSISTANT("Music Assistant", null),
     ;
 
     /** Live radio: channels and stations rather than songs on demand. */

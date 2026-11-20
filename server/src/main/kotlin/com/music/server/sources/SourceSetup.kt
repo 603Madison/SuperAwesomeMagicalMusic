@@ -110,7 +110,7 @@ class SourceSetup(private val http: OkHttpClient) {
                 FieldSpec("searchForMissingAlbums", "Search for their albums straight away", "bool", default = "true"),
             ),
         ),
-    )
+    ) + com.music.server.speakers.SpeakerSetup.kinds
 
     /**
      * The settings and secrets to save for [kind] from what was filled in, signing in where the
@@ -175,6 +175,7 @@ class SourceSetup(private val http: OkHttpClient) {
                 service("AudD") { com.music.server.listen.AudD(http).check(token) }
                 JsonObject(emptyMap()) to buildJsonObject { put("apiToken", token) }
             }
+            SourceKind.SONOS, SourceKind.MUSIC_ASSISTANT -> com.music.server.speakers.SpeakerSetup.configure(kind, fields, previous, http, ::url)
             SourceKind.LIDARR -> {
                 val serverUrl = url(required("serverUrl", "The server address"))
                 val apiKey = text("apiKey") ?: previous?.secret("apiKey")?.ifEmpty { null } ?: throw ApiError.badRequest("The API key is needed")
@@ -214,6 +215,7 @@ class SourceSetup(private val http: OkHttpClient) {
             service("AudD") { com.music.server.listen.AudD(registry.http).check(source.secret("apiToken")) }
             "Working: AudD accepted the API token"
         }
+        SourceKind.SONOS, SourceKind.MUSIC_ASSISTANT -> com.music.server.speakers.SpeakerSetup.test(source, registry.http)
         else -> {
             val music = registry.music(source) ?: throw ApiError.badRequest("Nothing to test")
             val found = service(source.kind.label) { music.search("love", 3) }
@@ -328,6 +330,7 @@ class SourceRegistry(
         }
         SourceKind.YOUTUBE_MUSIC -> youtube
         SourceKind.LIDARR, SourceKind.SIRIUSXM, SourceKind.RADIO, SourceKind.TUNER, SourceKind.AUDD -> null
+        SourceKind.SONOS, SourceKind.MUSIC_ASSISTANT -> null
     }
 
     fun jellyfin(source: StoredSource): JellyfinSource? = music(source) as? JellyfinSource

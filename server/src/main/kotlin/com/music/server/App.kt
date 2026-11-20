@@ -16,6 +16,7 @@ import com.music.server.music.musicRoutes
 import com.music.server.playlists.playlistRoutes
 import com.music.server.playlists.wrappedRoutes
 import com.music.server.sources.sourceRoutes
+import com.music.server.speakers.speakerRoutes
 import io.ktor.http.CacheControl
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -113,6 +114,7 @@ fun Application.module(services: Services) {
         playlistRoutes(services)
         wrappedRoutes(services)
         connectRoutes(services)
+        speakerRoutes(services)
         mcpRoutes(services)
         route("/api/{...}") {
             handle { call.respond(HttpStatusCode.NotFound, ErrorBody("No such API")) }

@@ -23,6 +23,11 @@ data class ServerConfig(
      * Off: only admins' may, so nobody else can point the server at what listens only there.
      */
     val localSources: Boolean = false,
+    /**
+     * The server's address as speakers (Sonos, Music Assistant) reach it, e.g.
+     * http://192.168.1.10:8080, when it can't be worked out (a container with its own network).
+     */
+    val speakerUrl: String? = null,
     /** Settings applied at every start, overriding the admin page (for configuration as code). */
     val overrides: Map<String, String> = emptyMap(),
 ) {
@@ -42,6 +47,7 @@ data class ServerConfig(
             ffmpeg = env["SAMM_FFMPEG"]?.ifBlank { null } ?: "ffmpeg",
             maxTranscodes = env["SAMM_MAX_TRANSCODES"]?.toIntOrNull()?.coerceIn(1, 64) ?: 4,
             localSources = env["SAMM_LOCAL_SOURCES"]?.lowercase() in setOf("1", "true", "yes"),
+            speakerUrl = env["SAMM_SPEAKER_URL"]?.trim()?.trimEnd('/')?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
             overrides = env.filterKeys { it in OVERRIDES }.filterValues { it.isNotBlank() },
         )
 

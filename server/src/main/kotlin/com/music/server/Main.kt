@@ -33,6 +33,8 @@ private fun serve(config: ServerConfig) {
     services.missingFinder.start()
     // Listen learns the libraries' songs in the background.
     services.listen.start()
+    // Sonos speakers and Music Assistant players join people's devices.
+    services.speakers.start()
     log.info("SuperAwesomeMagicalMusic server {} listening on {}:{}, data in {}", Services.version, config.host, config.port, config.dataDir)
     val server = embeddedServer(Netty, port = config.port, host = config.host) { module(services) }
     Runtime.getRuntime().addShutdownHook(
