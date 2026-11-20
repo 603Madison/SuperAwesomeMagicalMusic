@@ -21,6 +21,7 @@ class Catalog(
         SourceType.YOUTUBE_MUSIC -> youtube
         SourceType.SIRIUSXM -> siriusXmSongs
         SourceType.RADIO -> radioStations
+        SourceType.SUBSONIC -> subsonic
     }
 
     /** SiriusXM songs can't be fetched on demand; they play from the other services. */
@@ -29,6 +30,10 @@ class Catalog(
     /** Radio stations play live (see StreamResolver); there are no songs to fetch from them. */
     private val radioStations: MusicSource = LiveOnly(SourceType.RADIO, "Radio stations only play live")
 
+    /** Subsonic servers are the server's sources; Standalone doesn't sign in to them. */
+    private val subsonic: MusicSource = LiveOnly(SourceType.SUBSONIC, "Subsonic servers play through the SuperAwesomeMagicalMusic server")
+
+    /** A source with no songs on demand here, for the reason given. */
     private class LiveOnly(override val type: SourceType, private val reason: String) : MusicSource {
         override suspend fun isAvailable() = false
         override suspend fun search(query: String, limit: Int): List<Track> = emptyList()

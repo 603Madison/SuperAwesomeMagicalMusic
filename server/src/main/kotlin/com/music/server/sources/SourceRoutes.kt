@@ -35,6 +35,10 @@ data class TestResult(val ok: Boolean, val message: String)
 @Serializable
 data class Choice(val id: String, val name: String)
 
+/** A playlist kept on a Subsonic server, to import. */
+@Serializable
+data class SourcePlaylist(val id: String, val name: String, val songCount: Int? = null, val artworkUrl: String? = null)
+
 @Serializable
 data class LidarrOptions(val qualityProfiles: List<Choice>, val metadataProfiles: List<Choice>, val rootFolders: List<Choice>)
 
@@ -70,7 +74,7 @@ fun Route.sourceRoutes(services: Services) {
                 secrets = secrets,
             )
             // A new library: Listen learns its songs.
-            if (created.kind == SourceKind.JELLYFIN) services.listen.learnSoon()
+            if (created.kind.isLibrary) services.listen.learnSoon()
             call.respond(services.sources.visibleTo(user).first { it.id == created.id })
         }
 
@@ -118,6 +122,16 @@ fun Route.sourceRoutes(services: Services) {
                 call.respond(result)
             }
 
+            // The playlists kept on a Subsonic server, to import (Playlists › Import).
+            get("/playlists") {
+                val user = call.requireUser(services)
+                val source = services.sources.accessible(user, call.parameters["id"].orEmpty())?.takeIf { it.enabled } ?: throw ApiError.notFound("No such source")
+                val subsonic = services.registry.music(source) as? com.music.player.sources.subsonic.SubsonicSource
+                    ?: throw ApiError.badRequest("${source.name} doesn't keep playlists")
+                val playlists = SourceSetup.service(source.name) { subsonic.playlists() }
+                call.respond(playlists.map { SourcePlaylist(it.id, it.name, it.songCount, services.artwork.wrap(it.artworkUrl)) })
+            }
+
             get("/lidarr-options") {
                 val user = call.requireUser(services)
                 val source = editable(services, user, call.parameters["id"])
@@ -144,5 +158,11 @@ private suspend fun editable(services: Services, user: com.music.server.auth.Use
 private fun defaultName(kind: SourceKind, settings: JsonObject): String {
     val host = (settings["serverUrl"] as? kotlinx.serialization.json.JsonPrimitive)?.content
         ?.substringAfter("://")?.substringBefore('/')?.substringBefore(':')
-    return if (host != null && kind == SourceKind.JELLYFIN) "Jellyfin ($host)" else kind.label
+    // A Subsonic server goes by its own name (Navidrome, Gonic…) where it says it.
+    val subsonic = (settings["serverName"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { kind == SourceKind.SUBSONIC && it.isNotBlank() }
+    return when {
+        host != null && kind == SourceKind.JELLYFIN -> "Jellyfin ($host)"
+        host != null && kind == SourceKind.SUBSONIC -> "${subsonic ?: "Subsonic"} ($host)"
+        else -> kind.label
+    }
 }

@@ -4,7 +4,8 @@
   <a href="https://fdroid.link/#https://603madison.github.io/SuperAwesomeMagicalMusic/repo?fingerprint=ED2C0523BC9120F63952EAE882FA4C0FBD3153967130C0A4ADF1AF98D07B5283"><img alt="Add to F-Droid" src="https://img.shields.io/badge/Add_to-F--Droid-1976D2?style=for-the-badge&amp;logo=fdroid&amp;logoColor=white" height="40"></a>
 </p>
 
-Music for self-hosters. It plays from your **Jellyfin** library first and fills the gaps from
+Music for self-hosters. It plays from your **Jellyfin** library first (or, through the server,
+any **Subsonic** server: Navidrome, Gonic, Airsonic and the like) and fills the gaps from
 **YouTube Music**. It also plays **SiriusXM** live radio and Pandora artist stations,
 and songs you hear there can be saved to a playlist. Songs Jellyfin doesn't have get their artist
 added to **Lidarr**, queued until your Lidarr server is reachable. Bitrates are set separately for
@@ -19,14 +20,14 @@ This repository holds:
   to every service itself; no server needed.
 - **The server** (`server/`, with the **web player** in `web/`): your own streaming service in
   Docker or Podman. Accounts (local, or single sign-on such as Authentik), sources shared by the
-  admins or added by each person (SiriusXM and Pandora stations, radio, Jellyfin, YouTube
-  Music, Lidarr), playlists and history per person, and a web player for the computer. See [server/README.md](server/README.md):
+  admins or added by each person (SiriusXM and Pandora stations, radio, Jellyfin,
+  Subsonic servers such as Navidrome, YouTube Music, Lidarr), playlists and history per person, and a web player for the computer. See [server/README.md](server/README.md):
   `docker run -p 8080:8080 -v samm-data:/data ghcr.io/603madison/superawesomemagicalmusic`.
 - **The tuner** (`tuner/`): local FM and HD Radio for the server, like an HDHomeRun for the radio.
   RTL-SDR dongles on a Raspberry Pi, in a container; stations come with what's playing (RDS and
   HD Radio's tags, logos and album art), and one that's also online plays from whichever copy is
   clearer. See [tuner/README.md](tuner/README.md).
-- **core** (`core/`): the music services (Jellyfin, YouTube Music, SiriusXM, radio, Lidarr,
+- **core** (`core/`): the music services (Jellyfin, Subsonic, YouTube Music, SiriusXM, radio, Lidarr,
   lyrics, scrobbling) as plain Kotlin, shared by the app and the server.
 - **SuperAwesomeMagicalMusic** (`connect/`): the Android app for the server. Enter the server's
   address and sign in (single sign-on through the browser, or a password); your library, radio and
@@ -99,6 +100,12 @@ are generated.
   switches to your own files once they are in the library.
 - **When Jellyfin doesn't have a song**, it streams from YouTube Music, at the best quality that
   fits your bitrate cap.
+- **Subsonic servers** (on the server): Navidrome, Gonic, Airsonic(-Advanced), Ampache, LMS,
+  Nextcloud Music, Funkwhale and anything else that speaks the Subsonic API are libraries just
+  like Jellyfin: searched first, played from first, learned by Listen, and their playlists can be
+  imported. Sign in with a username and password (only a salted token is sent, or the password
+  itself for servers that can't check tokens, such as LDAP accounts) or an API key
+  (OpenSubsonic).
 - **Better networks, better copies:** when you move to a better network (e.g. satellite to Wi-Fi),
   the song playing switches to a better copy where it left off, and songs you replay later are
   picked again for the network you're on.
@@ -184,7 +191,7 @@ says what song it is, with **Play**, and **Play from here** to carry on from the
 in the room. Everything it recognises is kept under **Recently heard**.
 
 - **Your library first, on your server.** The server learns every song in your Jellyfin
-  libraries in the background (their audio fingerprints, the technique Shazam uses), so it can
+  and Subsonic libraries in the background (their audio fingerprints, the technique Shazam uses), so it can
   recognise them from a few seconds through a phone's microphone, noise and all, without anything
   leaving the server. It takes a few seconds a song, and about 15 MB of space for every 100 songs
   (in `listen.db`, which can always be made again). Admins can turn this off in **Admin ›
@@ -283,6 +290,7 @@ download quality.
 | Source | How the cap is applied |
 |---|---|
 | Jellyfin | Exact: files at or under the cap play untouched; larger ones are transcoded on the server to the cap (MP3, or AAC, which sounds better at low bitrates). |
+| Subsonic (server) | Files at or under the cap play untouched; larger ones are transcoded to MP3 at the cap by the Subsonic server (with its own transcoding settings). |
 | YouTube Music | Fixed tiers, roughly 48/50/70/128/160 kbps (AAC/Opus). The cap rounds down to the closest tier. |
 
 **Satellite** follows Android's
@@ -373,6 +381,8 @@ Open **Settings** in the app:
 - **Jellyfin**: server URL, username and password. The password is used once to get an access
   token and is not stored.
 - **YouTube Music**: on by default, no account needed.
+- **Subsonic servers** (Navidrome and the like) are added on the server (Settings › Sources), not
+  in Standalone.
 - **SiriusXM**: your SiriusXM e-mail and password. The password is kept, so the app can sign in
   again when SiriusXM's session expires.
 - **Lidarr**: server URL and API key (Lidarr › Settings › General).

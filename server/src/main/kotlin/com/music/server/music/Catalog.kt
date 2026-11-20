@@ -1,12 +1,11 @@
 package com.music.server.music
 
 import com.music.player.CoreLog
-import com.music.player.model.SourceType
 import com.music.player.model.Track
 import com.music.player.quality.StreamQuality
+import com.music.player.sources.MusicLibrary
 import com.music.player.sources.SourceStream
 import com.music.player.sources.SourceUnavailableException
-import com.music.player.sources.jellyfin.JellyfinSource
 import com.music.server.ApiError
 import com.music.server.auth.User
 import com.music.server.sources.SourceKind
@@ -36,7 +35,7 @@ data class Resolution(val source: StoredSource, val track: Track, val stream: So
  * A person's music across their sources: picking where a song plays from, by the same rules as
  * the Standalone app:
  *
- *  1. Libraries (Jellyfin) first: a song from any service is looked for there.
+ *  1. Libraries (Jellyfin, Subsonic servers) first: a song from any service is looked for there.
  *  2. Not in any library: Lidarr is asked to get the artist (if set up).
  *  3. Otherwise a streaming service: the song's own first, then the others. With [thorough]
  *     every service is asked at once and the best copy within the bitrate cap wins; without,
@@ -60,10 +59,10 @@ class Catalog(
         // 1. Libraries, the one the song came from first.
         var missingFromLibraries = true
         for (library in sources.filter { it.kind.isLibrary }.sortedByDescending { it.id == via }) {
-            val music = registry.music(library) as? JellyfinSource ?: continue
+            val music = registry.music(library) as? MusicLibrary ?: continue
             try {
                 val copy = when {
-                    wanted.source == SourceType.JELLYFIN && via == library.id -> wanted
+                    wanted.source == music.type && via == library.id -> wanted
                     else -> music.lookUp(wanted)
                 }
                 if (copy != null) return Resolution(library, copy, streamOf(library, copy.sourceId, quality))

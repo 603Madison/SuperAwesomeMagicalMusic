@@ -205,9 +205,11 @@ fun Route.musicRoutes(services: Services) {
         val px = params["px"]?.toIntOrNull()?.coerceIn(32, 2048)
         val sized = Artwork.sized(upstream, px)
         artFailures[sized]?.let { if (services.clock() - it < ART_RETRY_MS) throw ApiError.notFound() }
+        // A Subsonic server's covers need its credentials, which their addresses leave out.
+        val fetched = services.registry.authorizeArtwork(sized) ?: sized
         val (type, bytes) = withContext(Dispatchers.IO) {
             try {
-                artHttp.newCall(Request.Builder().url(sized).build()).execute().use { response ->
+                artHttp.newCall(Request.Builder().url(fetched).build()).execute().use { response ->
                     val type = response.header(HttpHeaders.ContentType).orEmpty()
                     val body = response.body
                     // Only images: anything else from our address could be used against the web player.

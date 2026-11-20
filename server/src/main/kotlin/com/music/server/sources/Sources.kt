@@ -29,13 +29,15 @@ enum class SourceKind(val label: String, val type: SourceType?) {
     TUNER("FM tuner", SourceType.RADIO),
     /** Recognises songs Listen hears that aren't in the library (a paid service, with its own key). */
     AUDD("AudD", null),
+    /** A library on a server that speaks the Subsonic API (Navidrome, Gonic, Airsonic…). */
+    SUBSONIC("Subsonic", SourceType.SUBSONIC),
     ;
 
     /** Live radio: channels and stations rather than songs on demand. */
     val isLive: Boolean get() = this == SIRIUSXM || this == RADIO || this == TUNER
 
     /** A library: searched first, and what Lidarr fills. */
-    val isLibrary: Boolean get() = this == JELLYFIN
+    val isLibrary: Boolean get() = type?.library == true
 
     /** Plays songs on demand (as opposed to radio, or helpers like Lidarr). */
     val isOnDemand: Boolean get() = type?.onDemand == true

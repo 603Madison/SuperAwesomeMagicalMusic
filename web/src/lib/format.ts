@@ -23,6 +23,7 @@ export const SOURCE_LABELS: Record<SourceType, string> = {
   YOUTUBE_MUSIC: "YouTube Music",
   SIRIUSXM: "SiriusXM",
   RADIO: "Radio",
+  SUBSONIC: "Subsonic",
 };
 
 export function trackKey(track: Track): string {

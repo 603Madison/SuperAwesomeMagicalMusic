@@ -45,19 +45,27 @@ export function Playlists() {
 }
 
 function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported: (id: string) => void }) {
-  const [mode, setMode] = useState<"link" | "list">("link");
+  const [mode, setMode] = useState<"link" | "list" | "server">("link");
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
   const [name, setName] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<{ id: string; missing: string[]; note?: string } | null>(null);
-  const ready = mode === "link" ? !!url.trim() : !!text.trim();
+  // Playlists kept on the person's Subsonic servers (Navidrome and the like) come in as they are.
+  const sources = useLoad(() => api.sources(), []);
+  const servers = (sources.data ?? []).filter((s) => s.kind === "SUBSONIC" && s.enabled && !s.hidden);
+  const [serverId, setServerId] = useState("");
+  const server = serverId || servers[0]?.id || "";
+  const [picked, setPicked] = useState("");
+  const ready = mode === "link" ? !!url.trim() : mode === "server" ? !!server && !!picked : !!text.trim();
   const run = async () => {
     if (!ready) return;
     setBusy(true);
     try {
-      const result = await api.importPlaylist(mode === "link" ? { url: url.trim() } : { text, name: name.trim() });
+      const result = await api.importPlaylist(
+        mode === "link" ? { url: url.trim() } : mode === "server" ? { source: server, playlist: picked } : { text, name: name.trim() },
+      );
       void session.refreshPlaylists();
       toast(`Imported ${plural(result.found, "song")}`);
       if (result.missing.length || result.note) {
@@ -98,9 +106,23 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={mode === "link"} className={mode === "link" ? "is-active" : ""} onClick={() => setMode("link")}>From a link</button>
         <button role="tab" aria-selected={mode === "list"} className={mode === "list" ? "is-active" : ""} onClick={() => setMode("list")}>From a list</button>
+        {servers.length > 0 && (
+          <button role="tab" aria-selected={mode === "server"} className={mode === "server" ? "is-active" : ""} onClick={() => setMode("server")}>From your library</button>
+        )}
       </div>
       <form className="form-stack" onSubmit={(e) => { e.preventDefault(); void run(); }}>
-        {mode === "link" ? (
+        {mode === "server" ? (
+          <>
+            {servers.length > 1 && (
+              <Field label="Server">
+                <select value={server} onChange={(e) => { setServerId(e.target.value); setPicked(""); }}>
+                  {servers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </Field>
+            )}
+            <ServerPlaylists sourceId={server} picked={picked} onPick={setPicked} />
+          </>
+        ) : mode === "link" ? (
           <Field
             label="Playlist or album link"
             help="Spotify, Apple Music, Tidal, Deezer, YouTube or ListenBrainz. Each song is found in your own sources, your library first."
@@ -139,6 +161,24 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
       </form>
       {busy && <p className="muted"><Spinner size={14} /> Finding the songs… this takes a moment for long playlists.</p>}
     </Modal>
+  );
+}
+
+/** The playlists kept on a Subsonic server, to pick one to import. */
+function ServerPlaylists({ sourceId, picked, onPick }: { sourceId: string; picked: string; onPick: (id: string) => void }) {
+  const playlists = useLoad(() => api.sourcePlaylists(sourceId), [sourceId]);
+  if (playlists.loading && !playlists.data) return <Spinner />;
+  if (playlists.error) return <div className="notice notice-error">{playlists.error}</div>;
+  if (!playlists.data?.length) return <p className="muted">There are no playlists on this server.</p>;
+  return (
+    <Field label="Playlist" help="Its songs come in as your library has them.">
+      <select value={picked} onChange={(e) => onPick(e.target.value)}>
+        <option value="">Choose a playlist…</option>
+        {playlists.data.map((p) => (
+          <option key={p.id} value={p.id}>{p.name}{p.songCount != null ? ` (${plural(p.songCount, "song")})` : ""}</option>
+        ))}
+      </select>
+    </Field>
   );
 }
 

@@ -37,9 +37,12 @@ data class RemoveEntries(val entryIds: List<String>)
 @Serializable
 data class Reorder(val revision: Long, val entryIds: List<String>)
 
-/** A link to a playlist or album elsewhere, or a typed or pasted list of songs ([text], named [name]). */
+/**
+ * A link to a playlist or album elsewhere, a typed or pasted list of songs ([text], named [name]),
+ * or a [playlist] kept on one of the person's Subsonic servers ([source]).
+ */
 @Serializable
-data class ImportRequest(val url: String = "", val text: String = "", val name: String = "")
+data class ImportRequest(val url: String = "", val text: String = "", val name: String = "", val source: String = "", val playlist: String = "")
 
 @Serializable
 data class ImportResult(val playlist: Playlist, val found: Int, val missing: List<String>, val note: String? = null)
@@ -81,6 +84,7 @@ fun Route.playlistRoutes(services: Services) {
             val request = call.receive<ImportRequest>()
             val imported = when {
                 request.url.isNotBlank() -> services.importer.fromLink(user, request.url)
+                request.source.isNotBlank() && request.playlist.isNotBlank() -> services.importer.fromSource(user, request.source, request.playlist)
                 request.text.isNotBlank() -> {
                     if (request.text.length > 1_000_000) throw ApiError.badRequest("That list is too long")
                     services.importer.fromText(user, request.text, request.name)
