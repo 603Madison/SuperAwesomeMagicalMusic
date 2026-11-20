@@ -1,7 +1,7 @@
 // The server's API, as the web player sees it (see server/src/main/kotlin).
 
-export type SourceType = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "SIRIUSXM" | "RADIO";
-export type SourceKind = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "LIDARR" | "SIRIUSXM" | "RADIO" | "TUNER";
+export type SourceType = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "SIRIUSXM" | "RADIO" | "SUBSONIC";
+export type SourceKind = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "LIDARR" | "SIRIUSXM" | "RADIO" | "TUNER" | "AUDD" | "SUBSONIC";
 export type Role = "ADMIN" | "USER";
 
 export interface Track {
@@ -82,6 +82,14 @@ export interface SourceView {
   editable: boolean;
   settings: Record<string, string | number | boolean>;
   secretsSet: string[];
+}
+
+/** A playlist kept on a Subsonic server, to import. */
+export interface SourcePlaylist {
+  id: string;
+  name: string;
+  songCount?: number;
+  artworkUrl?: string;
 }
 
 export interface SearchGroup {

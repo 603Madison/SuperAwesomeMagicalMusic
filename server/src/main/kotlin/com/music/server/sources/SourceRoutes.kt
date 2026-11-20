@@ -35,6 +35,10 @@ data class TestResult(val ok: Boolean, val message: String)
 @Serializable
 data class Choice(val id: String, val name: String)
 
+/** A playlist kept on a Subsonic server, to import. */
+@Serializable
+data class SourcePlaylist(val id: String, val name: String, val songCount: Int? = null, val artworkUrl: String? = null)
+
 @Serializable
 data class LidarrOptions(val qualityProfiles: List<Choice>, val metadataProfiles: List<Choice>, val rootFolders: List<Choice>)
 
@@ -116,6 +120,16 @@ fun Route.sourceRoutes(services: Services) {
                     TestResult(false, e.message ?: "Not working")
                 }
                 call.respond(result)
+            }
+
+            // The playlists kept on a Subsonic server, to import (Playlists › Import).
+            get("/playlists") {
+                val user = call.requireUser(services)
+                val source = services.sources.accessible(user, call.parameters["id"].orEmpty())?.takeIf { it.enabled } ?: throw ApiError.notFound("No such source")
+                val subsonic = services.registry.music(source) as? com.music.player.sources.subsonic.SubsonicSource
+                    ?: throw ApiError.badRequest("${source.name} doesn't keep playlists")
+                val playlists = SourceSetup.service(source.name) { subsonic.playlists() }
+                call.respond(playlists.map { SourcePlaylist(it.id, it.name, it.songCount, services.artwork.wrap(it.artworkUrl)) })
             }
 
             get("/lidarr-options") {

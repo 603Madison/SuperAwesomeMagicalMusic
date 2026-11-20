@@ -1,15 +1,16 @@
 # SuperAwesomeMagicalMusic server
 
-Your own music streaming service. The server signs in to your music services once (Jellyfin,
-YouTube Music, Lidarr) and serves them to everyone you let in, with a web player for the
+Your own music streaming service. The server signs in to your music services once (Jellyfin or
+a Subsonic server such as Navidrome, YouTube Music, Lidarr) and serves them to everyone you let in, with a web player for the
 computer. Each person gets their own playlists and history (and a yearly **Wrapped** from it), and can add their own services.
 
 - **Accounts**: a local *break-glass* admin made at first start, local accounts, and single
   sign-on with any OpenID Connect provider (Authentik, Keycloak, Authelia, Zitadel…).
-- **Sources**: admins share sources with everyone (the house Jellyfin, a Lidarr); people add
-  their own (their own Jellyfin, for one) and can switch shared ones off for themselves.
+- **Sources**: admins share sources with everyone (the house Jellyfin or Navidrome, a Lidarr);
+  people add their own (their own Jellyfin, for one) and can switch shared ones off for themselves.
   Saved sign-ins are encrypted.
-- **Playback**: like the Standalone app, songs play from your Jellyfin library when it has them, else
+- **Playback**: like the Standalone app, songs play from your library (Jellyfin, or a Subsonic
+  server) when it has them, else
   the best copy on a streaming service within your quality setting. ffmpeg converts on the server
   only when needed (over your bitrate cap, or a format the browser can't play).
 - **Live radio**: SiriusXM channels (with what's on now, and Xtra channels) and Pandora artist
@@ -21,6 +22,16 @@ computer. Each person gets their own playlists and history (and a yearly **Wrapp
   with what's on from the broadcast. A station that's also online plays from the tuner while it
   comes in clearly and from the internet while it's static, switching by itself.
 - **Lidarr**: artists of songs played from outside the library are added for you.
+- **Subsonic servers**: Navidrome, Gonic, Airsonic(-Advanced), Ampache, LMS, Nextcloud Music,
+  Funkwhale and others that speak the [Subsonic API](http://www.subsonic.org/pages/api.jsp) are
+  added under Sources as *Subsonic*, with the server's address and a username and password, or an
+  API key ([OpenSubsonic](https://opensubsonic.netlify.app/) servers that give them out). The
+  password is kept (encrypted), as Subsonic signs every request with it: only a salted token
+  made from it is sent, unless the server can't check tokens (LDAP accounts on Navidrome, say),
+  when the password itself is. Streams and covers go through the server, so the apps never see
+  the credentials. Its songs are searched and played first like Jellyfin's, Listen learns them,
+  and its playlists can be brought in under Playlists › Import › From your library. Songs over
+  your bitrate cap are transcoded to MP3 by the Subsonic server itself.
 
 ## Run it
 
@@ -97,7 +108,7 @@ provider, and sign the phones in again with the new address.
 Open http://your-server:8080 and sign in as `admin` with the password from the log (or set
 `SAMM_ADMIN_PASSWORD` before the first start). Then, under **Admin**:
 
-1. **Shared sources**: add your Jellyfin (and Lidarr…). YouTube Music and Radio are shared
+1. **Shared sources**: add your Jellyfin or Subsonic server (and Lidarr…). YouTube Music and Radio are shared
    already. SiriusXM is best added by each person in their own Settings, with their own account.
 2. **People**: add accounts, or set up single sign-on (below) and let people sign in themselves.
 

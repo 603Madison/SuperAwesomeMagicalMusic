@@ -137,7 +137,7 @@ data class SearchResponse(
     val albums: List<AlbumSummary> = emptyList(),
 ) {
     /** The songs found, from any server version. */
-    val allSongs: List<ApiTrack> get() = songs.ifEmpty { groups.sortedByDescending { it.kind == "JELLYFIN" }.flatMap { it.tracks } }
+    val allSongs: List<ApiTrack> get() = songs.ifEmpty { groups.sortedByDescending { it.kind == "JELLYFIN" || it.kind == "SUBSONIC" }.flatMap { it.tracks } }
 }
 
 @Serializable

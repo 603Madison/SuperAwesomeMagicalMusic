@@ -20,7 +20,7 @@ import java.io.IOException
 
 @Serializable
 data class ApiTrack(
-    /** The service: JELLYFIN, YOUTUBE_MUSIC, SIRIUSXM, RADIO… */
+    /** The service: JELLYFIN, SUBSONIC, YOUTUBE_MUSIC, SIRIUSXM, RADIO… */
     val source: String,
     val sourceId: String,
     val title: String,

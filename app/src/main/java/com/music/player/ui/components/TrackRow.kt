@@ -149,6 +149,7 @@ fun SourceBadge(source: SourceType) {
         SourceType.YOUTUBE_MUSIC -> "YouTube" to MaterialTheme.colorScheme.errorContainer
         SourceType.SIRIUSXM -> "SiriusXM" to MaterialTheme.colorScheme.secondaryContainer
         SourceType.RADIO -> "Radio" to MaterialTheme.colorScheme.surfaceVariant
+        SourceType.SUBSONIC -> "Subsonic" to MaterialTheme.colorScheme.primaryContainer
     }
     Surface(color = color, shape = RoundedCornerShape(4.dp)) {
         Text(

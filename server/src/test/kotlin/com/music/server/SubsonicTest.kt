@@ -57,6 +57,8 @@ class SubsonicTest {
                         val match = (url.queryParameter("songCount")?.toInt() ?: 0) > 0 && (query.isEmpty() || "fool" in query || "love" in query)
                         ok(""""searchResult3":{"song":[${if (match) song else ""}]}""")
                     }
+                    "getPlaylists" -> ok(""""playlists":{"playlist":[{"id":"pl1","name":"Madchester","songCount":1,"coverArt":"pl-pl1"}]}""")
+                    "getPlaylist" -> if (url.queryParameter("id") == "pl1") ok(""""playlist":{"id":"pl1","name":"Madchester","entry":[$song]}""") else failed(70, "Not found")
                     "getSong" -> if (url.queryParameter("id") == "nd-1") ok(""""song":$song""") else failed(70, "Not found")
                     "getCoverArt" -> MockResponse().setHeader("Content-Type", "image/jpeg").setBody("JPEG ${url.queryParameter("id")} ${url.queryParameter("size")}")
                     "stream" -> {
@@ -146,6 +148,17 @@ class SubsonicTest {
                 val fromLibrary = user.post("/api/play/resolve") { csrf(); json("""{"track":$elsewhere,"kbps":0}""") }.obj()
                 assertEquals("SUBSONIC", fromLibrary["track"]!!.jsonObject.str("source"))
                 assertEquals("nd-1", fromLibrary["track"]!!.jsonObject.str("sourceId"))
+
+                // Its playlists can be brought in, their songs as the library has them.
+                val playlists = user.get("/api/sources/${source.str("id")}/playlists").json().jsonArray
+                assertEquals("Madchester", playlists.single().jsonObject.str("name"))
+                assertTrue(playlists.single().jsonObject.str("artworkUrl").startsWith("/api/art?u="))
+                val imported = user.post("/api/playlists/import") { csrf(); json("""{"source":"${source.str("id")}","playlist":"pl1"}""") }.obj()
+                assertEquals("1", imported.str("found"))
+                val entry = imported["playlist"]!!.jsonObject["entries"]!!.jsonArray.single().jsonObject["track"]!!.jsonObject
+                assertEquals("nd-1", entry.str("sourceId"))
+                assertEquals(source.str("id"), entry.str("via"))
+                assertEquals("Madchester", imported["playlist"]!!.jsonObject["summary"]!!.jsonObject.str("name"))
 
                 // The stream test shows the host only.
                 val report = user.get("/api/diagnostics/stream?via=${source.str("id")}&id=nd-1&kbps=0").bodyAsText()
