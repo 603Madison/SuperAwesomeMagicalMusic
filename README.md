@@ -20,7 +20,8 @@ This repository holds:
 - **The server** (`server/`, with the **web player** in `web/`): your own streaming service in
   Docker or Podman. Accounts (local, or single sign-on such as Authentik), sources shared by the
   admins or added by each person (SiriusXM and Pandora stations, radio, Jellyfin, YouTube
-  Music, Lidarr), playlists and history per person, and a web player for the computer. See [server/README.md](server/README.md):
+  Music, Lidarr), playlists and history per person, a web player for the computer, and your
+  **Sonos** speakers and **Music Assistant**'s players as places to play from any app. See [server/README.md](server/README.md):
   `docker run -p 8080:8080 -v samm-data:/data ghcr.io/603madison/superawesomemagicalmusic`.
 - **The tuner** (`tuner/`): local FM and HD Radio for the server, like an HDHomeRun for the radio.
   RTL-SDR dongles on a Raspberry Pi, in a container; stations come with what's playing (RDS and

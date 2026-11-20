@@ -187,14 +187,15 @@ class SpeakerStreams(private val services: Services, private val clock: () -> Lo
         }
     }
 
-    /** The cover at an address the speaker can fetch (covers through the server need no sign-in). */
-    private fun artFor(base: String, artworkUrl: String?): String? {
-        val wrapped = services.artwork.wrap(artworkUrl) ?: return null
-        return when {
-            wrapped.startsWith(Artwork.PATH + "?") -> base.trimEnd('/') + wrapped + "&px=600"
-            wrapped.startsWith(Artwork.LOCAL_ART) -> base.trimEnd('/') + wrapped
-            else -> null
-        }
+    /**
+     * The cover at an address the speaker can fetch: covers through the server need no sign-in.
+     * Only addresses the server signed itself are passed on (a device can say anything).
+     */
+    private fun artFor(base: String, artworkUrl: String?): String? = when {
+        artworkUrl == null -> null
+        artworkUrl.startsWith(Artwork.PATH + "?") && services.artwork.unwrap(artworkUrl) != null -> base.trimEnd('/') + artworkUrl + "&px=600"
+        artworkUrl.startsWith(Artwork.LOCAL_ART) -> base.trimEnd('/') + artworkUrl
+        else -> null
     }
 
     /** How long an address for a song of [durationMs] stays good: the song, and an hour to spare for pauses. */

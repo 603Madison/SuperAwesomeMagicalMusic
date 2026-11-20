@@ -41,7 +41,7 @@ class SpeakerPlayer(
 ) {
     @Volatile var target: SpeakerTarget = target
         private set
-    private var renderer: Renderer = target.renderer()
+    @Volatile private var renderer: Renderer = target.renderer()
 
     /** Each person's view of it in the hub. */
     private val devices = ConcurrentHashMap<String, ConnectHub.Device>()

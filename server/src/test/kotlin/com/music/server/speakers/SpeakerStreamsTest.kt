@@ -46,6 +46,9 @@ class SpeakerStreamsTest {
                 // The cover through the server, which needs no sign-in either (it's signed too).
                 assertTrue(media.artUrl!!.startsWith("$base/api/art?u="))
                 assertTrue(media.artUrl!!.endsWith("&px=600"))
+                // A cover a device made up isn't signed for it.
+                assertNull(streams.media(sonos, base, maddie.id, track.copy(artworkUrl = "http://192.168.1.1/admin.png"), 0).artUrl)
+                assertNull(streams.media(sonos, base, maddie.id, track.copy(artworkUrl = "/api/art?u=http%3A%2F%2F192.168.1.1%2Fa.png&s=forged"), 0).artUrl)
 
                 // No sign-in, no cookie: the address alone plays the song, with seeking.
                 val speaker = createClient { }

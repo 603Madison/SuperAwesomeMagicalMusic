@@ -44,6 +44,8 @@ data class ConnectDevice(
     val kind: String = "web",
     val state: PlayState? = null,
     val active: Boolean = false,
+    /** What it is, for speakers the server plays on ("Sonos", "Music Assistant · Chromecast"). */
+    val detail: String? = null,
 )
 
 /** Something another device asks this one to do ("take" carries the queue it hands over). */

@@ -82,7 +82,8 @@ fun Application.module(services: Services) {
     }
     install(CallLogging) {
         level = Level.INFO
-        filter { call -> call.request.path().startsWith("/api/") && call.request.path() != "/api/health" }
+        // Not the speakers' fetches: many, and their addresses are passes (short-lived, but passes).
+        filter { call -> call.request.path().let { it.startsWith("/api/") && it != "/api/health" && !it.startsWith(com.music.server.speakers.SpeakerStreams.PATH) } }
     }
     install(StatusPages) {
         exception<ApiError> { call, error -> call.respond(error.status, ErrorBody(error.message ?: "Error")) }
