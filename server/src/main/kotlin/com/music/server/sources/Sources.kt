@@ -31,6 +31,10 @@ enum class SourceKind(val label: String, val type: SourceType?) {
     AUDD("AudD", null),
     /** A library on a server that speaks the Subsonic API (Navidrome, Gonic, Airsonic…). */
     SUBSONIC("Subsonic", SourceType.SUBSONIC),
+    /** Sonos speakers, as places to play (see speakers/). */
+    SONOS("Sonos", null),
+    /** Music Assistant's players, as places to play (see speakers/). */
+    MUSIC_ASSISTANT("Music Assistant", null),
     ;
 
     /** Live radio: channels and stations rather than songs on demand. */

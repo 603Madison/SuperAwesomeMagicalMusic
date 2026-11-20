@@ -33,6 +33,8 @@ data class DeviceView(
     val state: PlayState? = null,
     /** The device playing, or the one that played last: what the others show and control. */
     val active: Boolean = false,
+    /** A word about what it is, for speakers the server plays on ("Sonos", "Music Assistant · Chromecast"). */
+    val detail: String? = null,
 )
 
 /**
@@ -81,6 +83,10 @@ class ConnectHub(private val clock: () -> Long = System::currentTimeMillis) {
         val name: String,
         val kind: String,
         internal val send: suspend (String) -> Unit,
+        /** What it is, shown under its name (speakers the server plays on). */
+        val detail: String? = null,
+        /** Played on by the server itself (a Sonos, a Music Assistant player), not a signed-in app. */
+        val server: Boolean = false,
     ) {
         @Volatile internal var state: PlayState? = null
         /** When [state] was reported, on the server's clock. */
@@ -90,8 +96,16 @@ class ConnectHub(private val clock: () -> Long = System::currentTimeMillis) {
 
     private val people = ConcurrentHashMap<String, MutableMap<String, Device>>()
 
-    suspend fun join(userId: String, id: String, name: String, kind: String, send: suspend (String) -> Unit): Device {
-        val device = Device(id, userId, name.take(80).ifBlank { "Device" }, kind.takeIf { it in KINDS } ?: "web", send)
+    suspend fun join(
+        userId: String,
+        id: String,
+        name: String,
+        kind: String,
+        detail: String? = null,
+        server: Boolean = false,
+        send: suspend (String) -> Unit,
+    ): Device {
+        val device = Device(id, userId, name.take(80).ifBlank { "Device" }, kind.takeIf { it in KINDS } ?: "web", send, detail?.take(80), server)
         val devices = people.computeIfAbsent(userId) { ConcurrentHashMap() }
         // The same device connecting again (a reload, a new network) takes over its old place.
         devices.put(id, device)?.let { old -> device.state = old.state; device.reportedAt = old.reportedAt; device.playedAt = old.playedAt }
@@ -167,14 +181,15 @@ class ConnectHub(private val clock: () -> Long = System::currentTimeMillis) {
                 kind = device.kind,
                 state = device.state?.let { it.copy(queue = emptyList(), positionMs = positionNow(device, it)) },
                 active = device === active,
+                detail = device.detail,
             )
         }
     }
 
     private fun devicesOf(userId: String): List<Device> = people[userId]?.values?.toList().orEmpty()
 
-    /** The accounts with a device connected now. */
-    fun accounts(): List<String> = people.filterValues { it.isNotEmpty() }.keys.toList()
+    /** The accounts with a device connected now (speakers the server plays on don't count). */
+    fun accounts(): List<String> = people.filterValues { devices -> devices.values.any { !it.server } }.keys.toList()
 
     /** The device playing, else the one that played most recently. */
     private fun active(devices: List<Device>): Device? =

@@ -158,7 +158,8 @@ function Devices() {
     ...others.map((d) => {
       const Icon = KIND_ICONS[d.kind] ?? Laptop;
       const note = d.active && d.state?.playing ? " · playing" : "";
-      return { label: `${d.name}${note}`, icon: <Icon size={18} />, onSelect: () => connect.transfer(d.id) };
+      const detail = d.detail ? ` · ${d.detail}` : "";
+      return { label: `${d.name}${detail}${note}`, icon: <Icon size={18} />, onSelect: () => connect.transfer(d.id) };
     }),
     ...(others.length ? [] : [{ label: online ? "Open the app or another browser to see it here" : "Connecting…", disabled: true }]),
   ];

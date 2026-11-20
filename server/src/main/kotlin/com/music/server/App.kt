@@ -16,6 +16,7 @@ import com.music.server.music.musicRoutes
 import com.music.server.playlists.playlistRoutes
 import com.music.server.playlists.wrappedRoutes
 import com.music.server.sources.sourceRoutes
+import com.music.server.speakers.speakerRoutes
 import io.ktor.http.CacheControl
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -81,7 +82,8 @@ fun Application.module(services: Services) {
     }
     install(CallLogging) {
         level = Level.INFO
-        filter { call -> call.request.path().startsWith("/api/") && call.request.path() != "/api/health" }
+        // Not the speakers' fetches: many, and their addresses are passes (short-lived, but passes).
+        filter { call -> call.request.path().let { it.startsWith("/api/") && it != "/api/health" && !it.startsWith(com.music.server.speakers.SpeakerStreams.PATH) } }
     }
     install(StatusPages) {
         exception<ApiError> { call, error -> call.respond(error.status, ErrorBody(error.message ?: "Error")) }
@@ -113,6 +115,7 @@ fun Application.module(services: Services) {
         playlistRoutes(services)
         wrappedRoutes(services)
         connectRoutes(services)
+        speakerRoutes(services)
         mcpRoutes(services)
         route("/api/{...}") {
             handle { call.respond(HttpStatusCode.NotFound, ErrorBody("No such API")) }

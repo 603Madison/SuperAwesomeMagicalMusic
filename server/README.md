@@ -32,6 +32,43 @@ computer. Each person gets their own playlists and history (and a yearly **Wrapp
   the credentials. Its songs are searched and played first like Jellyfin's, Listen learns them,
   and its playlists can be brought in under Playlists › Import › From your library. Songs over
   your bitrate cap are transcoded to MP3 by the Subsonic server itself.
+- **Sonos and Music Assistant**: your speakers join your devices, and the music moves to them
+  from any app (see [Sonos and Music Assistant](#sonos-and-music-assistant)).
+
+## Sonos and Music Assistant
+
+Speakers show up with your devices (the web player's **Play on a device**, the phone app's
+devices), next to your browsers and phones. Choose one and the music moves there, carrying on
+from the same moment; play, pause, skip, seek and turn it up from any of your devices, and see
+what it's playing.
+
+- **Sonos**: add **Sonos** under **Settings › Sources** (an admin's shared one gives everyone
+  the speakers; your own, only you). Speakers are found on the network, or add one speaker's
+  address (any one is enough: the rest of its household comes through it). Grouped speakers show
+  as one place to play ("Living Room + Kitchen") and play together; the Sonos app shows the song,
+  artist, album and cover. Songs, radio stations and your own stations play; SiriusXM's live
+  channels don't yet.
+- **Music Assistant** ([music-assistant.io](https://music-assistant.io), Home Assistant's music
+  server): add **Music Assistant** under **Settings › Sources** with its address
+  (`http://homeassistant.local:8095`) and, for Music Assistant 2.7 and later, a long-lived token
+  made in its web interface. Its players (Sonos, Chromecast, AirPlay, Squeezebox, DLNA, Home
+  Assistant's media players) become places to play.
+- **How it plays**: a speaker can't run the web player, so the server plays the queue on it: it
+  gives the speaker one song at a time and moves to the next when one ends. The speaker fetches
+  each song from the server at an address made for it alone: signed, for that one song (or
+  station) and that person, working for the song's length and an hour more (a station's for 12
+  hours), and opening nothing else. Formats are picked for the speaker (Sonos gets FLAC, ALAC,
+  AAC, MP3 or WAV as they are, and anything else converted to MP3 or FLAC).
+- **The server's address for speakers**: speakers fetch songs from the server on your home
+  network, at the address it has there (worked out by itself). In a container with its own
+  network that's the container's address, which speakers can't reach: set **This server's
+  address for speakers** on the source (or `SAMM_SPEAKER_URL`), e.g. `http://192.168.1.10:8080`
+  (the computer's address and the published port).
+- **In a container, finding Sonos speakers** needs the container on the home network itself
+  (`--network host`, or `Network=host` with Podman), since discovery asks the whole network
+  (SSDP multicast), which doesn't cross into a container's own network. Otherwise turn off
+  **Find speakers on the network** and add a speaker's address: the server only needs to reach
+  the speakers on port 1400, and they the server on its port. Music Assistant needs neither.
 
 ## Run it
 
@@ -158,6 +195,7 @@ Environment variables (all optional):
 | `SAMM_ADMIN_PASSWORD` | generated | Its first password. |
 | `SAMM_MAX_TRANSCODES` | `4` | Songs converted at once. |
 | `SAMM_LOCAL_SOURCES` | `false` | Lets everyone's own sources (not just admins') be on the server's own machine (`localhost`). Off, nobody else can point the server at what listens only there. |
+| `SAMM_SPEAKER_URL` | worked out | The server's address as Sonos speakers and Music Assistant reach it, e.g. `http://192.168.1.10:8080`, when it's in a container with its own network (see [Sonos and Music Assistant](#sonos-and-music-assistant)). A source's own setting comes first. |
 | `SAMM_OIDC_ISSUER`, `SAMM_OIDC_CLIENT_ID`, `SAMM_OIDC_CLIENT_SECRET`, `SAMM_OIDC_USER_GROUP`, `SAMM_OIDC_ADMIN_GROUP`, `SAMM_OIDC_BUTTON_LABEL`, `SAMM_OIDC_SCOPES`, `SAMM_LOCAL_LOGIN` | | Single sign-on and password sign-in, if you'd rather configure them here. They're applied at every start, over the admin page. |
 
 ### Behind a reverse proxy
@@ -250,6 +288,11 @@ Cloudflare, check that bot protection isn't blocking `/mcp`.
   work once and expire after ten minutes; the device holds a long secret of its own, and only
   someone signed in can allow it, after seeing the device's name. Wrong codes are limited per
   person and address, like wrong passwords, and devices asking too often are told to slow down.
+- Speakers can't sign in, so the addresses they play from (`/api/speakers/stream/…`) carry a
+  signed pass instead: one song or station, one person, a short time. Changing any of it breaks
+  the signature; it isn't a sign-in and opens nothing else; it stops working when the person's
+  account is turned off or the source is no longer theirs. Anyone on your network who sees one
+  can play that song until it expires.
 - A Claude connector link is a sign-in that only opens `/mcp`, where everything is read-only.
   Anyone with the link can read what the tools show (your sources' names, your history, SiriusXM's
   log); remove it under **Signed in on** if it leaks.
