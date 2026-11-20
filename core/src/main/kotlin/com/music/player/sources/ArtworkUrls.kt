@@ -17,6 +17,7 @@ object ArtworkUrls {
     private val STEPS = listOf(128, 256, 512, 1024)
     private val JELLYFIN_SIZE = Regex("([?&])(maxHeight|maxWidth|fillHeight|fillWidth)=\\d+")
     private val GOOGLE_SIZE = Regex("=w\\d+-h\\d+")
+    private val SUBSONIC_SIZE = Regex("([?&])size=\\d+")
 
     /** The size step that covers [px]. */
     fun step(px: Int): Int = STEPS.firstOrNull { it >= px } ?: STEPS.last()
@@ -31,6 +32,8 @@ object ArtworkUrls {
                 val separator = if (stripped.contains('?')) (if (stripped.endsWith("?")) "" else "&") else "?"
                 "$stripped${separator}maxHeight=$size&maxWidth=$size"
             }
+            // Subsonic's getCoverArt sends the size it's asked for.
+            url.contains("/rest/getCoverArt") && SUBSONIC_SIZE.containsMatchIn(url) -> url.replace(SUBSONIC_SIZE) { "${it.groupValues[1]}size=$size" }
             url.startsWith(SiriusXmParser.IMAGE_BASE) -> resizedSiriusXm(url, size) ?: url
             url.contains("googleusercontent.com") && GOOGLE_SIZE.containsMatchIn(url) -> url.replace(GOOGLE_SIZE, "=w$size-h$size")
             else -> url

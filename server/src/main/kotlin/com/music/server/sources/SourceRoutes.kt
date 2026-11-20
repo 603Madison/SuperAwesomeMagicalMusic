@@ -70,7 +70,7 @@ fun Route.sourceRoutes(services: Services) {
                 secrets = secrets,
             )
             // A new library: Listen learns its songs.
-            if (created.kind == SourceKind.JELLYFIN) services.listen.learnSoon()
+            if (created.kind.isLibrary) services.listen.learnSoon()
             call.respond(services.sources.visibleTo(user).first { it.id == created.id })
         }
 
@@ -144,5 +144,11 @@ private suspend fun editable(services: Services, user: com.music.server.auth.Use
 private fun defaultName(kind: SourceKind, settings: JsonObject): String {
     val host = (settings["serverUrl"] as? kotlinx.serialization.json.JsonPrimitive)?.content
         ?.substringAfter("://")?.substringBefore('/')?.substringBefore(':')
-    return if (host != null && kind == SourceKind.JELLYFIN) "Jellyfin ($host)" else kind.label
+    // A Subsonic server goes by its own name (Navidrome, Gonic…) where it says it.
+    val subsonic = (settings["serverName"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { kind == SourceKind.SUBSONIC && it.isNotBlank() }
+    return when {
+        host != null && kind == SourceKind.JELLYFIN -> "Jellyfin ($host)"
+        host != null && kind == SourceKind.SUBSONIC -> "${subsonic ?: "Subsonic"} ($host)"
+        else -> kind.label
+    }
 }

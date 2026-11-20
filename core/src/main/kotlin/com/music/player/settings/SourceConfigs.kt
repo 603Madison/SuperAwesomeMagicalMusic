@@ -11,6 +11,33 @@ data class JellyfinConfig(
     val isConfigured: Boolean get() = serverUrl.isNotBlank() && userId.isNotBlank() && accessToken.isNotBlank()
 }
 
+/**
+ * A server that speaks the Subsonic API. Either a username and password (sent as a salted token,
+ * or as the password itself for servers that can't check tokens, see [auth]) or an API key
+ * (OpenSubsonic servers that offer them).
+ */
+data class SubsonicConfig(
+    val serverUrl: String = "",
+    val username: String = "",
+    val password: String = "",
+    val apiKey: String = "",
+    val auth: SubsonicAuth = SubsonicAuth.TOKEN,
+) {
+    val isConfigured: Boolean get() = serverUrl.isNotBlank() && (apiKey.isNotBlank() || (username.isNotBlank() && password.isNotBlank()))
+}
+
+/** How requests to a Subsonic server prove who's asking. */
+enum class SubsonicAuth {
+    /** md5(password + salt) with a new salt every time: the password itself is never sent. */
+    TOKEN,
+
+    /** The password (hex-encoded), for servers that can't check tokens (LDAP accounts, say). */
+    PASSWORD,
+
+    /** OpenSubsonic's API keys. */
+    API_KEY,
+}
+
 data class QobuzConfig(
     val appId: String = "",
     val appSecret: String = "",
