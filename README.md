@@ -166,9 +166,9 @@ keep in playlists and give a thumbs up (or down):
 - **[Your name]'s Rewind**: the songs you couldn't stop playing, months ago, back on the air.
 - **[Your name]'s Discovery**: new to you, from the artists you play most.
 
-They're stations, not playlists: each is one broadcast from the server, so it's on whether you're
-listening or not, and you tune in partway through a song. Songs crossfade into each other at an
-even loudness, with a programmer's clock behind them (no artist twice in a row, no song again
+They're stations, not playlists: each is one broadcast from the server, on the air while you
+listen (and off, fetching nothing, 20 seconds after you stop), and you tune in partway through a
+song. Each song fades out before the next starts, at an even loudness, with a programmer's clock behind them (no artist twice in a row, no song again
 for hours), and a DJ who knows your listening: back-announcing, saying what's coming up,
 introducing a song you've had on repeat or haven't played since spring, and giving the time on
 the hour. The web player and the phone app speak its lines over the start of songs, dipping the
