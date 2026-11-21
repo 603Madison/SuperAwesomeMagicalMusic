@@ -49,8 +49,13 @@ class UserStore(
     suspend fun byUsername(username: String): User? =
         db.tx { one("SELECT * FROM users WHERE username = ?", username.trim(), map = ::toUser) }
 
-    suspend fun byOidc(issuer: String, subject: String): User? =
-        db.tx { one("SELECT * FROM users WHERE oidc_issuer = ? AND oidc_subject = ?", issuer, subject, map = ::toUser) }
+    /**
+     * The account tied to [subject] at the identity provider [issuer]. A slash at the issuer's end
+     * doesn't matter: the provider's tokens and the address typed on the Admin page may differ by one.
+     */
+    suspend fun byOidc(issuer: String, subject: String): User? = db.tx {
+        one("SELECT * FROM users WHERE RTRIM(oidc_issuer, '/') = ? AND oidc_subject = ?", issuer.trim().trimEnd('/'), subject, map = ::toUser)
+    }
 
     /** The account for [username] if [password] is right (and it may sign in with one). */
     suspend fun checkPassword(username: String, password: String): User? {

@@ -31,6 +31,8 @@ data class AuthConfig(
     /** Whether the password form is offered (the break-glass admin can always use it). */
     val localLogin: Boolean,
     val oidc: OidcButton? = null,
+    /** Whether apps may sign in with a ticket from SuperAwesomeMagicalOrchestrator (`POST /api/auth/orchestrator`). */
+    val orchestrator: Boolean = false,
 )
 
 @Serializable
@@ -47,6 +49,10 @@ data class AppCodeResponse(val code: String)
 
 @Serializable
 data class AppTokenRequest(val code: String, val verifier: String, val deviceName: String = "")
+
+/** A sign-in ticket from SuperAwesomeMagicalOrchestrator on the same device, handed to this server. */
+@Serializable
+data class OrchestratorSignIn(val ticket: String, val deviceName: String = "")
 
 @Serializable
 data class Me(val user: User, val session: SessionInfo)
@@ -72,6 +78,7 @@ fun Route.authRoutes(services: Services) {
                     version = Services.version,
                     localLogin = settings.localLogin || !oidc.enabled,
                     oidc = if (oidc.enabled && oidc.issuer.isNotBlank() && oidc.clientId.isNotBlank()) OidcButton(oidc.buttonLabel) else null,
+                    orchestrator = settings.orchestratorUrl.isNotBlank(),
                 ),
             )
         }
@@ -165,6 +172,32 @@ fun Route.authRoutes(services: Services) {
             val user = services.users.byId(userId)?.takeIf { !it.disabled } ?: throw ApiError.unauthorized("This account is turned off")
             call.respond(signIn(services, call, user, app = true, request.deviceName))
         }
+
+        // An app on a device signed in to SuperAwesomeMagicalOrchestrator: the agent there gave it a
+        // short-lived signed ticket, and it's signed in here as the same person (server/README.md).
+        post("/orchestrator") {
+            val settings = services.settings.get()
+            if (settings.orchestratorUrl.isBlank()) throw ApiError.notFound("No orchestrator is set up")
+            val request = call.receive<OrchestratorSignIn>()
+            // Refused tickets count against the address like wrong passwords (one that works is taken
+            // back). The "account" is the address too: nobody's named until the ticket is checked, and
+            // one place's bad tickets must never shut everyone else out.
+            val address = clientAddress(call.request.local.remoteAddress, call.request.headers, services.config)
+            val attempt = LoginThrottle.Attempt(address, "orchestrator:$address")
+            services.throttle.attempt(attempt)
+            val (user, claims) = try {
+                val claims = services.orchestrator.verify(
+                    request.ticket, settings.orchestratorUrl, listOfNotNull(settings.publicUrl.takeIf { it.isNotBlank() }, requestBase(call)), ORCHESTRATOR_APP,
+                )
+                orchestratorUser(services, claims) to claims
+            } catch (e: OrchestratorTickets.Refused) {
+                // The reason says what was wrong with the ticket or the account, never the ticket itself.
+                log.warn("A sign-in through the orchestrator was refused: {}", e.message)
+                throw ApiError.unauthorized("That sign-in didn't work here. Sign in the usual way.")
+            }
+            services.throttle.succeeded(attempt)
+            call.respond(signIn(services, call, user, app = true, claims.deviceName.ifBlank { request.deviceName.trim().take(64) }))
+        }
     }
 
     // Signing in with a code shown on another device (a flip phone, say).
@@ -238,6 +271,15 @@ private suspend fun oidcUser(services: Services, call: ApplicationCall, code: St
     val identity = services.oidc.signIn(
         discovery, settings, services.settings.oidcClientSecret(), code, redirectUri(services, call), pending.verifier, pending.nonce,
     )
+    return ssoAccount(services, settings, identity, "single sign-on")
+}
+
+/**
+ * Whose account [identity] is, by this server's single sign-on rules: only the allowed group, the
+ * role from the admin group, the account already tied to that subject, or a new one where that's
+ * on. The same whether the identity provider said so itself or the orchestrator's ticket did ([via]).
+ */
+private suspend fun ssoAccount(services: Services, settings: com.music.server.OidcSettings, identity: OidcIdentity, via: String): User {
     if (settings.userGroup.isNotBlank() && settings.userGroup !in identity.groups && settings.adminGroup !in identity.groups) {
         throw ApiError.forbidden("Your account isn't in the group allowed to use this server (${settings.userGroup})")
     }
@@ -259,15 +301,53 @@ private suspend fun oidcUser(services: Services, call: ApplicationCall, code: St
         oidcIssuer = identity.issuer,
         oidcSubject = identity.subject,
     )
-    log.info("Created account {} for {} from single sign-on", user.username, identity.username)
+    log.info("Created account {} for {} from {}", user.username, identity.username, via)
     return user
+}
+
+/** This app's name in the orchestrator's list of the family's apps, and in its tickets. */
+private const val ORCHESTRATOR_APP = "music"
+
+/**
+ * Whose account a checked ticket is for, or [OrchestratorTickets.Refused] with why nobody's:
+ * 1. the ticket says who they are at the identity provider, and it's this server's own provider:
+ *    the same account, and the same rules, as signing in through it here ([ssoAccount]);
+ * 2. otherwise the account with the ticket's username, if it's an ordinary one;
+ * 3. otherwise nobody. Never the break-glass admin, and never an account that's turned off.
+ */
+private suspend fun orchestratorUser(services: Services, claims: OrchestratorTickets.Claims): User {
+    val oidc = services.settings.get().oidc
+    val subject = claims.oidcSubject
+    val who = "${claims.username} (${claims.subject} on the orchestrator)"
+    if (subject != null && oidc.enabled && oidc.clientId.isNotBlank() && OrchestratorTickets.sameProvider(claims.oidcIssuer, oidc.issuer)) {
+        // Authentik gives each application its own issuer address and the person one subject in all
+        // of them: the account is the one under this server's issuer.
+        val identity = OidcIdentity(oidc.issuer.trim(), subject, claims.username, claims.displayName, claims.email, claims.groups)
+        return try {
+            ssoAccount(services, oidc, identity, "the orchestrator")
+        } catch (e: ApiError) {
+            throw OrchestratorTickets.Refused("$who: ${e.message}")
+        }
+    }
+    val user = services.users.byUsername(claims.username)
+    val why = when {
+        user == null -> "there's no account for them on this server yet"
+        user.breakGlass -> "the break-glass admin never signs in this way"
+        user.disabled -> "their account is turned off"
+        user.oidc -> "their account here belongs to an identity provider the ticket doesn't name"
+        else -> return user
+    }
+    throw OrchestratorTickets.Refused("$who: $why")
 }
 
 /** The address the identity provider sends people back to; the admin page shows it to register. */
 suspend fun redirectUri(services: Services, call: ApplicationCall): String = "${publicBase(services, call)}/api/auth/oidc/callback"
 
-suspend fun publicBase(services: Services, call: ApplicationCall): String {
-    services.settings.get().publicUrl.trimEnd('/').takeIf { it.isNotBlank() }?.let { return it }
+suspend fun publicBase(services: Services, call: ApplicationCall): String =
+    services.settings.get().publicUrl.trimEnd('/').takeIf { it.isNotBlank() } ?: requestBase(call)
+
+/** The address this request came to (the proxy's word for it, where one is trusted). */
+fun requestBase(call: ApplicationCall): String {
     val origin = call.request.origin
     val defaultPort = (origin.scheme == "https" && origin.serverPort == 443) || (origin.scheme == "http" && origin.serverPort == 80)
     return "${origin.scheme}://${origin.serverHost}${if (defaultPort) "" else ":${origin.serverPort}"}"

@@ -29,10 +29,11 @@ fun testServices(
     config: ServerConfig = ServerConfig(dataDir = Files.createTempDirectory("samm-test").toFile(), adminPassword = "break-glass-pw"),
     clock: () -> Long = System::currentTimeMillis,
     selfUrl: () -> String = { "http://127.0.0.1:${config.port}" },
+    orchestratorFetch: (suspend (url: String) -> String)? = null,
 ): Services {
     val db = Database.inMemory()
     Schema.migrate(db)
-    return Services(config, db, SecretBox(Random.bytes(32)), passwords = Passwords(iterations = 1_000), clock = clock, selfUrl = selfUrl)
+    return Services(config, db, SecretBox(Random.bytes(32)), passwords = Passwords(iterations = 1_000), clock = clock, selfUrl = selfUrl, orchestratorFetch = orchestratorFetch)
 }
 
 fun serverTest(services: Services = testServices(), block: suspend ApplicationTestBuilder.(Services) -> Unit) = testApplication {

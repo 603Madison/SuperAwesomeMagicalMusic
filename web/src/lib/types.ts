@@ -46,6 +46,8 @@ export interface AuthConfig {
   version: string;
   localLogin: boolean;
   oidc?: { label: string };
+  /** Whether apps may sign in with a ticket from SuperAwesomeMagicalOrchestrator. */
+  orchestrator?: boolean;
 }
 
 export interface FieldSpec {
@@ -253,6 +255,8 @@ export interface ServerSettings {
   serverName: string;
   publicUrl: string;
   localLogin: boolean;
+  /** SuperAwesomeMagicalOrchestrator's address; blank: apps don't sign in through it. */
+  orchestratorUrl?: string;
   allowPersonalSources: boolean;
   /** The server learns the Jellyfin libraries' songs, so Listen can recognise them. */
   learnLibrary: boolean;

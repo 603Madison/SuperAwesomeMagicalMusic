@@ -3,8 +3,10 @@ package com.music.server
 import com.music.player.AppInfo
 import com.music.player.CoreLog
 import com.music.player.net.Http
+import com.music.player.net.call
 import com.music.server.auth.LoginThrottle
 import com.music.server.auth.OidcClient
+import com.music.server.auth.OrchestratorTickets
 import com.music.server.auth.PendingLogins
 import com.music.server.auth.Role
 import com.music.server.auth.SessionStore
@@ -49,6 +51,8 @@ class Services(
     val clock: () -> Long = System::currentTimeMillis,
     /** The server's own address, for ffmpeg to read from. */
     selfUrl: () -> String = { "http://127.0.0.1:${config.port}" },
+    /** How SuperAwesomeMagicalOrchestrator's published keys are fetched (a stand-in in tests); null: with [orchestratorHttp]. */
+    orchestratorFetch: (suspend (url: String) -> String)? = null,
 ) : AutoCloseable {
     /** Every request the server makes, kept off places it mustn't reach (see [NetworkGuard]). */
     val http: OkHttpClient = http.newBuilder().addNetworkInterceptor(com.music.server.util.NetworkGuard.interceptor()).build()
@@ -61,6 +65,32 @@ class Services(
     val oidc = OidcClient(http, clock)
     val pending = PendingLogins(clock)
     val throttle = LoginThrottle(clock = clock)
+
+    /**
+     * Only for SuperAwesomeMagicalOrchestrator's published keys. Its address is the admin's own
+     * choice (the Admin page or SAMM_ORCHESTRATOR_URL, never anything a stranger sends), and it
+     * usually lives on the home network, which [NetworkGuard] lets the server's requests reach
+     * (never link-local or a cloud's metadata service). No redirects, so the answer comes from
+     * the address the admin set.
+     */
+    private val orchestratorHttp: OkHttpClient = this.http.newBuilder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .callTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+
+    /** Checks SuperAwesomeMagicalOrchestrator's sign-in tickets (its keys: a small answer, 256 KB at most). */
+    val orchestrator = OrchestratorTickets(
+        fetch = orchestratorFetch ?: { url -> orchestratorKeys(url) },
+        clock = clock,
+    )
+
+    private suspend fun orchestratorKeys(url: String): String = orchestratorHttp.call(okhttp3.Request.Builder().url(url).build()) { response ->
+        if (!response.isSuccessful) throw java.io.IOException("HTTP ${response.code}")
+        val source = response.body.source()
+        if (source.request(ORCHESTRATOR_KEYS_MAX + 1)) throw java.io.IOException("The answer is too long")
+        source.readUtf8()
+    }
     /** Signing in with a code shown on another device (see DeviceRoutes). */
     val deviceLogins = com.music.server.auth.DeviceLogins(clock)
     /** Wrong codes typed to approve a device: 10 for one person from one place, fewer than passwords. */
@@ -99,6 +129,8 @@ class Services(
 
     companion object {
         private val log = LoggerFactory.getLogger("samm")
+
+        private const val ORCHESTRATOR_KEYS_MAX = 256L * 1024
 
         val version: String by lazy {
             runCatching {
@@ -156,6 +188,7 @@ class Services(
             settings.update { current ->
                 current.copy(
                     publicUrl = env["SAMM_PUBLIC_URL"]?.trimEnd('/') ?: current.publicUrl,
+                    orchestratorUrl = env["SAMM_ORCHESTRATOR_URL"]?.trim()?.trimEnd('/') ?: current.orchestratorUrl,
                     localLogin = env["SAMM_LOCAL_LOGIN"]?.let { it.lowercase() in setOf("1", "true", "yes") } ?: current.localLogin,
                     oidc = current.oidc.copy(
                         enabled = if (env["SAMM_OIDC_ISSUER"] != null && env["SAMM_OIDC_CLIENT_ID"] != null) true else current.oidc.enabled,
