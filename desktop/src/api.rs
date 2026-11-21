@@ -624,6 +624,15 @@ impl Api {
         .await
     }
 
+    /// Hands a sign-in ticket from SuperAwesomeMagicalOrchestrator to the server, for the app's own token.
+    pub async fn orchestrator_sign_in(&self, ticket: &str, device: &str) -> Result<SignedIn> {
+        self.post(
+            "/api/auth/orchestrator",
+            json!({ "ticket": ticket, "deviceName": device }),
+        )
+        .await
+    }
+
     pub async fn logout(&self) -> Result<serde_json::Value> {
         self.post("/api/auth/logout", json!({})).await
     }

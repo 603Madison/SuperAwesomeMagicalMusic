@@ -8,7 +8,7 @@ pub mod theme;
 pub mod widgets;
 mod window;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use adw::prelude::*;
@@ -29,6 +29,10 @@ pub struct Ctx {
     nav: RefCell<Option<adw::NavigationView>>,
     /// Signing in through the browser: (server, secret, state) until it hands back a code.
     pending_browser_sign_in: RefCell<Option<(String, String, String)>>,
+    /// Whether the orchestrator's agent was asked for a sign-in since the app started (once, quietly).
+    tried_orchestrator: Cell<bool>,
+    /// What SuperAwesomeMagicalOrchestrator was told is playing, so other devices can carry on.
+    playing: crate::orchestrator::Playing,
 }
 
 thread_local! {
@@ -60,7 +64,8 @@ impl Ctx {
     pub fn failed(&self, error: &anyhow::Error) {
         if is_unauthorized(error) {
             self.toast("Your sign-in ended: sign in again");
-            self.sign_out_here();
+            // The server ended it: not a choice to stay signed out.
+            self.sign_out_here(false);
         } else {
             self.toast(&error.to_string());
         }
@@ -79,6 +84,7 @@ impl Ctx {
             config.server = Some(server.to_string());
             config.token = Some(token.clone());
             config.user = Some(user);
+            config.signed_out_on_purpose = false;
             config.save();
         }
         self.set_signed_in(server, Some(token));
@@ -92,20 +98,58 @@ impl Ctx {
                 let _ = crate::rt::bg(async move { api.logout().await }).await;
             });
         }
-        self.sign_out_here();
+        self.sign_out_here(true);
     }
 
-    fn sign_out_here(&self) {
+    /// [on_purpose]: the person asked to (rather than the server ending the sign-in); then the app
+    /// doesn't sign straight back in through SuperAwesomeMagicalOrchestrator.
+    fn sign_out_here(&self, on_purpose: bool) {
         self.player.set_api(None);
         self.api.replace(None);
         {
             let mut config = self.config.borrow_mut();
             config.token = None;
             config.user = None;
+            if on_purpose {
+                config.signed_out_on_purpose = true;
+            }
             config.save();
         }
         self.nav.replace(None);
         self.toasts.set_child(Some(&login::view()));
+    }
+
+    /// Not signed in, at start: where someone is signed in to SuperAwesomeMagicalOrchestrator on
+    /// this desktop, as them, quietly (once; never after signing out on purpose). Anything else
+    /// leaves the sign-in screen as it is, with no error.
+    fn try_orchestrator(self: &Rc<Self>) {
+        let on_purpose = self.config.borrow().signed_out_on_purpose;
+        if !crate::orchestrator::asks_at_start(self.api().is_some(), on_purpose, self.tried_orchestrator.replace(true)) {
+            return;
+        }
+        let ctx = self.clone();
+        glib::spawn_future_local(async move {
+            if let Ok(signed) = crate::orchestrator::sign_in(Ctx::device_name()).await {
+                // Unless the person signed in by hand meanwhile.
+                if ctx.api().is_none() {
+                    ctx.signed_in(&signed.server, signed.token, signed.user);
+                }
+            }
+        });
+    }
+
+    /// The setting changed, or the player's state: the orchestrator hears what's playing.
+    pub fn say_playing(&self) {
+        let state = self.player.state();
+        self.say(&state);
+    }
+
+    fn say(&self, state: &crate::player::State) {
+        let (server, share) = {
+            let config = self.config.borrow();
+            (config.server.clone().filter(|_| config.token.is_some()), config.share_playing)
+        };
+        self.playing.changed(state, server.as_deref(), share);
     }
 
     fn show_music(self: &Rc<Self>) {
@@ -219,6 +263,8 @@ pub fn activate(app: &adw::Application) {
         api: RefCell::new(None),
         nav: RefCell::new(None),
         pending_browser_sign_in: RefCell::new(None),
+        tried_orchestrator: Cell::new(false),
+        playing: crate::orchestrator::Playing::default(),
     });
     CTX.with(|c| c.replace(Some(context.clone())));
 
@@ -226,6 +272,13 @@ pub fn activate(app: &adw::Application) {
     player.on_error(move |message| {
         if let Some(ctx) = weak.upgrade() {
             ctx.toast(message);
+        }
+    });
+    // Carry on elsewhere: the orchestrator's agent hears what's playing as it changes.
+    let weak = Rc::downgrade(&context);
+    player.subscribe(move |state| {
+        if let Some(ctx) = weak.upgrade() {
+            ctx.say(state);
         }
     });
     let server_of = Rc::downgrade(&context);
@@ -249,7 +302,10 @@ pub fn activate(app: &adw::Application) {
             context.set_signed_in(&server, Some(token));
             context.show_music();
         }
-        _ => context.toasts.set_child(Some(&login::view())),
+        _ => {
+            context.toasts.set_child(Some(&login::view()));
+            context.try_orchestrator();
+        }
     }
 
     window.connect_close_request(move |window| {
@@ -273,6 +329,7 @@ pub fn activate(app: &adw::Application) {
             config.save();
         }
         ctx.player.shutdown();
+        ctx.playing.closing();
         glib::Propagation::Proceed
     });
     install_shortcuts(app);
