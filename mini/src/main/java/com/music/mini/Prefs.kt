@@ -4,7 +4,7 @@ import android.content.Context
 import com.music.mini.net.User
 
 /** Mini's few settings and its sign-in, kept on the phone (never backed up). */
-class Prefs(context: Context) {
+class Prefs(private val context: Context) {
     private val prefs = context.getSharedPreferences("mini", Context.MODE_PRIVATE)
 
     /** The server's address, like https://music.example.com; empty until signed in. */
@@ -43,6 +43,8 @@ class Prefs(context: Context) {
 
     /** Signing out is always the person's choice here (Settings › Sign out). */
     fun signOut() {
+        // What the person agreed to with the orchestrator goes with the sign-in.
+        com.music.mini.orchestrator.OrchestratorLink.forget(context)
         prefs.edit().remove(TOKEN).remove(SERVER).remove(USER_NAME).putBoolean(SIGNED_OUT_ON_PURPOSE, true).apply()
     }
 

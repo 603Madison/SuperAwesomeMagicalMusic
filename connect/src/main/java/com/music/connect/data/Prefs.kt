@@ -94,7 +94,13 @@ class Prefs(private val context: Context) {
     }
 
     /** [onPurpose]: the person asked to (rather than the server ending the sign-in). */
-    suspend fun signOut(onPurpose: Boolean = true) = context.store.edit {
+    suspend fun signOut(onPurpose: Boolean = true) {
+        // What the person agreed to with the orchestrator goes with the sign-in.
+        com.music.connect.orchestrator.OrchestratorLink.forget(context)
+        signOutHere(onPurpose)
+    }
+
+    private suspend fun signOutHere(onPurpose: Boolean) = context.store.edit {
         it.remove(TOKEN)
         it.remove(USER)
         if (onPurpose) it[SIGNED_OUT_ON_PURPOSE] = true
