@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
         com.music.nowplaying.NowPlayingRestart.dismiss(this)
         setContent {
             val settings by c.settings.collectAsState()
+            val orchestrator by c.orchestratorSignIn.offer.collectAsState()
             // The status and navigation bars' icons follow the app's theme, which may not be the phone's.
             val dark = isAppInDarkTheme(settings.themeMode)
             LaunchedEffect(dark) {
@@ -63,7 +64,7 @@ class MainActivity : ComponentActivity() {
             ConnectTheme(settings.themeMode, settings.wallpaperColors, settings.boldText, settings.palette) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     CompositionLocalProvider(LocalPlayer provides player) {
-                        if (settings.signedIn && !finishing.value) MainScaffold() else SignInScreen(finishing.value, signInError.value)
+                        if (settings.signedIn && !finishing.value) MainScaffold() else SignInScreen(finishing.value || orchestrator.working, signInError.value)
                     }
                 }
             }
@@ -77,6 +78,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        // Not signed in: where someone is signed in to SuperAwesomeMagicalOrchestrator on this phone, as them
+        // (quietly, once, off the main thread; signed in, nothing is asked, so what's playing is never touched).
+        val c = container
+        if (!c.settings.value.signedIn) c.orchestratorSignIn.opened(c.scope)
         if (container.settings.value.signedIn) SyncWorker.enqueue(this)
         // A speaker playing from the phone while the app was in the background: keep it going.
         com.music.connect.speakers.SpeakerService.keepAliveIfPlaying(this)

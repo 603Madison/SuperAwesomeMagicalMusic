@@ -18,6 +18,11 @@
     <!-- Only to find radio stations near you when you ask. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <queries>
+        <!-- SuperAwesomeMagicalOrchestrator, to sign in as whoever is signed in there and say what's playing. -->
+        <package android:name="app.superawesomemagical.orchestrator" />
+    </queries>
+
     <!-- Home servers are often plain HTTP on the home network. -->
     <application
         android:name=".ConnectApp"

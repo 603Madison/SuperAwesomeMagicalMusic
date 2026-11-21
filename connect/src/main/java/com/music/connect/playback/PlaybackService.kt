@@ -36,6 +36,7 @@ import com.music.connect.LiveNow
 import com.music.connect.MainActivity
 import com.music.connect.R
 import com.music.connect.container
+import com.music.connect.orchestrator.PlayingActivity
 import com.music.connect.net.ApiTrack
 import com.music.connect.net.ConnectCommand
 import com.music.connect.net.PlayState
@@ -49,6 +50,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -151,6 +155,15 @@ class PlaybackService : MediaLibraryService() {
         })
         loudness.enabled = c.settings.value.levelling
         scope.launch { c.settings.collect { loudness.enabled = it.levelling } }
+        // Carry on elsewhere: the orchestrator hears what's playing as it changes, when the setting
+        // changes, and (PlayingActivity decides) again every ten minutes while it plays on.
+        scope.launch { c.settings.map { it.sharePlaying }.distinctUntilChanged().drop(1).collect { sayPlaying() } }
+        scope.launch {
+            while (true) {
+                delay(60_000)
+                sayPlaying()
+            }
+        }
 
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         dj = DjVoice(this, player, scope)
@@ -162,7 +175,10 @@ class PlaybackService : MediaLibraryService() {
         // This phone among the person's devices: say what's playing, and do what the others ask.
         c.devices.start()
         player.addListener(object : Player.Listener {
-            override fun onEvents(player: Player, events: Player.Events) = reportState()
+            override fun onEvents(player: Player, events: Player.Events) {
+                reportState()
+                sayPlaying()
+            }
         })
         scope.launch { c.devices.commands.collect(::obey) }
         watchForStalls()
@@ -263,6 +279,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         dj.release()
+        c.playing.stopped()
         c.devices.stop()
         endListen()
         queueStore.save(player)
@@ -673,6 +690,20 @@ class PlaybackService : MediaLibraryService() {
 
         override fun seekToNextMediaItem() {
             personal()?.let(::skipPersonal) ?: super.seekToNextMediaItem()
+        }
+    }
+
+    /**
+     * Tells SuperAwesomeMagicalOrchestrator what's playing (PlayingActivity says it once per song,
+     * off this thread). Stopped: the queue ended or was cleared. A pause says nothing: what was
+     * playing stays on offer elsewhere until the orchestrator forgets it.
+     */
+    private fun sayPlaying() {
+        val track = player.currentMediaItem?.let(MediaItems::track)
+        val state = player.playbackState
+        when {
+            track == null || state == Player.STATE_IDLE || state == Player.STATE_ENDED -> c.playing.stopped()
+            player.isPlaying -> c.playing.playing(PlayingActivity.now(c.settings.value.server, track, c.liveNow.value))
         }
     }
 

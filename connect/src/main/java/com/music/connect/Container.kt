@@ -17,6 +17,9 @@ import com.music.connect.net.ConnectClient
 import com.music.connect.net.Listen
 import com.music.connect.net.NetworkMonitor
 import com.music.connect.net.ServerApi
+import com.music.connect.orchestrator.OrchestratorLink
+import com.music.connect.orchestrator.OrchestratorSignIn
+import com.music.connect.orchestrator.PlayingActivity
 import com.music.connect.speakers.Speakers
 import com.music.player.AppInfo
 import com.music.player.CoreLog
@@ -69,6 +72,16 @@ class Container(val context: Context) {
     val library = Library(db, api) { SyncWorker.enqueue(context) }
     val downloads = Downloads(context, db, api, http, prefs) { DownloadWorker.enqueue(context, settings.value.downloadOnWifiOnly) }
     val signIn = com.music.connect.net.SignIn(context, api, prefs)
+
+    /** Signing in as whoever is signed in to SuperAwesomeMagicalOrchestrator on this phone. */
+    val orchestratorSignIn = OrchestratorSignIn(OrchestratorSignIn.onThisPhone(context), api, prefs)
+
+    /** Telling the orchestrator what's playing, so other devices can carry on with it (Settings turns it off). */
+    val playing = PlayingActivity(
+        share = { settings.value.sharePlaying },
+        say = { title, detail, url -> OrchestratorLink.publishActivity(context.applicationContext, OrchestratorSignIn.APP, title, detail, url) },
+        scope = scope,
+    )
 
     val liveNow = MutableStateFlow<LiveNow?>(null)
 
@@ -238,7 +251,8 @@ class Container(val context: Context) {
     /** The server no longer accepts this phone's sign-in (signed out from the server, say). */
     fun signedOutByServer() {
         scope.launch {
-            prefs.signOut()
+            // Not the person's choice to stay signed out.
+            prefs.signOut(onPurpose = false)
             tell("Signed out by the server; sign in again")
         }
     }

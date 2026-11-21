@@ -71,6 +71,16 @@ class ScreensTest {
     }
 
     @Test
+    fun `sign-in, with someone signed in to SuperAwesomeMagicalOrchestrator on the phone`() {
+        val offer = com.music.connect.orchestrator.OrchestratorSignIn.Offer("Continue as Maddie", "at music.example.com")
+        compose.setContent { ConnectTheme { Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { SignInScreen(false, null, offer) } } }
+        compose.onNodeWithText("Continue as Maddie").assertExists()
+        compose.onNodeWithText("at music.example.com").assertExists()
+        compose.onNodeWithText("Server address").assertExists()
+        save("sign-in-orchestrator")
+    }
+
+    @Test
     fun `playlists, offline, in the dark theme`() = playlistsOffline(ThemeMode.DARK, "-dark")
 
     @Test

@@ -121,6 +121,14 @@ fun SettingsScreen() {
 
         Panel("Speakers") { SpeakerSettings(settings, ::update) }
 
+        Panel("Your other devices") {
+            ToggleRow(
+                "Show what I'm playing on my other devices",
+                "Through SuperAwesomeMagicalOrchestrator on this phone, so you can carry on elsewhere.",
+                settings.sharePlaying,
+            ) { v -> update { it.copy(sharePlaying = v) } }
+        }
+
         Panel("Account") {
             Text(settings.user?.displayName ?: "", style = MaterialTheme.typography.titleMedium)
             Text("${settings.user?.username} on ${settings.serverName.ifBlank { settings.server }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

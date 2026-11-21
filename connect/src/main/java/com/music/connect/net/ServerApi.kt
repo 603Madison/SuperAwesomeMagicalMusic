@@ -394,6 +394,10 @@ class ServerApi(
     suspend fun exchangeCode(server: String, code: String, verifier: String, deviceName: String): SignedIn =
         post("$server/api/auth/app/token", ApiJson.encodeToString(TokenBody.serializer(), TokenBody(code, verifier, deviceName)), SignedIn.serializer(), auth = false)
 
+    /** Hands a sign-in ticket from SuperAwesomeMagicalOrchestrator to the server at [server], for the app's own token. */
+    suspend fun orchestratorSignIn(server: String, ticket: String, deviceName: String): SignedIn =
+        post("$server/api/auth/orchestrator", ApiJson.encodeToString(TicketBody.serializer(), TicketBody(ticket, deviceName)), SignedIn.serializer(), auth = false)
+
     /** Starts signing in with a code typed on another device (the server's /link page). */
     suspend fun startCodeSignIn(server: String, deviceName: String): DeviceStart =
         post("$server/api/auth/device/start", ApiJson.encodeToString(DeviceNameBody.serializer(), DeviceNameBody(deviceName)), DeviceStart.serializer(), auth = false)
@@ -609,6 +613,7 @@ class ServerApi(
     @Serializable private data class LoginBody(val username: String, val password: String, val app: Boolean, val deviceName: String)
     @Serializable private data class TokenBody(val code: String, val verifier: String, val deviceName: String)
     @Serializable private data class DeviceNameBody(val deviceName: String)
+    @Serializable private data class TicketBody(val ticket: String, val deviceName: String)
     @Serializable private data class DeviceCodeBody(val deviceCode: String)
     @Serializable private data class FavoriteChange(val track: ApiTrack, val favorite: Boolean)
     @Serializable private data class LivePlayedBody(val track: ApiTrack)

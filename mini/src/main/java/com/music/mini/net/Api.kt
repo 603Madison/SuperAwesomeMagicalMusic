@@ -178,6 +178,10 @@ class Api(
     suspend fun pollCodeSignIn(server: String, deviceCode: String): DevicePoll =
         post("$server/api/auth/device/poll", ApiJson.encodeToString(PollBody.serializer(), PollBody(deviceCode)), DevicePoll.serializer(), auth = false)
 
+    /** Hands a sign-in ticket from SuperAwesomeMagicalOrchestrator to the server at [server], for Mini's own token. */
+    suspend fun orchestratorSignIn(server: String, ticket: String, deviceName: String): SignedIn =
+        post("$server/api/auth/orchestrator", ApiJson.encodeToString(TicketBody.serializer(), TicketBody(ticket, deviceName)), SignedIn.serializer(), auth = false)
+
     suspend fun logout() = runCatching { post("${base()}/api/auth/logout", "{}", Unit.serializer()) }
 
     suspend fun search(query: String): SearchResponse = get("${base()}/api/search?q=${enc(query)}&limit=20", SearchResponse.serializer())
@@ -270,6 +274,7 @@ class Api(
 
     @Serializable private data class StartBody(val deviceName: String)
     @Serializable private data class PollBody(val deviceCode: String)
+    @Serializable private data class TicketBody(val ticket: String, val deviceName: String)
     @Serializable private data class ResolveBody(val track: ApiTrack, val kbps: Int, val codecs: List<String>, val thorough: Boolean)
     @Serializable private data class AddBody(val tracks: List<ApiTrack>)
     @Serializable private data class ListensBody(val listens: List<Listen>)

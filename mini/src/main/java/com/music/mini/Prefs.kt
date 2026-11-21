@@ -22,6 +22,12 @@ class Prefs(context: Context) {
         get() = prefs.getInt(KBPS, DEFAULT_KBPS)
         set(value) = prefs.edit().putInt(KBPS, value).apply()
 
+    /**
+     * The person signed out themselves: Mini doesn't sign straight back in through
+     * SuperAwesomeMagicalOrchestrator until they sign in again, by any means.
+     */
+    val signedOutOnPurpose: Boolean get() = prefs.getBoolean(SIGNED_OUT_ON_PURPOSE, false)
+
     fun rememberServer(server: String) = prefs.edit().putString(LAST_SERVER, server).apply()
 
     fun signIn(server: String, token: String, user: User, serverName: String) {
@@ -31,11 +37,13 @@ class Prefs(context: Context) {
             .putString(TOKEN, token)
             .putString(USER_NAME, user.displayName.ifBlank { user.username })
             .putString(SERVER_NAME, serverName)
+            .remove(SIGNED_OUT_ON_PURPOSE)
             .apply()
     }
 
+    /** Signing out is always the person's choice here (Settings › Sign out). */
     fun signOut() {
-        prefs.edit().remove(TOKEN).remove(SERVER).remove(USER_NAME).apply()
+        prefs.edit().remove(TOKEN).remove(SERVER).remove(USER_NAME).putBoolean(SIGNED_OUT_ON_PURPOSE, true).apply()
     }
 
     companion object {
@@ -45,6 +53,7 @@ class Prefs(context: Context) {
         private const val USER_NAME = "user_name"
         private const val LAST_SERVER = "last_server"
         private const val KBPS = "kbps"
+        private const val SIGNED_OUT_ON_PURPOSE = "signed_out_on_purpose"
         const val DEFAULT_KBPS = 96
 
         /** The choices offered, with what they're good for. */
