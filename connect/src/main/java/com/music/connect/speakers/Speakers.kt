@@ -6,11 +6,16 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.music.connect.data.Settings
 import com.music.connect.net.ConnectClient
+import com.music.connect.net.ConnectDevice
 import com.music.connect.net.NetworkState
 import com.music.connect.net.ServerApi
 import com.music.player.quality.NetworkClass
+import com.music.player.speakers.sonos.SonosDiscovery
+import com.music.player.speakers.sonos.SonosNetwork
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,9 +34,10 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
- * The MusicCast speakers on the Wi-Fi the phone is on. Each becomes one of the person's devices
- * (through this phone), so the web player and the app can play on it and control it, while the
- * phone is at home: the server is somewhere else and can't reach them itself.
+ * The MusicCast and Sonos speakers on the Wi-Fi the phone is on. Each becomes one of the person's
+ * devices (through this phone), so the web player and the app can play on it and control it,
+ * while the phone is at home: the server is somewhere else and can't reach them itself. Sonos
+ * rooms playing together are one device ("Living Room + Kitchen").
  */
 class Speakers(
     private val context: Context,
@@ -43,6 +49,8 @@ class Speakers(
     private val settings: StateFlow<Settings>,
     private val network: StateFlow<NetworkState>,
     private val scope: CoroutineScope,
+    /** The person's devices as the server lists them: a Sonos the server plays on itself isn't added again. */
+    private val devices: () -> List<ConnectDevice> = { emptyList() },
     /** Says something to the person (a speaker couldn't play, say). */
     private val tell: (String) -> Unit = {},
 ) {
@@ -50,6 +58,10 @@ class Speakers(
     private val sessions = ConcurrentHashMap<String, SpeakerSession>()
     private val lock = Mutex()
     @Volatile private var active = false
+
+    /** The Sonos household, reached through any speaker found or added (see SonosNetwork). */
+    private var sonos: SonosNetwork? = null
+    private var sonosAddresses: List<String>? = null
 
     private val _found = MutableStateFlow<List<SpeakerInfo>>(emptyList())
     /** The speakers in use, by name. */
@@ -70,9 +82,17 @@ class Speakers(
                 stopAll()
                 if (!use) return@collectLatest
                 active = true
+                var searchedAt = 0L
                 while (true) {
-                    refresh()
-                    delay(REFRESH_MS)
+                    val now = System.currentTimeMillis()
+                    if (searchedAt == 0L || now - searchedAt >= REFRESH_MS) {
+                        searchedAt = now
+                        refresh()
+                    } else {
+                        // Sonos rooms are grouped and ungrouped often: their groups are checked more.
+                        refreshSonos()
+                    }
+                    delay(SONOS_CHECK_MS)
                 }
             }
         }
@@ -92,41 +112,95 @@ class Speakers(
         if (!active) return@withLock
         _searching.value = true
         try {
-            val seen = mutableMapOf<String, SpeakerInfo>()
-            for (location in Ssdp.search(context)) {
-                runCatching {
-                    val description = fetch(location)
-                    if (!MusicCastSpeaker.isMusicCast(description)) return@runCatching
-                    val host = location.toHttpUrlOrNull()?.host ?: return@runCatching
-                    val info = MusicCastSpeaker.identify(host, lan, location)
-                    seen[info.deviceId] = info
-                }.onFailure { Log.d(TAG, "Not a speaker at $location: ${it.message}") }
+            val (musicCast, sonosGroups) = coroutineScope {
+                val sonosGroups = async { sonosSpeakers(rediscover = true) }
+                musicCastSpeakers() to sonosGroups.await()
             }
-            for (address in settings.value.speakerAddresses) {
-                runCatching { MusicCastSpeaker.identify(address.trim(), lan) }
-                    .onSuccess { seen.putIfAbsent(it.deviceId, it) }
-                    .onFailure { Log.i(TAG, "No speaker at $address: ${it.message}") }
-            }
-            if (!active) return@withLock
-            for (info in seen.values) {
-                val existing = sessions[info.deviceId]
-                // A new address (the router gave it another) or a new name: start it afresh.
-                if (existing != null && existing.info == info) continue
-                existing?.stop()
-                if (sessions.isEmpty()) relay.start()
-                sessions[info.deviceId] = newSession(info).also {
-                    it.onProblem = tell
-                    it.start()
-                }
-            }
-            sessions.values.filter { it.gone }.forEach { gone ->
-                gone.stop()
-                sessions.remove(gone.id)
-            }
-            _found.value = sessions.values.map { it.info }.sortedBy { it.name.lowercase() }
+            if (active) use(musicCast, sonosGroups)
         } finally {
             _searching.value = false
         }
+    }
+
+    /** Checks the Sonos household's groups again (rooms grouped or ungrouped in the Sonos app). */
+    private suspend fun refreshSonos() = lock.withLock {
+        if (!active) return@withLock
+        val sonosGroups = sonosSpeakers(rediscover = false)
+        if (active) use(emptyList(), sonosGroups)
+    }
+
+    /** The MusicCast speakers on the network and at the addresses typed in. */
+    private suspend fun musicCastSpeakers(): Collection<SpeakerInfo> {
+        val seen = mutableMapOf<String, SpeakerInfo>()
+        for (location in Ssdp.search(context)) {
+            runCatching {
+                val description = fetch(location)
+                if (!MusicCastSpeaker.isMusicCast(description)) return@runCatching
+                val host = location.toHttpUrlOrNull()?.host ?: return@runCatching
+                val info = MusicCastSpeaker.identify(host, lan, location)
+                seen[info.deviceId] = info
+            }.onFailure { Log.d(TAG, "Not a speaker at $location: ${it.message}") }
+        }
+        for (address in settings.value.speakerAddresses) {
+            runCatching { MusicCastSpeaker.identify(address.trim(), lan) }
+                .onSuccess { seen.putIfAbsent(it.deviceId, it) }
+                .onFailure { Log.d(TAG, "No MusicCast speaker at $address: ${it.message}") }
+        }
+        return seen.values
+    }
+
+    /**
+     * The Sonos household's groups, through any speaker found on the network or typed in; null
+     * if none answered (the ones known are kept until they stop answering themselves).
+     */
+    private suspend fun sonosSpeakers(rediscover: Boolean): List<SpeakerInfo>? {
+        val addresses = settings.value.speakerAddresses
+        val network = sonos?.takeIf { sonosAddresses == addresses } ?: SonosNetwork(
+            lan, addresses, discover = true,
+            discovery = { Ssdp.withMulticast(context) { SonosDiscovery.search() } },
+            rediscoverMs = REFRESH_MS, retryDiscoveryMs = REFRESH_MS,
+        ).also {
+            sonos = it
+            sonosAddresses = addresses
+        }
+        if (rediscover) network.rediscover()
+        val groups = network.refresh()
+        if (groups.isEmpty()) {
+            network.problem?.let { Log.d(TAG, it) }
+            return null
+        }
+        return groups.map(SonosSpeaker::infoOf)
+    }
+
+    /** Starts (or renames) a session for each speaker found, and lets go of the ones that went. */
+    private fun use(musicCast: Collection<SpeakerInfo>, sonosGroups: List<SpeakerInfo>?) {
+        // The server may play on the same Sonos itself (a Sonos source, with the server at home): it's shown once.
+        val listed = (devices() + sessions.values.flatMap { it.devices }).map { it.id.lowercase() }.toSet()
+        val sonosHere = sonosGroups?.filter { "speaker:sonos-${it.deviceId.lowercase()}" !in listed }
+        for (info in musicCast + sonosHere.orEmpty()) {
+            val existing = sessions[info.deviceId]
+            if (existing != null && (existing.info == info || existing.update(info))) continue
+            // A new address (the router gave it another), or a speaker that can't be renamed: start it afresh.
+            existing?.stop()
+            if (sessions.isEmpty()) relay.start()
+            sessions[info.deviceId] = newSession(info).also {
+                it.onProblem = tell
+                it.start()
+            }
+        }
+        // When Sonos answered, its groups are the whole story: a room that joined another group goes.
+        if (sonosHere != null) {
+            val groups = sonosHere.map { it.deviceId }.toSet()
+            sessions.values.filter { it.info.kind == SpeakerKind.SONOS && it.id !in groups }.forEach { old ->
+                old.stop()
+                sessions.remove(old.id)
+            }
+        }
+        sessions.values.filter { it.gone }.forEach { gone ->
+            gone.stop()
+            sessions.remove(gone.id)
+        }
+        _found.value = sessions.values.map { it.info }.sortedBy { it.name.lowercase() }
     }
 
     /** What last went wrong with the speaker [deviceId], if anything. */
@@ -141,11 +215,16 @@ class Speakers(
         val hub = ConnectClient(
             context, http, { settings.value.server }, { settings.value.token }, scope,
             kind = "speaker",
-            fixedId = "musiccast-" + info.deviceId.lowercase().filter { it.isLetterOrDigit() }.take(40),
+            fixedId = info.connectId,
             fixedName = info.name,
+            detail = info.detail,
         )
+        val speaker = when (info.kind) {
+            SpeakerKind.MUSICCAST -> MusicCastSpeaker(info, lan)
+            SpeakerKind.SONOS -> SonosSpeaker(info, lan)
+        }
         return SpeakerSession(
-            MusicCastSpeaker(info, lan), hub, api, relay,
+            speaker, hub, api, relay,
             server = { settings.value.server },
             kbps = { settings.value.kbpsFor(NetworkClass.WIFI) },
             scope = scope,
@@ -157,6 +236,7 @@ class Speakers(
         sessions.values.forEach { it.stop() }
         sessions.clear()
         relay.stop()
+        sonos = null
         _found.value = emptyList()
         _now.value = emptyList()
     }
@@ -182,5 +262,6 @@ class Speakers(
     companion object {
         private const val TAG = "Speakers"
         private const val REFRESH_MS = 10L * 60 * 1000
+        private const val SONOS_CHECK_MS = 60L * 1000
     }
 }

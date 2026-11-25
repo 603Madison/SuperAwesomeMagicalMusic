@@ -81,8 +81,8 @@ class Container(val context: Context) {
     /** This phone among the person's devices (see ConnectClient). */
     val devices = ConnectClient(context, http, { settings.value.server }, { settings.value.token }, scope)
 
-    /** MusicCast speakers on the Wi-Fi, as the person's devices (see Speakers). */
-    val speakers = Speakers(context, http, plainHttp, api, settings, network.state, scope) { tell(it) }
+    /** MusicCast and Sonos speakers on the Wi-Fi, as the person's devices (see Speakers). */
+    val speakers = Speakers(context, http, plainHttp, api, settings, network.state, scope, devices = { devices.devices.value }) { tell(it) }
 
     /** The person's favourite channels and stations, shared with the web player (see [refreshFavorites]). */
     val favorites = MutableStateFlow<List<ApiTrack>>(emptyList())

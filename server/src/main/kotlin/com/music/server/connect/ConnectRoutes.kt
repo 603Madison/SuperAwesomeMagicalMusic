@@ -37,7 +37,9 @@ fun Route.connectRoutes(services: Services) {
             close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Which device?"))
             return@webSocket
         }
-        val device = services.connect.join(principal.user.id, id, params["name"].orEmpty(), params["kind"].orEmpty()) { text ->
+        // A speaker a phone plays on says what it is ("Sonos", "MusicCast").
+        val detail = params["detail"]?.takeIf { params["kind"] == "speaker" && it.isNotBlank() }
+        val device = services.connect.join(principal.user.id, id, params["name"].orEmpty(), params["kind"].orEmpty(), detail) { text ->
             outgoing.send(Frame.Text(text))
         }
         // Signed out elsewhere (or the account turned off): the connection doesn't outlive it.

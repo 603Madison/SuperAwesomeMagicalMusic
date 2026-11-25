@@ -5,6 +5,7 @@ import android.util.Log
 import com.music.connect.net.ApiTrack
 import com.music.connect.net.ConnectClient
 import com.music.connect.net.ConnectCommand
+import com.music.connect.net.ConnectDevice
 import com.music.connect.net.PlayState
 import com.music.connect.net.ServerApi
 import com.music.connect.playback.MediaItems
@@ -23,17 +24,51 @@ import kotlin.math.roundToInt
 /** What a speaker is playing from this app, for the notification. */
 data class SpeakerNow(val speaker: String, val track: ApiTrack, val playing: Boolean)
 
-/** How a session talks to the speaker (the real one, or a stand-in in tests). */
+/** A song (or a station) for a speaker: its address on the phone, and what to show while it plays. */
+data class SpeakerMedia(
+    val url: String,
+    /** The kind of audio at [url] (audio/mpeg, audio/flac…). */
+    val mime: String,
+    val title: String,
+    val artist: String,
+    val album: String? = null,
+    /** The cover, at an address the speaker can fetch. */
+    val artUrl: String? = null,
+    val durationMs: Long? = null,
+    /** A station: no end, no seeking. */
+    val live: Boolean = false,
+)
+
+/** The kinds of audio a speaker plays, so the server sends it one of them (converting the rest). */
+data class SpeakerFormats(
+    /** What it plays as it is, as the server names them (flac, mp3, aac…). */
+    val codecs: List<String>,
+    /** Lossless audio above this many kbps is more than it plays (Sonos stops at 24-bit/48 kHz). */
+    val maxLosslessKbps: Int? = null,
+)
+
+/** How a session talks to the speaker (a MusicCast, a Sonos group, or a stand-in in tests). */
 interface SpeakerControl {
     val info: SpeakerInfo
+    val formats: SpeakerFormats get() = SpeakerFormats(SpeakerSession.CODECS)
     suspend fun status(): ZoneStatus
     suspend fun setPower(on: Boolean)
+    /** In the speaker's own steps, up to [ZoneStatus.maxVolume]. */
     suspend fun setVolume(level: Int)
-    suspend fun setUri(url: String, metadata: String)
+    /** Puts [media] on in place of whatever it was playing; [play] starts it. */
+    suspend fun load(media: SpeakerMedia)
     suspend fun play()
     suspend fun pause()
     suspend fun stop()
+    /** Jumps to [positionMs] in what it's playing; false if it can't (the song then starts again from there). */
+    suspend fun seek(positionMs: Long): Boolean = false
     suspend fun transport(): Transport
+
+    /**
+     * Takes a new name for the same speaker (a Sonos joining or leaving a group); false if it
+     * needs starting afresh instead.
+     */
+    fun update(info: SpeakerInfo): Boolean = false
 }
 
 /**
@@ -63,6 +98,8 @@ class SpeakerSession(
     private var offsetMs = 0L
     /** The address the speaker was given, if it's playing one of ours. */
     private var currentUrl: String? = null
+    /** The speaker can seek in it by itself (the original file, which answers byte ranges). */
+    private var seekable = false
     /** It's meant to be playing (as opposed to paused, finished or taken over). */
     private var wanted = false
     private var startedAt = 0L
@@ -92,6 +129,20 @@ class SpeakerSession(
 
     val id: String get() = speaker.info.deviceId
     val info: SpeakerInfo get() = speaker.info
+
+    /** The person's devices, as the server last listed them to this speaker. */
+    val devices: List<ConnectDevice> get() = hub.devices.value
+
+    /**
+     * The same speaker under a new name (a Sonos group gained or lost a room): renamed among the
+     * devices, carrying on with what it plays. False if it has to be started afresh.
+     */
+    fun update(info: SpeakerInfo): Boolean {
+        if (!speaker.update(info)) return false
+        hub.rename(info.name, info.detail)
+        _now.value = _now.value?.copy(speaker = info.name)
+        return true
+    }
 
     fun start() {
         if (job != null) return
@@ -130,7 +181,7 @@ class SpeakerSession(
                 position() > RESTART_WITHIN_MS || index == 0 -> playAt(index, 0)
                 index > 0 -> playAt(index - 1, 0)
             }
-            "seek" -> command.positionMs?.takeIf { queue.getOrNull(index)?.isLive == false }?.let { playAt(index, it.coerceAtLeast(0)) }
+            "seek" -> command.positionMs?.takeIf { queue.getOrNull(index)?.isLive == false }?.let { seekTo(it.coerceAtLeast(0)) }
             "volume" -> command.volume?.let { level ->
                 speaker.setVolume((level.coerceIn(0.0, 1.0) * maxVolume).roundToInt())
                 volume = level.coerceIn(0.0, 1.0)
@@ -150,8 +201,24 @@ class SpeakerSession(
             positionAt = clock()
             report(force = true)
         } else {
-            playAt(index.coerceAtLeast(0), resumeAt ?: position())
+            val at = index.coerceAtLeast(0)
+            playAt(at, if (queue.getOrNull(at)?.isLive == true) 0 else resumeAt ?: position())
         }
+    }
+
+    /**
+     * Jumps to [ms] in the song: the speaker does it itself when it can (in the original file),
+     * otherwise the song starts again from there.
+     */
+    private suspend fun seekTo(ms: Long) {
+        if (seekable && currentUrl != null && resumeAt == null && runCatching { speaker.seek(ms) }.getOrDefault(false)) {
+            positionMs = ms
+            positionAt = clock()
+            startedAt = clock()
+            report(force = true)
+            return
+        }
+        playAt(index, ms)
     }
 
     private suspend fun pauseNow() {
@@ -190,35 +257,45 @@ class SpeakerSession(
             speaker.setPower(true)
             delay(POWER_ON_MS)
         }
-        val (source, mime) = streamOf(track, startMs)
-        val path = relay.publish(source)
+        val stream = streamOf(track, startMs)
+        val path = relay.publish(stream.url)
         val url = relay.addressFor(speaker.info.host, path) ?: throw SpeakerException("This phone isn't on ${speaker.info.name}'s network")
         val art = track.artworkUrl?.let { MediaItems.artworkUri(server(), it, 600)?.toString() }?.let { relay.addressFor(speaker.info.host, relay.publish(it)) }
-        // A stop first, so a speaker busy with the last song takes the new one.
-        runCatching { speaker.stop() }
-        speaker.setUri(url, MusicCastSpeaker.didl(url, mime, track.title, track.artist, track.album, art, track.durationMs?.minus(startMs)))
+        speaker.load(SpeakerMedia(url, stream.mime, track.title, track.artist, track.album, art, track.durationMs?.minus(startMs), live = track.isLive))
         speaker.play()
         currentUrl = url
+        seekable = stream.seekable
         report(force = true)
     }
 
-    /** The server address of [track] for the speaker, and the kind of audio it is. */
-    private suspend fun streamOf(track: ApiTrack, startMs: Long): Pair<String, String> {
+    /** Where a song comes from on the server, the kind of audio it is, and whether the speaker can seek in it. */
+    private data class Stream(val url: String, val mime: String, val seekable: Boolean = false)
+
+    /** The server address of [track] for the speaker, in a kind of audio it plays. */
+    private suspend fun streamOf(track: ApiTrack, startMs: Long): Stream {
         MediaItems.livePath(track)?.let { (path, hls) ->
             if (hls) throw SpeakerException("Live SiriusXM channels can't play on speakers yet")
-            return server() + path to if (track.isStationTrack) "audio/mp4" else "audio/mpeg"
+            return Stream(server() + path, if (track.isStationTrack) "audio/mp4" else "audio/mpeg")
         }
-        val resolved = api.resolve(track, kbps(), thorough = true, codecs = CODECS)
+        val formats = speaker.formats
+        // Converted, it's FLAC or MP3: not every speaker gets on with a raw AAC stream.
+        val plain = formats.codecs - "aac"
+        var resolved = api.resolve(track, kbps(), thorough = true, codecs = if (startMs > 0) plain else formats.codecs)
+        val tooRich = formats.maxLosslessKbps?.let { max -> !resolved.transcoded && resolved.extension.lowercase() in LOSSLESS && (resolved.kbps ?: 0) > max } == true
+        if (tooRich) {
+            // Hi-res is more than it plays: MP3 instead (FLAC converted keeps the hi-res).
+            resolved = api.resolve(track, kbps(), thorough = true, codecs = listOf("mp3"))
+        } else if (resolved.transcoded && resolved.extension.lowercase() == "aac") {
+            resolved = api.resolve(track, kbps(), thorough = true, codecs = plain)
+        }
         val start = if (startMs > 0) "&start=" + String.format(Locale.ROOT, "%.1f", startMs / 1000.0) else ""
         val extension = resolved.extension.lowercase()
         // Starting part-way, the server converts: lossless to FLAC, the rest to MP3.
         val mime = when {
-            startMs > 0 && extension in LOSSLESS -> "audio/flac"
-            extension == "flac" -> "audio/flac"
-            extension == "wav" -> "audio/wav"
-            else -> "audio/mpeg"
+            startMs > 0 -> if (extension in LOSSLESS && !tooRich) "audio/flac" else "audio/mpeg"
+            else -> mimeOf(extension)
         }
-        return api.absolute(resolved.streamUrl) + start to mime
+        return Stream(api.absolute(resolved.streamUrl) + start, mime, seekable = startMs == 0L && resolved.seekable && !resolved.transcoded)
     }
 
     // ---- keeping an eye on it ----
@@ -325,6 +402,16 @@ class SpeakerSession(
         /** What speakers play reliably; anything else the server converts. */
         val CODECS = listOf("flac", "mp3", "wav")
         private val LOSSLESS = setOf("flac", "wav", "alac", "aiff")
+
+        /** The kind of audio a file with [extension] is, as speakers are told it. */
+        fun mimeOf(extension: String): String = when (extension.lowercase()) {
+            "flac" -> "audio/flac"
+            "wav" -> "audio/wav"
+            "m4a", "mp4", "alac" -> "audio/mp4"
+            "aac" -> "audio/aac"
+            "ogg", "oga" -> "audio/ogg"
+            else -> "audio/mpeg"
+        }
         /** Where MusicCast says it's playing an address it was given (UPnP is "server"). */
         private val OUR_INPUTS = setOf("server", "")
         private const val BUSY_POLL_MS = 1_500L

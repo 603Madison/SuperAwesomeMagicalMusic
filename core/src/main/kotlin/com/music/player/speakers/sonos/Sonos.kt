@@ -301,15 +301,15 @@ class SonosPlayer(val client: SonosClient, val grouped: Boolean) {
         }
     }
 
-    /** 0 to 1, if it says. */
-    suspend fun volume(): Double? = runCatching {
+    /** 0 to 1, if it says (and an exception if it can't be reached). */
+    suspend fun volume(): Double? {
         val answer = if (grouped) {
             client.soap(SonosClient.Service.GROUP_RENDERING, "GetGroupVolume", "")
         } else {
             client.soap(SonosClient.Service.RENDERING, "GetVolume", "<Channel>Master</Channel>")
         }
-        (SonosXml.tag(answer, "CurrentVolume") ?: SonosXml.tag(answer, "CurrentGroupVolume"))?.trim()?.toIntOrNull()?.let { it / 100.0 }
-    }.getOrNull()
+        return (SonosXml.tag(answer, "CurrentVolume") ?: SonosXml.tag(answer, "CurrentGroupVolume"))?.trim()?.toIntOrNull()?.let { it / 100.0 }
+    }
 
     suspend fun transport(): SonosTransport {
         val info = client.soap(SonosClient.Service.AV_TRANSPORT, "GetTransportInfo", "")

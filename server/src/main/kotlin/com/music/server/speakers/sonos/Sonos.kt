@@ -41,7 +41,7 @@ class SonosRenderer(client: SonosClient, grouped: Boolean) : Renderer {
             },
             positionMs = transport.positionMs,
             playing = transport.uri,
-            volume = player.volume(),
+            volume = runCatching { player.volume() }.getOrNull(),
         )
     }
 }
