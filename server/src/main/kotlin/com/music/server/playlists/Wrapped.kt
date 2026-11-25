@@ -255,17 +255,22 @@ fun Route.wrappedRoutes(services: Services) {
         val user = call.requireUser(services)
         val params = call.request.queryParameters
         val zone = params["tz"]?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
-        val now = services.clock()
-        val thisYear = Instant.ofEpochMilli(now).atZone(zone).year
-        val first = services.history.first(user.id)
-        val firstYear = first?.let { Instant.ofEpochMilli(it).atZone(zone).year } ?: thisYear
-        val year = params["year"]?.toIntOrNull()?.coerceIn(minOf(firstYear, thisYear), thisYear) ?: thisYear
-        val (from, to) = WrappedReport.span(year, zone)
-        val listens = services.history.between(user.id, from, to)
-        val before = if (first != null && first < from) WrappedReport.artistsIn(services.history.between(user.id, 0, from)) else emptySet()
-        val years = (thisYear downTo minOf(firstYear, thisYear)).toList()
-        call.respond(WrappedReport.build(year, zone, listens, years, before, now).out(services.artwork))
+        call.respond(wrappedFor(services, user, zone, params["year"]?.toIntOrNull()))
     }
+}
+
+/** [user]'s Wrapped for [wanted] (this year if not given), in [zone]. */
+internal suspend fun wrappedFor(services: Services, user: com.music.server.auth.User, zone: ZoneId, wanted: Int?): Wrapped {
+    val now = services.clock()
+    val thisYear = Instant.ofEpochMilli(now).atZone(zone).year
+    val first = services.history.first(user.id)
+    val firstYear = first?.let { Instant.ofEpochMilli(it).atZone(zone).year } ?: thisYear
+    val year = wanted?.coerceIn(minOf(firstYear, thisYear), thisYear) ?: thisYear
+    val (from, to) = WrappedReport.span(year, zone)
+    val listens = services.history.between(user.id, from, to)
+    val before = if (first != null && first < from) WrappedReport.artistsIn(services.history.between(user.id, 0, from)) else emptySet()
+    val years = (thisYear downTo minOf(firstYear, thisYear)).toList()
+    return WrappedReport.build(year, zone, listens, years, before, now).out(services.artwork)
 }
 
 /** Artwork through the server, as everywhere else. */
