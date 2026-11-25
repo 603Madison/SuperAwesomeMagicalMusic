@@ -75,7 +75,9 @@ export function SourcesSection({ scope }: { scope: "personal" | "global" }) {
         })}
       </ul>
       {canAdd && <Button onClick={() => setChoosing(true)}><Plus size={18} /> {scope === "global" ? "Add a shared source" : "Add a source"}</Button>}
-      {kinds.data && !kinds.data.canAddPersonal && scope === "personal" && <p className="muted">This server's admins add the sources.</p>}
+      {kinds.data && !kinds.data.canAddPersonal && scope === "personal" && (
+        <p className="muted">This server's admins add the sources (music libraries such as Jellyfin or a Subsonic server, and places to play such as Sonos or Music Assistant), under Admin › Shared sources.</p>
+      )}
 
       {choosing && kinds.data && (
         <KindPicker kinds={kinds.data} onClose={() => setChoosing(false)} onPick={(spec) => { setChoosing(false); setEditing({ spec }); }} />
@@ -111,18 +113,37 @@ export function SourcesSection({ scope }: { scope: "personal" | "global" }) {
   );
 }
 
+/** The kinds of source, in groups: where music comes from, where it plays, and what helps. */
+const KIND_GROUPS: { title: string; kinds: string[] }[] = [
+  { title: "Your music library", kinds: ["JELLYFIN", "SUBSONIC"] },
+  { title: "Music services and radio", kinds: ["YOUTUBE_MUSIC", "QOBUZ", "SIRIUSXM", "RADIO", "TUNER"] },
+  { title: "Places to play", kinds: ["SONOS", "MUSIC_ASSISTANT"] },
+  { title: "Helpers", kinds: ["LIDARR", "AUDD"] },
+];
+
 function KindPicker({ kinds, onPick, onClose }: { kinds: KindsResponse; onPick: (k: KindSpec) => void; onClose: () => void }) {
+  const grouped = new Set(KIND_GROUPS.flatMap((g) => g.kinds));
+  const groups = [
+    ...KIND_GROUPS.map((g) => ({ title: g.title, specs: g.kinds.map((k) => kinds.kinds.find((s) => s.kind === k)).filter((s): s is KindSpec => !!s) })),
+    // Anything newer than this list still shows.
+    { title: "More", specs: kinds.kinds.filter((s) => !grouped.has(s.kind)) },
+  ].filter((g) => g.specs.length);
   return (
     <Modal title="Add a source" onClose={onClose}>
       <div className="kind-list">
-        {kinds.kinds.map((k) => (
-          <button key={k.kind} className="kind-option" onClick={() => onPick(k)}>
-            <span className={`source-icon kind-${k.kind.toLowerCase()}`}>{k.label.slice(0, 1)}</span>
-            <span>
-              <span className="source-name">{k.label}</span>
-              <span className="source-sub">{k.description}</span>
-            </span>
-          </button>
+        {groups.map((g) => (
+          <div key={g.title} className="kind-group">
+            <h3 className="kind-group-title">{g.title}</h3>
+            {g.specs.map((k) => (
+              <button key={k.kind} className="kind-option" onClick={() => onPick(k)}>
+                <span className={`source-icon kind-${k.kind.toLowerCase()}`}>{k.label.slice(0, 1)}</span>
+                <span>
+                  <span className="source-name">{k.label}</span>
+                  <span className="source-sub">{k.description}</span>
+                </span>
+              </button>
+            ))}
+          </div>
         ))}
       </div>
     </Modal>

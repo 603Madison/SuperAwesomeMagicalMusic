@@ -874,12 +874,16 @@ input[type="range"]:disabled { cursor: default; opacity: 0.5; }
 .kind-youtube_music { background: #ff0033; color: white; }
 .kind-lidarr { background: #2a9d4b; color: white; }
 .kind-subsonic { background: linear-gradient(135deg, #f2a516, #e5532d); color: white; }
+.kind-sonos { background: #1b1b1b; color: white; }
+.kind-music_assistant { background: linear-gradient(135deg, #18bcf2, #0b6fb8); color: white; }
 .source-text { flex: 1; min-width: 0; }
 .source-name { font-weight: var(--w-semibold); display: flex; align-items: center; flex-wrap: wrap; }
 .source-sub { color: var(--muted); font-size: 0.82rem; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; overflow-wrap: anywhere; }
 .source-actions { display: flex; align-items: center; gap: 10px; }
 .source-actions .toggle { gap: 8px; font-size: 0.85rem; color: var(--muted); }
-.kind-list { display: flex; flex-direction: column; gap: 8px; }
+.kind-list { display: flex; flex-direction: column; gap: 16px; }
+.kind-group { display: flex; flex-direction: column; gap: 8px; }
+.kind-group-title { margin: 0; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .kind-option { display: flex; align-items: center; gap: 14px; padding: 12px; border: 1px solid var(--outline); border-radius: 14px; background: none; cursor: pointer; text-align: left; }
 .kind-option:hover { background: var(--surface-3); }
 .kind-option > span:last-child { display: flex; flex-direction: column; gap: 2px; }
