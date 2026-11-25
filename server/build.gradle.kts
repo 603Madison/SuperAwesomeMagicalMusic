@@ -56,4 +56,5 @@ dependencies {
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(testFixtures(project(":core")))
 }

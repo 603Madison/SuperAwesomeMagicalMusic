@@ -1,7 +1,7 @@
-package com.music.server.speakers.sonos
+package com.music.player.speakers.sonos
 
+import com.music.player.CoreLog
 import okhttp3.OkHttpClient
-import org.slf4j.LoggerFactory
 
 /**
  * The Sonos speakers one Sonos source reaches: those added by address, and (unless it's turned
@@ -14,6 +14,10 @@ class SonosNetwork(
     private val discover: Boolean,
     private val clock: () -> Long = System::currentTimeMillis,
     private val discovery: suspend () -> Set<String> = { SonosDiscovery.search() },
+    /** How often to look on the network again once speakers are known (they come and go rarely). */
+    private val rediscoverMs: Long = REDISCOVER_MS,
+    /** How often to look again while none have been found. */
+    private val retryDiscoveryMs: Long = RETRY_DISCOVERY_MS,
 ) {
     private val added: List<String> = addresses.mapNotNull(SonosClient::baseOf).distinct()
     private var found: Set<String> = emptySet()
@@ -27,10 +31,10 @@ class SonosNetwork(
     /** The household's groups now. */
     suspend fun refresh(): List<SonosGroup> {
         val now = clock()
-        val due = discoveredAt == 0L || now - discoveredAt > if (found.isEmpty()) RETRY_DISCOVERY_MS else REDISCOVER_MS
+        val due = discoveredAt == 0L || now - discoveredAt > if (found.isEmpty()) retryDiscoveryMs else rediscoverMs
         if (discover && due) {
             discoveredAt = now
-            found = runCatching { discovery() }.onFailure { log.info("Looking for Sonos speakers failed: {}", it.message) }.getOrDefault(found)
+            found = runCatching { discovery() }.onFailure { CoreLog.i(TAG, "Looking for Sonos speakers failed: ${it.message}") }.getOrDefault(found)
         }
         val known = groups.flatMap { group -> group.members.filter { !it.bridge }.map { it.baseUrl } }
         val seeds = (added + found + known).distinct()
@@ -57,8 +61,13 @@ class SonosNetwork(
         return groups
     }
 
+    /** Looks on the network again at the next [refresh] (the person asked to search again). */
+    fun rediscover() {
+        discoveredAt = 0L
+    }
+
     private companion object {
-        private val log = LoggerFactory.getLogger(SonosNetwork::class.java)
+        private const val TAG = "SonosNetwork"
         /** Speakers come and go rarely; one that's found stays known through its group. */
         const val REDISCOVER_MS = 10 * 60_000L
         const val RETRY_DISCOVERY_MS = 60_000L

@@ -4,6 +4,8 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
+    // Test helpers the server's and the phone app's tests share (a pretend Sonos).
+    `java-test-fixtures`
 }
 
 java {
@@ -26,4 +28,6 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+
+    testFixturesApi(libs.okhttp.mockwebserver)
 }

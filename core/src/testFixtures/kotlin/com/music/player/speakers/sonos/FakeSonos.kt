@@ -1,6 +1,5 @@
-package com.music.server.speakers
+package com.music.player.speakers.sonos
 
-import com.music.server.speakers.sonos.SonosXml
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -8,7 +7,7 @@ import okhttp3.mockwebserver.RecordedRequest
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * A pretend Sonos speaker: answers the UPnP SOAP actions the server uses, in the shapes real
+ * A pretend Sonos speaker: answers the UPnP SOAP actions the server and the phone use, in the shapes real
  * speakers send (recorded from an S2 Era 100 and a Play:1), and remembers what it was asked.
  * [householdXml] is what its topology says; by default a group of this speaker, a stereo pair's
  * hidden other half and a Boost.
@@ -62,6 +61,7 @@ class FakeSonos(val uuid: String = "RINCON_000E58A0B1C201400", val room: String 
             "Stop" -> { state = "STOPPED"; "" }
             "Seek" -> { relTimeMs = SonosXml.parseTime(arg("Target")); "" }
             "SetVolume" -> { volume = arg("DesiredVolume")?.toIntOrNull() ?: volume; "" }
+            "SnapshotGroupVolume" -> ""
             "SetGroupVolume" -> { groupVolume = arg("DesiredVolume")?.toIntOrNull() ?: groupVolume; "" }
             "GetVolume" -> "<CurrentVolume>$volume</CurrentVolume>"
             "GetGroupVolume" -> "<CurrentVolume>$groupVolume</CurrentVolume>"

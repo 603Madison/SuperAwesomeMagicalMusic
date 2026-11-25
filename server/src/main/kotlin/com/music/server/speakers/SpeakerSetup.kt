@@ -1,13 +1,13 @@
 package com.music.server.speakers
 
+import com.music.player.speakers.sonos.SonosClient
+import com.music.player.speakers.sonos.SonosNetwork
 import com.music.server.ApiError
 import com.music.server.sources.FieldSpec
 import com.music.server.sources.KindSpec
 import com.music.server.sources.SourceKind
 import com.music.server.sources.StoredSource
 import com.music.server.speakers.musicassistant.MusicAssistantClient
-import com.music.server.speakers.sonos.SonosClient
-import com.music.server.speakers.sonos.SonosNetwork
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull

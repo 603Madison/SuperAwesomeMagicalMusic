@@ -1,8 +1,9 @@
 package com.music.server.speakers
 
+import com.music.player.speakers.sonos.FakeSonos
+import com.music.player.speakers.sonos.SonosXml
 import com.music.server.serverTest
 import com.music.server.sources.SourceKind
-import com.music.server.speakers.sonos.SonosXml
 import com.music.server.str
 import io.ktor.client.request.get
 import io.ktor.client.statement.readRawBytes

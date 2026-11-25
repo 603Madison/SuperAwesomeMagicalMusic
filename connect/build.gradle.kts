@@ -125,6 +125,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(testFixtures(project(":core")))
     testImplementation(libs.robolectric)
     testImplementation(libs.room.testing)
     testImplementation(platform(libs.compose.bom))

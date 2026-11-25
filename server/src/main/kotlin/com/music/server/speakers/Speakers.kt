@@ -1,19 +1,20 @@
 package com.music.server.speakers
 
+import com.music.player.speakers.sonos.SonosClient
+import com.music.player.speakers.sonos.SonosDiscovery
+import com.music.player.speakers.sonos.SonosNetwork
 import com.music.server.Services
 import com.music.server.music.ApiTrack
 import com.music.server.sources.SourceKind
 import com.music.server.sources.StoredSource
 import com.music.server.speakers.musicassistant.MusicAssistantClient
 import com.music.server.speakers.musicassistant.MusicAssistantRenderer
-import com.music.server.speakers.sonos.SonosClient
-import com.music.server.speakers.sonos.SonosDiscovery
-import com.music.server.speakers.sonos.SonosNetwork
 import com.music.server.speakers.sonos.SonosRenderer
 import com.music.server.util.NetworkGuard
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.head
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -23,7 +24,6 @@ import kotlinx.coroutines.sync.withLock
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import org.slf4j.LoggerFactory
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Sonos speakers and Music Assistant players as places to play. Each Sonos or Music Assistant
