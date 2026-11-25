@@ -364,11 +364,32 @@ unless it is clearly better. Songs you stream already play from Jellyfin once it
 
 ## The lite web player
 
-For old and underpowered devices (old tablets and phones, e-readers' browsers, smart TVs, a
-Raspberry Pi's browser), the server also has a much lighter web player at **`/lite`** (for
-example `https://music.example.org/lite`). It isn't linked from the main web player.
+For old or slow devices (old iPads and iPhones, e-readers, smart TVs, cheap Chromebooks, a
+Raspberry Pi), the server has a second, much lighter web player at **`/lite`**
+(`https://music.example.com/lite`). Its pages are made on the server and are a few kilobytes
+each, with one small stylesheet and one small script (plain JavaScript that runs on Safari 9 and
+Android 5's browser). No web fonts, no big downloads.
 
-LITE_DETAILS
+It does what the web player does, kept simple: search (songs, artists, albums, your playlists and
+radio), artists and albums, playlists (play, make, add and remove songs), radio (your own
+stations with skip and thumbs, favourites, SiriusXM channels, Pandora stations, radio stations),
+Now playing with a queue, shuffle and repeat, history, Recently heard, Wrapped, your devices
+(control them, or move the music between them), the stream quality and signing out. Music keeps
+playing while you move between pages. Signing in is the same as the web player's (password or
+single sign-on), and signing in to one signs you in to the other.
+
+With JavaScript off it still works through plain links and forms, and each song plays on its own
+page. SiriusXM's live channels only play in browsers that play live HLS streams themselves
+(Safari); everything else plays everywhere. Lyrics, the sleep timer and Listen's recording aren't
+there (they're in the web player and the apps).
+
+It isn't linked from the web player: bookmark `/lite` on the device that needs it.
+
+<p>
+  <img src="docs/screenshots/lite/phone-album-playing.png" alt="The lite web player on a phone: an album, playing" width="200">
+  <img src="docs/screenshots/lite/phone-now-playing.png" alt="The lite web player's Now playing" width="200">
+  <img src="docs/screenshots/lite/phone-radio.png" alt="The lite web player's Radio" width="200">
+</p>
 
 ## The Standalone app
 
