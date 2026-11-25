@@ -21,7 +21,27 @@ internal object LiteAssets {
         Asset(LiteAssets::class.java.getResourceAsStream("/lite/$name")!!.use { it.readBytes() }, type)
 
     val css = load("lite.css", ContentType.Text.CSS.withParameter("charset", "utf-8"))
-    val js = load("lite.js", ContentType.Application.JavaScript.withParameter("charset", "utf-8"))
+    val js = Asset(compact(String(load("lite.js", ContentType.Application.JavaScript).bytes)).toByteArray(), ContentType.Application.JavaScript.withParameter("charset", "utf-8"))
+
+    /**
+     * The script without its comments, blank lines and indentation: it's written to be read, and
+     * old phones needn't download that. Only whole-line comments go (the script keeps to them),
+     * and line breaks stay, so nothing about how it runs changes.
+     */
+    fun compact(script: String): String {
+        val out = StringBuilder(script.length / 2)
+        var inComment = false
+        for (raw in script.lines()) {
+            val line = raw.trim()
+            when {
+                inComment -> if (line.endsWith("*/")) inComment = false
+                line.startsWith("/*") -> inComment = !line.endsWith("*/")
+                line.isEmpty() || line.startsWith("//") -> Unit
+                else -> out.append(line).append('\n')
+            }
+        }
+        return out.toString()
+    }
 
     val version: String = java.security.MessageDigest.getInstance("SHA-256").digest(css.bytes + js.bytes).hex().take(12)
 

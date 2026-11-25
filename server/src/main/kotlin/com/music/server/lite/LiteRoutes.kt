@@ -141,7 +141,7 @@ internal suspend fun Lite.loginPage(status: HttpStatusCode = HttpStatusCode.OK, 
     }
     page("Sign in", status) {
         h1(settings.serverName)
-        (error ?: call.request.queryParameters["error"]?.take(300))?.let { notice(it, "note err") }
+        error?.let { notice(it, "note err") }
         if (oidc != null) {
             el("p") {
                 el("a", "class" to "btn big", "href" to url("/api/auth/oidc/start", "return" to "/lite/welcome")) { text(oidc.buttonLabel) }
@@ -172,7 +172,7 @@ private suspend fun Lite.login() {
     } catch (e: ApiError) {
         return loginPage(e.status, params["next"], e.message)
     }
-    signIn(services, call, user, app = false, deviceName = "Lite: ${deviceName(call)}")
+    signIn(services, call, user, app = false, deviceName = deviceName(call))
     seeOther(liteReturn(params["next"]))
 }
 

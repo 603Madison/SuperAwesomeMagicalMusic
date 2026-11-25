@@ -810,8 +810,9 @@
 
   function render() {
     var s = shown();
-    bar.hidden = !s;
-    doc.body.className = s ? 'has-player' : '';
+    // Now playing shows it all already: the player at the bottom steps aside there.
+    bar.hidden = !s || !!np;
+    doc.body.className = s && !np ? 'has-player' : '';
     if (!s) return;
     setText(ui.title, s.title);
     setText(ui.sub, s.line);
@@ -1234,12 +1235,13 @@
     np = null;
     main.innerHTML = html;
     doc.title = title;
-    win.scrollTo(0, 0);
+    // For screen readers, the new page starts here; for everyone, at the top.
     try {
       main.focus();
     } catch (e) {
       // Not focusable here.
     }
+    win.scrollTo(0, 0);
   }
 
   /** What a page needs once it's in: Now playing, a song to play, the SiriusXM note, devices' refresh. */
@@ -1251,6 +1253,7 @@
     if (devicesTimer) win.clearTimeout(devicesTimer);
     devicesTimer = null;
     buildNow();
+    render();
     // A song's own page (from a link, or with the script off before): it plays in the player instead.
     var here = doc.getElementById('play-here');
     if (here) {

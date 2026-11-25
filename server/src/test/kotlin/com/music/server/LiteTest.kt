@@ -147,7 +147,8 @@ class LiteTest {
         val js = user.get("/lite/lite.js?v=x")
         assertEquals(HttpStatusCode.OK, js.status)
         val script = js.bodyAsText()
-        assertTrue(script.length < 60_000)
+        assertTrue("${script.length} bytes", script.length < 45_000)
+        assertFalse(script.contains("/*"))
         assertFalse(script.contains("=>"))
         assertFalse(Regex("""\b(let|const|class|import|export)\s""").containsMatchIn(script.replace(Regex("""(?s)/\*.*?\*/|//[^\n]*"""), "")))
         val css = user.get("/lite/lite.css")
@@ -243,7 +244,7 @@ class LiteTest {
         assertTrue(history.contains("Let Down"))
         val wrapped = user.get("/lite/wrapped").bodyAsText()
         assertTrue(wrapped.contains("Top songs"))
-        assertTrue(wrapped.contains("plays of 3 songs by 1 artists"))
+        assertTrue(wrapped.contains("9 plays of 3 songs by 1 artist<"))
         assertTrue(user.get("/lite/settings").bodyAsText().contains("Up to 128 kbps"))
 
         // A personal station plays from the same address as in the main player.

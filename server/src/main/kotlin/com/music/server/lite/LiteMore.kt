@@ -87,19 +87,19 @@ internal suspend fun Lite.wrappedPage() {
             return@page
         }
         el("ul", "class" to "facts") {
-            fact("${"%,d".format(wrapped.minutes)} minutes of music")
-            fact("${"%,d".format(wrapped.listens)} plays of ${"%,d".format(wrapped.songs)} songs by ${"%,d".format(wrapped.artists)} artists")
-            fact("Music on ${wrapped.days} days; ${wrapped.longestStreak} in a row at most")
-            wrapped.biggestDay?.let { fact("The biggest day: ${dayText(it.date)}, with ${it.minutes} minutes") }
-            wrapped.onRepeat?.let { fact("On repeat: ${it.track.title} by ${it.track.artist}, ${it.plays} times on ${dayText(it.date)}") }
-            if (wrapped.newArtists > 0) fact("${wrapped.newArtists} artists new to you")
+            fact("${count(wrapped.minutes, "minute")} of music")
+            fact("${count(wrapped.listens, "play")} of ${count(wrapped.songs, "song")} by ${count(wrapped.artists, "artist")}")
+            fact("Music on ${count(wrapped.days, "day")}; ${wrapped.longestStreak} in a row at most")
+            wrapped.biggestDay?.let { fact("The biggest day: ${dayText(it.date)}, with ${count(it.minutes, "minute")}") }
+            wrapped.onRepeat?.let { fact("On repeat: ${it.track.title} by ${it.track.artist}, ${count(it.plays, "time")} on ${dayText(it.date)}") }
+            if (wrapped.newArtists > 0) fact("${count(wrapped.newArtists, "artist")} new to you")
         }
         h2(wrapped.personality.name)
         p(wrapped.personality.description)
         if (wrapped.topSongs.isNotEmpty()) {
             h2("Top songs")
             val top = wrapped.topSongs.take(10)
-            tracks(top.map { it.track }, numbered = true, sub = { t -> top.first { it.track === t }.let { "${t.artist} · ${it.plays} plays" } })
+            tracks(top.map { it.track }, numbered = true, sub = { t -> top.first { it.track === t }.let { "${t.artist} · ${count(it.plays, "play")}" } })
         }
         if (wrapped.topArtists.isNotEmpty()) {
             h2("Top artists")
@@ -109,7 +109,7 @@ internal suspend fun Lite.wrappedPage() {
                         cover(a.artworkUrl, cls = "cv round")
                         el("span", "class" to "tx") {
                             el("b") { text(a.name) }
-                            el("small") { text("${a.minutes} minutes") }
+                            el("small") { text(count(a.minutes, "minute")) }
                         }
                     }
                 }
@@ -123,7 +123,7 @@ internal suspend fun Lite.wrappedPage() {
                         cover(a.artworkUrl)
                         el("span", "class" to "tx") {
                             el("b") { text(a.title) }
-                            el("small") { text("${a.artist} · ${a.minutes} minutes") }
+                            el("small") { text("${a.artist} · ${count(a.minutes, "minute")}") }
                         }
                     }
                 }
@@ -142,11 +142,14 @@ internal suspend fun Lite.wrappedPage() {
 
 private fun Html.fact(text: String) = el("li") { text(text) }
 
+/** "1 song", "1,204 songs". */
+internal fun count(n: Number, word: String) = "${"%,d".format(n.toLong())} $word${if (n.toLong() == 1L) "" else "s"}"
+
 private fun Lite.shares(h: Html, title: String, list: List<WrappedShare>) = with(h) {
     if (list.isEmpty()) return@with
     h2(title)
     el("ul", "class" to "facts") {
-        for (s in list.take(10)) fact("${s.name}: ${s.minutes} minutes")
+        for (s in list.take(10)) fact("${s.name}: ${count(s.minutes, "minute")}")
     }
 }
 
