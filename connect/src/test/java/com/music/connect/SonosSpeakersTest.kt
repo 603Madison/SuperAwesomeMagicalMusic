@@ -186,6 +186,49 @@ class SonosSpeakersTest {
     }
 
     @Test
+    fun `a station plays as Sonos radio, and pausing it stops it until it's played again`() = runBlocking<Unit> {
+        FakeSonos().use { sonos ->
+            val authed = OkHttpClient.Builder().addInterceptor(ServerApi.authInterceptor({ test.base }, { token })).build()
+            val api = ServerApi(authed, { test.base }, { token })
+            val station = ApiTrack(SourceType.RADIO, "groove-1", "Groove & Soul FM", "Radio", via = "radio-source")
+            val info = SonosSpeaker.infoOf(SonosClient(lan, sonos.baseUrl).topology().single())
+            val id = info.connectId
+            val relay = StreamRelay(authed).apply { start() }
+            val hub = ConnectClient(RuntimeEnvironment.getApplication(), authed, { test.base }, { token }, scope, kind = "speaker", fixedId = id, fixedName = info.name, detail = info.detail)
+            val session = SpeakerSession(SonosSpeaker(info, lan), hub, api, relay, { test.base }, { 0 }, scope, clock = System::currentTimeMillis, settleMs = 300)
+            session.start()
+            try {
+                val web = WebPlayer()
+                eventually("the Sonos among the devices") { web.device(id) }
+                val json = Json { encodeDefaults = false }
+                val track = json.encodeToString(ApiTrack.serializer(), station)
+                web.socket.send("""{"type":"state","state":{"track":$track,"queue":[$track],"index":0,"positionMs":0,"durationMs":0,"playing":false,"live":true}}""")
+                eventually("the web player's state") { web.state("web-device-1") }
+                web.socket.send("""{"type":"transfer","to":"$id"}""")
+
+                eventually("the Sonos to play") { sonos.state.takeIf { it == "PLAYING" } }
+                assertTrue(sonos.uri, sonos.uri.startsWith("x-rincon-mp3radio://127.0.0.1:${relay.port}/s/"))
+                assertEquals("object.item.audioItem.audioBroadcast", SonosXml.tag(sonos.metadata, "class"))
+                assertEquals("Groove & Soul FM", title(sonos))
+                eventually("the web player sees it playing") { web.playing(id)?.takeIf { it } }
+
+                // Sonos won't pause radio: it's stopped instead, and tuned in again when played.
+                web.command(id, "pause")
+                eventually("stopped") { sonos.state.takeIf { it == "STOPPED" } }
+                eventually("shown paused") { web.playing(id)?.takeIf { !it } }
+                val loads = sonos.actions().count { it == "SetAVTransportURI" }
+                web.command(id, "play")
+                eventually("tuned in again") { sonos.actions().count { it == "SetAVTransportURI" }.takeIf { it > loads && sonos.state == "PLAYING" } }
+                assertTrue(sonos.uri.startsWith("x-rincon-mp3radio://"))
+                web.socket.close(1000, null)
+            } finally {
+                session.stop()
+                relay.stop()
+            }
+        }
+    }
+
+    @Test
     fun `what's sent to a Sonos, escaped as it expects, and what it says back`() = runBlocking<Unit> {
         FakeSonos().use { sonos ->
             val info = SonosSpeaker.infoOf(SonosClient(lan, sonos.baseUrl).topology().single())
