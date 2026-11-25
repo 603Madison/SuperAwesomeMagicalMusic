@@ -3,6 +3,7 @@ package com.music.server
 import com.music.server.connect.connectRoutes
 import com.music.server.mcp.mcpRoutes
 import com.music.server.listen.listenRoutes
+import com.music.server.lite.liteRoutes
 import com.music.server.radio.radioRoutes
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
@@ -117,6 +118,8 @@ fun Application.module(services: Services) {
         connectRoutes(services)
         speakerRoutes(services)
         mcpRoutes(services)
+        // A lighter web player for old and slow browsers, at /lite (not linked from the main one).
+        liteRoutes(services)
         route("/api/{...}") {
             handle { call.respond(HttpStatusCode.NotFound, ErrorBody("No such API")) }
         }

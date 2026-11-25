@@ -56,14 +56,7 @@ data class HistoryUpload(val listens: List<Listen>)
 
 fun Route.playlistRoutes(services: Services) {
     val art = services.artwork
-    // A Pandora station track's link expires, so it's kept as the song itself (found again when
-    // played); live channels and stations aren't songs, and aren't kept.
-    fun keepable(track: ApiTrack): ApiTrack? = when {
-        track.source == SourceType.SIRIUSXM && track.sourceId.startsWith(Track.STATION_TRACK_PREFIX) ->
-            art.incoming(track).copy(sourceId = "song:" + track.sourceId.substringAfterLast(':'), via = null)
-        track.toTrack().isLive -> null
-        else -> art.incoming(track)
-    }
+    fun keepable(track: ApiTrack): ApiTrack? = keepableTrack(art, track)
     fun Playlist.out() = copy(
         summary = summary.out(services),
         entries = entries.map { it.copy(track = art.outgoing(it.track)) },
@@ -183,6 +176,17 @@ fun Route.playlistRoutes(services: Services) {
             call.respond(mapOf("ok" to true))
         }
     }
+}
+
+/**
+ * [track] as a playlist keeps it. A Pandora station track's link expires, so it's kept as the
+ * song itself (found again when played); live channels and stations aren't songs, and aren't kept.
+ */
+internal fun keepableTrack(art: com.music.server.music.Artwork, track: ApiTrack): ApiTrack? = when {
+    track.source == SourceType.SIRIUSXM && track.sourceId.startsWith(Track.STATION_TRACK_PREFIX) ->
+        art.incoming(track).copy(sourceId = "song:" + track.sourceId.substringAfterLast(':'), via = null)
+    track.toTrack().isLive -> null
+    else -> art.incoming(track)
 }
 
 private fun PlaylistSummary.out(services: Services) = copy(artwork = artwork.mapNotNull { services.artwork.wrap(it) })

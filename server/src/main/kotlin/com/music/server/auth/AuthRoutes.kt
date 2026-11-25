@@ -78,17 +78,7 @@ fun Route.authRoutes(services: Services) {
 
         post("/login") {
             val request = call.receive<LoginRequest>()
-            if (request.username.length > 200 || request.password.length > 1_000) throw ApiError.unauthorized("Wrong username or password")
-            val attempt = LoginThrottle.Attempt(clientAddress(call.request.local.remoteAddress, call.request.headers, services.config), request.username)
-            services.throttle.attempt(attempt)
-            val user = services.users.checkPassword(request.username, request.password)
-                ?: throw ApiError.unauthorized("Wrong username or password")
-            services.throttle.succeeded(attempt)
-            if (user.disabled) throw ApiError.forbidden("This account is turned off")
-            val settings = services.settings.get()
-            if (!settings.localLogin && settings.oidc.enabled && !user.breakGlass) {
-                throw ApiError.forbidden("Sign in with ${settings.oidc.buttonLabel.removePrefix("Sign in with ")} instead")
-            }
+            val user = passwordUser(services, call, request.username, request.password)
             call.respond(signIn(services, call, user, request.app, request.deviceName))
         }
 
@@ -219,7 +209,26 @@ fun Route.authRoutes(services: Services) {
     }
 }
 
-private suspend fun signIn(services: Services, call: ApplicationCall, user: User, app: Boolean, deviceName: String): SignedIn {
+/**
+ * The account [username] and [password] sign in to, checked as the sign-in page checks them
+ * (wrong passwords slowed down, turned-off accounts and password sign-in when it's off refused).
+ */
+internal suspend fun passwordUser(services: Services, call: ApplicationCall, username: String, password: String): User {
+    if (username.length > 200 || password.length > 1_000) throw ApiError.unauthorized("Wrong username or password")
+    val attempt = LoginThrottle.Attempt(clientAddress(call.request.local.remoteAddress, call.request.headers, services.config), username)
+    services.throttle.attempt(attempt)
+    val user = services.users.checkPassword(username, password)
+        ?: throw ApiError.unauthorized("Wrong username or password")
+    services.throttle.succeeded(attempt)
+    if (user.disabled) throw ApiError.forbidden("This account is turned off")
+    val settings = services.settings.get()
+    if (!settings.localLogin && settings.oidc.enabled && !user.breakGlass) {
+        throw ApiError.forbidden("Sign in with ${settings.oidc.buttonLabel.removePrefix("Sign in with ")} instead")
+    }
+    return user
+}
+
+internal suspend fun signIn(services: Services, call: ApplicationCall, user: User, app: Boolean, deviceName: String): SignedIn {
     services.users.touchLogin(user.id)
     return if (app) {
         val token = services.sessions.create(user.id, SessionKind.APP, deviceName.ifBlank { "SuperAwesomeMagicalMusic app" })
