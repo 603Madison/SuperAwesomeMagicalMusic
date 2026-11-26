@@ -69,6 +69,11 @@ android {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
     }
+
+    sourceSets {
+        // Room schemas for the migration tests (Robolectric reads the debug variant's assets).
+        getByName("debug").assets.srcDir("$projectDir/schemas")
+    }
 }
 
 kotlin {

@@ -176,10 +176,24 @@ data class PlaylistSummary(
     val updatedAt: Long = 0,
     val revision: Long = 0,
     val artwork: List<String> = emptyList(),
+    /** Whether it's this person's own (false: someone shared it with them). */
+    val mine: Boolean = true,
+    /** Whose it is, when it's someone else's. */
+    val owner: PlaylistPerson? = null,
+    /** The people it's shared with (besides its owner). */
+    val members: List<PlaylistPerson> = emptyList(),
 )
 
+/** Someone on the server: a playlist's owner, someone it's shared with, or who added a song. */
 @Serializable
-data class PlaylistEntry(val entryId: String, val track: ApiTrack, val addedAt: Long = 0)
+data class PlaylistPerson(val id: String, val username: String = "", val name: String = "") {
+    /** What to call them. */
+    val label: String get() = name.ifBlank { username }
+}
+
+/** A song in a playlist; [addedBy] says who put it there, on a shared playlist. */
+@Serializable
+data class PlaylistEntry(val entryId: String, val track: ApiTrack, val addedAt: Long = 0, val addedBy: PlaylistPerson? = null)
 
 @Serializable
 data class Playlist(val summary: PlaylistSummary, val entries: List<PlaylistEntry>)
@@ -446,6 +460,17 @@ class ServerApi(
 
     suspend fun deletePlaylist(id: String) = send("DELETE", "${base()}/api/playlists/${enc(id)}", null, Unit.serializer())
 
+    /** Everyone else on the server, to share playlists with. */
+    suspend fun people(): List<PlaylistPerson> = get("${base()}/api/people", ListSerializer(PlaylistPerson.serializer()))
+
+    /** Shares a playlist with someone (its owner only); answers with the playlist's summary. */
+    suspend fun sharePlaylist(id: String, userId: String): PlaylistSummary =
+        post("${base()}/api/playlists/${enc(id)}/members", ApiJson.encodeToString(ShareBody.serializer(), ShareBody(userId)), PlaylistSummary.serializer())
+
+    /** Stops sharing a playlist with someone (its owner), or leaves it (anyone, with their own id). */
+    suspend fun unsharePlaylist(id: String, userId: String) =
+        send("DELETE", "${base()}/api/playlists/${enc(id)}/members/${enc(userId)}", null, Unit.serializer())
+
     suspend fun addToPlaylist(id: String, tracks: List<ApiTrack>): Playlist =
         post("${base()}/api/playlists/${enc(id)}/tracks", ApiJson.encodeToString(AddBody.serializer(), AddBody(tracks)), Playlist.serializer())
 
@@ -616,6 +641,7 @@ class ServerApi(
     @Serializable private data class LyricsBody(val track: ApiTrack)
     @Serializable private data class NewPlaylistBody(val name: String, val tracks: List<ApiTrack>, val id: String)
     @Serializable private data class RenameBody(val name: String)
+    @Serializable private data class ShareBody(val userId: String)
     @Serializable private data class ImportBody(val url: String, val text: String, val name: String)
     @Serializable private data class AddBody(val tracks: List<ApiTrack>)
     @Serializable private data class RemoveBody(val entryIds: List<String>)

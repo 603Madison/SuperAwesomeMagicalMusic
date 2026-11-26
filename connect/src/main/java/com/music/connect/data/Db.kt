@@ -12,6 +12,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 /** A playlist as last seen on the server, plus the changes made here since. */
@@ -25,6 +27,11 @@ data class PlaylistRow(
     val artwork: String = "[]",
     /** Keep every song downloaded, for listening offline. */
     val keepOffline: Boolean = false,
+    /**
+     * Whose it is and who it's shared with, as JSON (see Library.Sharing); null for a playlist
+     * kept before the app knew about sharing, until the next sync fetches it again.
+     */
+    val sharing: String? = null,
 )
 
 @Entity(tableName = "entries", primaryKeys = ["playlistId", "entryId"])
@@ -36,6 +43,8 @@ data class EntryRow(
     /** The song, as JSON. */
     val track: String,
     val addedAt: Long,
+    /** Who added it (as JSON), on a shared playlist. */
+    val addedBy: String? = null,
 )
 
 /** A change made here, waiting to go to the server (in order). */
@@ -179,7 +188,7 @@ interface ListenDao {
     suspend fun delete(ids: List<Long>)
 }
 
-@Database(entities = [PlaylistRow::class, EntryRow::class, PendingRow::class, DownloadRow::class, ListenRow::class], version = 1)
+@Database(entities = [PlaylistRow::class, EntryRow::class, PendingRow::class, DownloadRow::class, ListenRow::class], version = 2)
 abstract class ConnectDb : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
     abstract fun pending(): PendingDao
@@ -187,6 +196,19 @@ abstract class ConnectDb : RoomDatabase() {
     abstract fun listens(): ListenDao
 
     companion object {
-        fun build(context: Context): ConnectDb = Room.databaseBuilder(context, ConnectDb::class.java, "connect.db").build()
+        fun build(context: Context): ConnectDb =
+            Room.databaseBuilder(context, ConnectDb::class.java, "connect.db").addMigrations(MIGRATION_1_2).build()
+
+        /**
+         * Shared playlists: whose a playlist is and who it's shared with, and who added each song.
+         * Everything already kept (changes waiting to be sent, "keep offline", downloads) stays;
+         * the playlists are fetched again at the next sync to fill these in.
+         */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE playlists ADD COLUMN sharing TEXT")
+                db.execSQL("ALTER TABLE entries ADD COLUMN addedBy TEXT")
+            }
+        }
     }
 }

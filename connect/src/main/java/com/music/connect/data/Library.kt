@@ -4,6 +4,8 @@ import android.util.Log
 import com.music.connect.net.ApiJson
 import com.music.connect.net.ApiTrack
 import com.music.connect.net.Playlist
+import com.music.connect.net.PlaylistPerson
+import com.music.connect.net.PlaylistSummary
 import com.music.connect.net.ServerApi
 import com.music.connect.net.ServerException
 import kotlinx.coroutines.CancellationException
@@ -19,16 +21,36 @@ import java.io.IOException
 import java.security.SecureRandom
 import java.util.Base64
 
-/** A playlist as the app shows it. */
-data class PlaylistInfo(val id: String, val name: String, val count: Int, val artwork: List<String>, val keepOffline: Boolean)
+/**
+ * A playlist as the app shows it. [mine] is false for one someone else ([owner]) shared with the
+ * person; [members] are the people it's shared with (besides its owner).
+ */
+data class PlaylistInfo(
+    val id: String,
+    val name: String,
+    val count: Int,
+    val artwork: List<String>,
+    val keepOffline: Boolean,
+    val mine: Boolean = true,
+    val owner: PlaylistPerson? = null,
+    val members: List<PlaylistPerson> = emptyList(),
+) {
+    /** Someone else's, or shared with others: everyone adds, removes and reorders its songs. */
+    val shared: Boolean get() = !mine || members.isNotEmpty()
+}
 
-data class Entry(val entryId: String, val track: ApiTrack)
+/** A song in a playlist; [addedBy] is who put it there, on a shared playlist. */
+data class Entry(val entryId: String, val track: ApiTrack, val addedBy: PlaylistPerson? = null)
 
 /**
  * The person's playlists, kept on the phone so they're there offline (and on satellite, without
  * waiting for the server). Changes apply here at once and are queued for the server; [sync]
  * sends them, in order, then brings the phone's copies up to date. A change the server refuses
  * (the playlist was deleted elsewhere, say) is dropped rather than retried forever.
+ *
+ * Playlists others shared with the person arrive the same way, and their songs are added,
+ * removed and reordered just like the person's own; only the owner renames, deletes or shares
+ * one, and the others can [leave] it.
  */
 class Library(
     private val db: ConnectDb,
@@ -36,6 +58,8 @@ class Library(
     private val clock: () -> Long = System::currentTimeMillis,
     /** Called after a change, to send it when there's a connection. */
     private val onChanged: () -> Unit = {},
+    /** The person signed in, as songs they add say (null when not known). */
+    private val me: () -> PlaylistPerson? = { null },
 ) {
     private val playlists = db.playlists()
     private val pending = db.pending()
@@ -57,7 +81,7 @@ class Library(
     suspend fun create(name: String, tracks: List<ApiTrack> = emptyList()): String {
         val id = newId()
         val now = clock()
-        playlists.replace(PlaylistRow(id, name.trim().ifBlank { "New playlist" }, 0, now), tracks.mapIndexed { i, t -> entryRow(id, "local-${newId()}", i, t, now) })
+        playlists.replace(PlaylistRow(id, name.trim().ifBlank { "New playlist" }, 0, now, sharing = encodeSharing(Sharing())), tracks.mapIndexed { i, t -> entryRow(id, "local-${newId()}", i, t, now) })
         queue(KIND_CREATE, id, ApiJson.encodeToString(CreatePayload.serializer(), CreatePayload(name, tracks)))
         return id
     }
@@ -67,7 +91,9 @@ class Library(
         if (songs.isEmpty()) return
         val start = playlists.count(id)
         val localIds = songs.map { "local-${newId()}" }
-        playlists.insertEntries(songs.mapIndexed { i, t -> entryRow(id, localIds[i], start + i, t, clock()) })
+        // On a shared playlist each song says who added it: here, the person themself.
+        val by = me()?.takeIf { playlists.get(id)?.sharing()?.shared == true }
+        playlists.insertEntries(songs.mapIndexed { i, t -> entryRow(id, localIds[i], start + i, t, clock(), by) })
         queue(KIND_ADD, id, ApiJson.encodeToString(AddPayload.serializer(), AddPayload(songs, localIds)))
     }
 
@@ -87,16 +113,54 @@ class Library(
         if (server.isNotEmpty()) queue(KIND_REMOVE, id, ApiJson.encodeToString(ListSerializer(String.serializer()), server))
     }
 
+    /** Renames one of the person's own playlists (only its owner can). */
     suspend fun rename(id: String, name: String) {
         val row = playlists.get(id) ?: return
+        if (row.sharing()?.mine == false) return
         playlists.upsert(row.copy(name = name.trim()))
         queue(KIND_RENAME, id, ApiJson.encodeToString(String.serializer(), name.trim()))
     }
 
+    /** Deletes one of the person's own playlists, everywhere; someone else's is left instead. */
     suspend fun delete(id: String) {
+        if (playlists.get(id)?.sharing()?.mine == false) return leave(id)
         playlists.delete(id)
         playlists.clearEntries(id)
         queue(KIND_DELETE, id, "\"\"")
+    }
+
+    /**
+     * Leaves a playlist someone else shared with the person: it goes from their playlists (here
+     * at once, and on the server when there's a connection). The songs they added stay in it.
+     */
+    suspend fun leave(id: String) {
+        playlists.delete(id)
+        playlists.clearEntries(id)
+        queue(KIND_LEAVE, id, ApiJson.encodeToString(String.serializer(), me()?.id.orEmpty()))
+    }
+
+    /** Everyone else on the server, to share with. Needs a connection. */
+    suspend fun people(): List<PlaylistPerson> = api.people()
+
+    /** Shares one of the person's playlists with [person]. Needs a connection. */
+    suspend fun share(id: String, person: PlaylistPerson) {
+        // A playlist made here and not sent yet has to reach the server first.
+        if (pending.all().isNotEmpty()) sync()
+        val summary = api.sharePlaylist(id, person.id)
+        setSharing(id, summary.sharing())
+    }
+
+    /** Stops sharing one of the person's playlists with [person]. Needs a connection. */
+    suspend fun stopSharing(id: String, person: PlaylistPerson) {
+        api.unsharePlaylist(id, person.id)
+        playlists.get(id)?.sharing()?.let { setSharing(id, it.copy(members = it.members.filter { m -> m.id != person.id })) }
+    }
+
+    /** Keeps who a playlist is shared with; the next sync brings who added each song. */
+    private suspend fun setSharing(id: String, sharing: Sharing) {
+        val row = playlists.get(id) ?: return
+        playlists.upsert(row.copy(sharing = encodeSharing(sharing)))
+        onChanged()
     }
 
     /** Reordering needs the server (another device may have changed the playlist meanwhile). */
@@ -133,7 +197,8 @@ class Library(
         val local = playlists.allNow().associateBy { it.id }
         for (summary in remote) {
             val mine = local[summary.id]
-            if (mine == null || mine.revision != summary.revision || playlists.count(summary.id) != summary.count) {
+            // A playlist kept before the app knew about sharing (no sharing yet) is fetched again too.
+            if (mine == null || mine.revision != summary.revision || playlists.count(summary.id) != summary.count || mine.sharing == null) {
                 try {
                     store(api.playlist(summary.id), keepOffline = mine?.keepOffline ?: false)
                 } catch (e: CancellationException) {
@@ -169,6 +234,14 @@ class Library(
             } catch (e: ServerException) {
                 if (e.code != 404) throw e
             }
+            KIND_LEAVE -> {
+                val who = ApiJson.decodeFromString(String.serializer(), row.payload).ifBlank { me()?.id ?: api.me().user.id }
+                try {
+                    api.unsharePlaylist(row.playlistId, who)
+                } catch (e: ServerException) {
+                    if (e.code != 404) throw e // Already gone (deleted, or taken off by its owner).
+                }
+            }
         }
     }
 
@@ -176,8 +249,11 @@ class Library(
         val summary = playlist.summary
         val keep = keepOffline ?: playlists.get(summary.id)?.keepOffline ?: false
         playlists.replace(
-            PlaylistRow(summary.id, summary.name, summary.revision, summary.updatedAt, ApiJson.encodeToString(ListSerializer(String.serializer()), summary.artwork), keep),
-            playlist.entries.mapIndexed { i, e -> entryRow(summary.id, e.entryId, i, e.track, e.addedAt) },
+            PlaylistRow(
+                summary.id, summary.name, summary.revision, summary.updatedAt, ApiJson.encodeToString(ListSerializer(String.serializer()), summary.artwork), keep,
+                encodeSharing(summary.sharing()),
+            ),
+            playlist.entries.mapIndexed { i, e -> entryRow(summary.id, e.entryId, i, e.track, e.addedAt, e.addedBy) },
         )
     }
 
@@ -186,17 +262,43 @@ class Library(
         onChanged()
     }
 
-    private fun entryRow(playlistId: String, entryId: String, position: Int, track: ApiTrack, addedAt: Long) =
-        EntryRow(playlistId, entryId, position, ApiJson.encodeToString(ApiTrack.serializer(), track), addedAt)
+    private fun entryRow(playlistId: String, entryId: String, position: Int, track: ApiTrack, addedAt: Long, addedBy: PlaylistPerson? = null) =
+        EntryRow(
+            playlistId, entryId, position, ApiJson.encodeToString(ApiTrack.serializer(), track), addedAt,
+            addedBy?.let { ApiJson.encodeToString(PlaylistPerson.serializer(), it) },
+        )
 
-    private fun EntryRow.toEntry(): Entry? =
-        runCatching { Entry(entryId, ApiJson.decodeFromString(ApiTrack.serializer(), track)) }.getOrNull()
+    private fun EntryRow.toEntry(): Entry? = runCatching {
+        Entry(
+            entryId,
+            ApiJson.decodeFromString(ApiTrack.serializer(), track),
+            addedBy?.let { runCatching { ApiJson.decodeFromString(PlaylistPerson.serializer(), it) }.getOrNull() },
+        )
+    }.getOrNull()
 
-    private fun PlaylistRow.info(count: Int) = PlaylistInfo(
-        id, name, count,
-        runCatching { ApiJson.decodeFromString(ListSerializer(String.serializer()), artwork) }.getOrDefault(emptyList()),
-        keepOffline,
-    )
+    private fun PlaylistRow.info(count: Int): PlaylistInfo {
+        val sharing = sharing() ?: Sharing()
+        return PlaylistInfo(
+            id, name, count,
+            runCatching { ApiJson.decodeFromString(ListSerializer(String.serializer()), artwork) }.getOrDefault(emptyList()),
+            keepOffline,
+            sharing.mine,
+            sharing.owner,
+            sharing.members,
+        )
+    }
+
+    private fun PlaylistRow.sharing(): Sharing? = sharing?.let { runCatching { ApiJson.decodeFromString(Sharing.serializer(), it) }.getOrNull() }
+
+    private fun PlaylistSummary.sharing() = Sharing(mine, owner, members)
+
+    private fun encodeSharing(sharing: Sharing) = ApiJson.encodeToString(Sharing.serializer(), sharing)
+
+    /** Whose a playlist is, and who it's shared with (kept in PlaylistRow.sharing). */
+    @Serializable
+    data class Sharing(val mine: Boolean = true, val owner: PlaylistPerson? = null, val members: List<PlaylistPerson> = emptyList()) {
+        val shared: Boolean get() = !mine || members.isNotEmpty()
+    }
 
     @Serializable private data class CreatePayload(val name: String, val tracks: List<ApiTrack>)
     @Serializable private data class AddPayload(val tracks: List<ApiTrack>, val localIds: List<String>)
@@ -208,6 +310,8 @@ class Library(
         const val KIND_REMOVE = "remove"
         const val KIND_RENAME = "rename"
         const val KIND_DELETE = "delete"
+        /** Leaving a playlist someone else shared (its payload is the person's own id, if known). */
+        const val KIND_LEAVE = "leave"
         private val random = SecureRandom()
 
         fun newId(): String = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(16).also(random::nextBytes))
