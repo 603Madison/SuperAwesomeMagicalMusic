@@ -175,12 +175,27 @@ export interface PlaylistSummary {
   playedAt?: number | null;
   /** How many of its songs weren't found (greyed out; looked for again every few hours). */
   missing?: number;
+  /** Whether it's this person's own (false: someone shared it with them). */
+  mine?: boolean;
+  /** Whose it is, when it's someone else's. */
+  owner?: PlaylistPerson | null;
+  /** The people it's shared with (besides its owner); they add, remove and reorder songs too. */
+  members?: PlaylistPerson[];
+}
+
+/** Someone on the server: who shares a playlist, or who it's shared with. */
+export interface PlaylistPerson {
+  id: string;
+  username: string;
+  name: string;
 }
 
 export interface PlaylistEntry {
   entryId: string;
   track: Track;
   addedAt: number;
+  /** Who added it, on a shared playlist. */
+  addedBy?: PlaylistPerson | null;
 }
 
 export interface Playlist {

@@ -165,6 +165,19 @@ object Schema {
         );
         CREATE INDEX heard_user ON heard (user_id, at);
         """,
+        // 8: shared playlists: the people a playlist is shared with (who can add, remove and
+        // reorder its songs too), when each last played it, and who added each song.
+        """
+        CREATE TABLE playlist_members (
+            playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            added_at INTEGER NOT NULL,
+            played_at INTEGER,
+            PRIMARY KEY (playlist_id, user_id)
+        );
+        CREATE INDEX playlist_members_user ON playlist_members (user_id);
+        ALTER TABLE playlist_entries ADD COLUMN added_by TEXT;
+        """,
     )
 
     val version: Int get() = migrations.size

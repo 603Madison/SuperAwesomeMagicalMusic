@@ -1210,3 +1210,10 @@ input[type="range"]:disabled { cursor: default; opacity: 0.5; }
   .listen-found-actions { justify-content: center; }
 }
 
+/* Shared playlists: who it's between, who added each song, and the share dialog. */
+.playlist-people { display: flex; align-items: center; gap: 6px; }
+.track-note { color: var(--muted); }
+.share-heading { margin: 16px 0 6px; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.share-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.share-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; }
+.share-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

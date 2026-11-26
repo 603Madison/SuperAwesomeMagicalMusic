@@ -14,6 +14,8 @@ export interface Row {
   /** Stable key for the row (a playlist entry's id, or the track's own key). */
   key: string;
   track: Track;
+  /** A note after the artist (on a shared playlist: who added it). */
+  note?: string;
 }
 
 /** A list of songs: click one to play the list from it. */
@@ -66,6 +68,7 @@ export function TrackList({ rows, extraItems, showAlbum = true, numbered = false
               <div className="track-sub">
                 {row.track.artist}
                 {showAlbum && row.track.album ? <span className="track-album"> · {row.track.album}</span> : null}
+                {row.note ? <span className="track-note"> · {row.note}</span> : null}
               </div>
             </div>
             {/* Where a song plays from is the app's business; radio is worth saying. */}
