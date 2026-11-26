@@ -68,11 +68,20 @@ internal fun Lite.playlistRows(h: Html, playlists: List<PlaylistSummary>) = with
                 cover(art.wrap(p.artwork.firstOrNull()))
                 el("span", "class" to "tx") {
                     el("b") { text(p.name) }
-                    el("small") { text(if (p.count == 1) "1 song" else "${p.count} songs") }
+                    el("small") { text(listOfNotNull(if (p.count == 1) "1 song" else "${p.count} songs", sharedNote(p)).joinToString(" · ")) }
                 }
             }
         }
     }
+}
+
+/** "Shared by Maddie", or "Shared with Sam and Alex", for a shared playlist. */
+internal fun sharedNote(p: PlaylistSummary): String? = when {
+    !p.mine && p.owner != null -> "Shared by ${p.owner.name}"
+    p.members.isNotEmpty() -> "Shared with " + p.members.map { it.name }.let { names ->
+        if (names.size <= 1) names.joinToString("") else names.dropLast(1).joinToString(", ") + " and " + names.last()
+    }
+    else -> null
 }
 
 /** Live channels and stations; a Pandora station opens its page, as it's started rather than tuned in. */
@@ -488,13 +497,20 @@ internal suspend fun Lite.playlistPage() {
                     if (summary.count == 1) "1 song" else "${summary.count} songs",
                     summary.durationMs.takeIf { it > 0 }?.let { "${it / 60_000} min" },
                     summary.description.takeIf { it.isNotBlank() },
+                    sharedNote(summary)?.let { "$it: everyone adds and removes songs" },
                 ).joinToString(" · "),
             )
         }
         if (entries.isEmpty()) notice("Nothing in it yet: each song's page has “Add to a playlist”.")
         el("div", "data-playlist" to summary.id) {
             playAll(entries.firstOrNull { !it.track.toTrack().isMissing }?.track)
-            tracks(entries.map { it.track }, extra = { i, _ -> "&pl=${id.encodeURLParameter()}&e=${entries[i].entryId.encodeURLParameter()}" })
+            // On a shared playlist, each song says who added it.
+            val addedBy = entries.associate { it.track to it.addedBy }
+            tracks(
+                entries.map { it.track },
+                extra = { i, _ -> "&pl=${id.encodeURLParameter()}&e=${entries[i].entryId.encodeURLParameter()}" },
+                sub = { track -> Lite.subtitle(track) + (addedBy[track]?.let { " · added by ${if (it.id == user.id) "you" else it.name}" } ?: "") },
+            )
         }
     }
 }

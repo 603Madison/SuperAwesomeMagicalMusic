@@ -370,7 +370,9 @@ pub fn playlists_page() -> adw::NavigationPage {
             let grid = card_grid();
             for playlist in playlists {
                 let mut line = count(playlist.count as usize, "song");
-                if playlist.duration_ms > 0 {
+                if let Some(note) = playlist.shared_note() {
+                    line = note;
+                } else if playlist.duration_ms > 0 {
                     line.push_str(&format!(" · {}", duration(playlist.duration_ms)));
                 }
                 let (id, name) = (playlist.id.clone(), playlist.name.clone());
@@ -448,10 +450,13 @@ fn show_playlist(into: &gtk::Box, playlist: Playlist, page: glib::WeakRef<adw::N
         ctx().toast("Added to the queue");
     });
     buttons.append(&queue);
-    let rename = button(Some("document-edit-symbolic"), "Rename", "ghost");
-    let (holder, p, s) = (into.clone(), page.clone(), summary.clone());
-    rename.connect_clicked(move |_| rename_playlist(&s, holder.clone(), p.clone()));
-    buttons.append(&rename);
+    // Someone else's shared playlist: its songs are everyone's, but renaming and deleting are its owner's.
+    if summary.mine {
+        let rename = button(Some("document-edit-symbolic"), "Rename", "ghost");
+        let (holder, p, s) = (into.clone(), page.clone(), summary.clone());
+        rename.connect_clicked(move |_| rename_playlist(&s, holder.clone(), p.clone()));
+        buttons.append(&rename);
+    }
     let export = button(Some("document-save-symbolic"), "Export CSV", "ghost");
     export.set_tooltip_text(Some(
         "Save it as a CSV file (Exportify's columns), for a spreadsheet or another service",
@@ -459,12 +464,18 @@ fn show_playlist(into: &gtk::Box, playlist: Playlist, page: glib::WeakRef<adw::N
     let s = summary.clone();
     export.connect_clicked(move |_| export_playlist(&s));
     buttons.append(&export);
-    let delete = button(Some("user-trash-symbolic"), "Delete", "ghost");
-    let s = summary.clone();
-    delete.connect_clicked(move |_| delete_playlist(&s));
-    buttons.append(&delete);
+    if summary.mine {
+        let delete = button(Some("user-trash-symbolic"), "Delete", "ghost");
+        let s = summary.clone();
+        delete.connect_clicked(move |_| delete_playlist(&s));
+        buttons.append(&delete);
+    }
+    if let Some(note) = summary.shared_note() {
+        line = format!("{note}: everyone adds, removes and reorders songs — {line}");
+    }
 
-    into.append(&hero(mosaic(&summary.artwork, 200), "Playlist", &summary.name, &line, &buttons));
+    let kind = if summary.shared_note().is_some() { "Shared playlist" } else { "Playlist" };
+    into.append(&hero(mosaic(&summary.artwork, 200), kind, &summary.name, &line, &buttons));
     if tracks.is_empty() {
         into.append(&status(
             "view-list-bullet-symbolic",

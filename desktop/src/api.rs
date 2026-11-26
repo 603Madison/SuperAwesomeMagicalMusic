@@ -269,6 +269,37 @@ pub struct PlaylistSummary {
     /// Goes up with every change (reordering says which it changed).
     #[serde(default)]
     pub revision: i64,
+    /// Whether it's this person's own (false: someone shared it with them).
+    #[serde(default = "yes")]
+    pub mine: bool,
+    /// Whose it is, when it's someone else's.
+    #[serde(default)]
+    pub owner: Option<PlaylistPerson>,
+    /// The people it's shared with (besides its owner): they add, remove and reorder songs too.
+    #[serde(default)]
+    pub members: Vec<PlaylistPerson>,
+}
+
+/// Someone a playlist is shared with, or who shares it.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlaylistPerson {
+    #[serde(default)]
+    pub name: String,
+}
+
+impl PlaylistSummary {
+    /// "Shared by Maddie", or "Shared with Sam and Alex", for a shared playlist.
+    pub fn shared_note(&self) -> Option<String> {
+        if !self.mine {
+            return self.owner.as_ref().map(|o| format!("Shared by {}", o.name));
+        }
+        let names: Vec<&str> = self.members.iter().map(|m| m.name.as_str()).collect();
+        match names.len() {
+            0 => None,
+            1 => Some(format!("Shared with {}", names[0])),
+            n => Some(format!("Shared with {} and {}", names[..n - 1].join(", "), names[n - 1])),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
