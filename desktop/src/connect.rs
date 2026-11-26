@@ -210,7 +210,9 @@ impl Hub {
     pub fn start(self: &Rc<Self>, api: &Api, name: &str) {
         self.stop();
         let Some(token) = api.token().map(str::to_string) else { return };
-        let Some(url) = socket_url(api.base(), &self.me(), name) else { return };
+        let Some(url) = socket_url(api.base(), &self.me(), name) else {
+            return;
+        };
         let generation = self.generation.get();
         let (out_tx, out_rx) = mpsc::unbounded_channel::<String>();
         let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
@@ -251,7 +253,9 @@ impl Hub {
                 self.changed();
             }
             Event::Text(text) => {
-                let Ok(message) = serde_json::from_str::<Inbound>(&text) else { return };
+                let Ok(message) = serde_json::from_str::<Inbound>(&text) else {
+                    return;
+                };
                 match message.kind.as_str() {
                     "devices" => {
                         if let Some(you) = message.you {
@@ -372,18 +376,24 @@ pub fn remote_of(devices: &[Device], me: &str, playing_here: bool) -> Option<Dev
 /// Where [device]'s song is, [since] the list arrived.
 pub fn position_of(device: &Device, since: Duration) -> i64 {
     let Some(state) = &device.state else { return 0 };
-    let moved = state.position_ms + if state.playing && !state.live { since.as_millis() as i64 } else { 0 };
-    if state.duration_ms > 0 { moved.min(state.duration_ms) } else { moved }
+    let moved = state.position_ms
+        + if state.playing && !state.live {
+            since.as_millis() as i64
+        } else {
+            0
+        };
+    if state.duration_ms > 0 {
+        moved.min(state.duration_ms)
+    } else {
+        moved
+    }
 }
 
 /// `wss://music.example.com/api/connect/ws?id=…&name=…&kind=web`.
 fn socket_url(base: &str, id: &str, name: &str) -> Option<String> {
-    let ws = if let Some(rest) = base.strip_prefix("https://") {
-        format!("wss://{rest}")
-    } else if let Some(rest) = base.strip_prefix("http://") {
-        format!("ws://{rest}")
-    } else {
-        return None;
+    let ws = match base.strip_prefix("https://") {
+        Some(rest) => format!("wss://{rest}"),
+        None => format!("ws://{}", base.strip_prefix("http://")?),
     };
     Some(format!("{ws}/api/connect/ws?id={}&name={}&kind=web", enc(id), enc(name)))
 }
@@ -393,7 +403,9 @@ fn socket_url(base: &str, id: &str, name: &str) -> Option<String> {
 async fn run(url: String, token: String, mut out: mpsc::UnboundedReceiver<String>, events: mpsc::UnboundedSender<Event>) {
     let mut retries = 0u32;
     loop {
-        let Ok(mut request) = url.as_str().into_client_request() else { return };
+        let Ok(mut request) = url.as_str().into_client_request() else {
+            return;
+        };
         if let Ok(value) = format!("Bearer {token}").parse() {
             request.headers_mut().insert("Authorization", value);
         }
@@ -554,6 +566,10 @@ mod tests {
             socket_url("https://music.example.com", "abcdef12", "Linux desktop (box)").unwrap(),
             "wss://music.example.com/api/connect/ws?id=abcdef12&name=Linux%20desktop%20%28box%29&kind=web"
         );
-        assert!(socket_url("http://127.0.0.1:8099", "abcdef12", "x").unwrap().starts_with("ws://127.0.0.1:8099/api/connect/ws?"));
+        assert!(
+            socket_url("http://127.0.0.1:8099", "abcdef12", "x")
+                .unwrap()
+                .starts_with("ws://127.0.0.1:8099/api/connect/ws?")
+        );
     }
 }

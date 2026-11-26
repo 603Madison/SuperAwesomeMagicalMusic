@@ -40,9 +40,19 @@ fn playing_on(device: &Device) -> String {
 pub fn devices_button() -> gtk::MenuButton {
     let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
     list.add_css_class("track-list");
-    let heading = gtk::Label::builder().label("Play on a device").xalign(0.0).margin_start(10).margin_top(6).margin_bottom(4).build();
+    let heading = gtk::Label::builder()
+        .label("Play on a device")
+        .xalign(0.0)
+        .margin_start(10)
+        .margin_top(6)
+        .margin_bottom(4)
+        .build();
     heading.add_css_class("heading");
-    let column = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).width_request(340).build();
+    let column = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(4)
+        .width_request(340)
+        .build();
     column.append(&heading);
     column.append(&list);
     let popover = gtk::Popover::builder().child(&column).build();
@@ -75,8 +85,11 @@ pub fn devices_button() -> gtk::MenuButton {
         let weak = button.downgrade();
         let popover = popover.downgrade();
         hub.subscribe(move || {
-            let (Some(button), Some(popover)) = (weak.upgrade(), popover.upgrade()) else { return };
-            let elsewhere = crate::connect::hub().is_some_and(|h| h.others().iter().any(|d| d.active && d.state.as_ref().is_some_and(|s| s.playing)));
+            let (Some(button), Some(popover)) = (weak.upgrade(), popover.upgrade()) else {
+                return;
+            };
+            let elsewhere =
+                crate::connect::hub().is_some_and(|h| h.others().iter().any(|d| d.active && d.state.as_ref().is_some_and(|s| s.playing)));
             if elsewhere {
                 button.add_css_class("on");
                 button.set_tooltip_text(Some("Playing on another device"));
@@ -100,12 +113,25 @@ fn device_row(icon: &str, name: &str, detail: &str, on: bool) -> (gtk::ListBoxRo
         image.add_css_class("accent");
     }
     line.append(&image);
-    let text = gtk::Box::builder().orientation(gtk::Orientation::Vertical).valign(gtk::Align::Center).hexpand(true).build();
-    let title = gtk::Label::builder().label(name).xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build();
+    let text = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .valign(gtk::Align::Center)
+        .hexpand(true)
+        .build();
+    let title = gtk::Label::builder()
+        .label(name)
+        .xalign(0.0)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .build();
     title.add_css_class("track-title");
     text.append(&title);
     if !detail.is_empty() {
-        let sub = gtk::Label::builder().label(detail).xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).max_width_chars(40).build();
+        let sub = gtk::Label::builder()
+            .label(detail)
+            .xalign(0.0)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .max_width_chars(40)
+            .build();
         sub.add_css_class("track-sub");
         text.append(&sub);
     }
@@ -150,7 +176,11 @@ fn fill_devices(list: &gtk::ListBox) -> Vec<Option<String>> {
         // Something on it: play or pause it from here.
         if let Some(state) = device.state.as_ref().filter(|s| s.track.is_some()) {
             let toggle = gtk::Button::builder()
-                .icon_name(if state.playing { "media-playback-pause-symbolic" } else { "media-playback-start-symbolic" })
+                .icon_name(if state.playing {
+                    "media-playback-pause-symbolic"
+                } else {
+                    "media-playback-start-symbolic"
+                })
                 .tooltip_text(if state.playing { "Pause" } else { "Play" })
                 .valign(gtk::Align::Center)
                 .build();
@@ -169,7 +199,11 @@ fn fill_devices(list: &gtk::ListBox) -> Vec<Option<String>> {
     }
     if others.is_empty() {
         let note = gtk::Label::builder()
-            .label(if hub.online() { "Open the app or another browser to see it here" } else { "Connecting…" })
+            .label(if hub.online() {
+                "Open the app or another browser to see it here"
+            } else {
+                "Connecting…"
+            })
             .wrap(true)
             .xalign(0.0)
             .margin_start(10)
@@ -186,7 +220,11 @@ fn fill_devices(list: &gtk::ListBox) -> Vec<Option<String>> {
 }
 
 fn icon_button(icon: &str, tooltip: &str) -> gtk::Button {
-    let button = gtk::Button::builder().icon_name(icon).tooltip_text(tooltip).valign(gtk::Align::Center).build();
+    let button = gtk::Button::builder()
+        .icon_name(icon)
+        .tooltip_text(tooltip)
+        .valign(gtk::Align::Center)
+        .build();
     button.add_css_class("flat");
     button.add_css_class("circular");
     button
@@ -202,9 +240,16 @@ pub fn remote_bar() -> gtk::Widget {
 
     let now = gtk::Box::builder().spacing(12).hexpand(true).valign(gtk::Align::Center).build();
     let art = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    let text = gtk::Box::builder().orientation(gtk::Orientation::Vertical).valign(gtk::Align::Center).build();
+    let text = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .valign(gtk::Align::Center)
+        .build();
     let make = |class: &str| {
-        let l = gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).max_width_chars(30).build();
+        let l = gtk::Label::builder()
+            .xalign(0.0)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .max_width_chars(30)
+            .build();
         l.add_css_class(class);
         l
     };
@@ -223,10 +268,18 @@ pub fn remote_bar() -> gtk::Widget {
     now.append(&art);
     now.append(&text);
 
-    let center = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(2).hexpand(true).valign(gtk::Align::Center).build();
+    let center = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(2)
+        .hexpand(true)
+        .valign(gtk::Align::Center)
+        .build();
     let buttons = gtk::Box::builder().spacing(8).halign(gtk::Align::Center).build();
     let previous = icon_button("media-skip-backward-symbolic", "Previous");
-    let play = gtk::Button::builder().icon_name("media-playback-start-symbolic").valign(gtk::Align::Center).build();
+    let play = gtk::Button::builder()
+        .icon_name("media-playback-start-symbolic")
+        .valign(gtk::Align::Center)
+        .build();
     play.add_css_class("suggested-action");
     play.add_css_class("play-button");
     let next = icon_button("media-skip-forward-symbolic", "Next");
@@ -248,12 +301,20 @@ pub fn remote_bar() -> gtk::Widget {
     progress_row.append(&total);
     let live = gtk::Label::builder().label("LIVE").halign(gtk::Align::Center).build();
     live.add_css_class("live-pill");
-    let progress = adw::Clamp::builder().maximum_size(620).tightening_threshold(620).child(&progress_row).build();
+    let progress = adw::Clamp::builder()
+        .maximum_size(620)
+        .tightening_threshold(620)
+        .child(&progress_row)
+        .build();
     center.append(&buttons);
     center.append(&progress);
     center.append(&live);
 
-    let end = gtk::Box::builder().spacing(4).halign(gtk::Align::End).valign(gtk::Align::Center).build();
+    let end = gtk::Box::builder()
+        .spacing(4)
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::Center)
+        .build();
     let here = crate::ui::widgets::button(None, "Play here", "tonal");
     here.set_valign(gtk::Align::Center);
     here.connect_clicked(|_| {
@@ -327,7 +388,12 @@ pub fn remote_bar() -> gtk::Widget {
     volume.add_controller(release);
     let (s, sh) = (send, shown.clone());
     mute.connect_clicked(move |_| {
-        let level = sh.borrow().as_ref().and_then(|d| d.state.as_ref()).map(|st| st.volume).unwrap_or(0.8);
+        let level = sh
+            .borrow()
+            .as_ref()
+            .and_then(|d| d.state.as_ref())
+            .map(|st| st.volume)
+            .unwrap_or(0.8);
         s("volume", None, Some(if level > 0.0 { 0.0 } else { 0.8 }));
     });
 
@@ -348,7 +414,11 @@ pub fn remote_bar() -> gtk::Widget {
             art.append(&artwork(track.artwork_url.as_deref(), 56, false));
             shown_art.replace(Some(track.artwork_url.clone()));
         }
-        play.set_icon_name(if state.playing { "media-playback-pause-symbolic" } else { "media-playback-start-symbolic" });
+        play.set_icon_name(if state.playing {
+            "media-playback-pause-symbolic"
+        } else {
+            "media-playback-start-symbolic"
+        });
         play.set_tooltip_text(Some(if state.playing { "Pause" } else { "Play" }));
         previous.set_sensitive(!state.live);
         next.set_sensitive(!state.live);
@@ -379,7 +449,9 @@ pub fn remote_bar() -> gtk::Widget {
     // The position moves along between the device's reports.
     let weak = bar.downgrade();
     glib::timeout_add_local(Duration::from_secs(1), move || {
-        let Some(bar) = weak.upgrade() else { return glib::ControlFlow::Break };
+        let Some(bar) = weak.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
         if bar.is_mapped() {
             draw();
         }

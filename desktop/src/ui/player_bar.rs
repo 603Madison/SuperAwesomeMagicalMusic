@@ -438,8 +438,7 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
         }
     };
     if let Some(hub) = crate::connect::hub() {
-        let s = switch.clone();
-        hub.subscribe(move || s());
+        hub.subscribe(switch.clone());
     }
     let playing = Cell::new(false);
     player.subscribe(move |state| {

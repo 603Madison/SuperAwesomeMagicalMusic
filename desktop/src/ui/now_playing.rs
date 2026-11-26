@@ -74,8 +74,16 @@ fn shown_of(state: &State) -> Option<Shown> {
     let personal = base.is_personal();
     Some(match (&state.on_air, live) {
         (Some(on), true) => Shown {
-            title: if on.title.is_empty() { base.title.clone() } else { on.title.clone() },
-            artist: if on.artist.is_empty() { base.title.clone() } else { on.artist.clone() },
+            title: if on.title.is_empty() {
+                base.title.clone()
+            } else {
+                on.title.clone()
+            },
+            artist: if on.artist.is_empty() {
+                base.title.clone()
+            } else {
+                on.artist.clone()
+            },
             artwork: on.artwork_url.clone().or_else(|| base.artwork_url.clone()),
             album: on.album.clone().filter(|a| !a.is_empty()),
             song: on.song.clone(),
@@ -147,9 +155,15 @@ fn now_ms() -> i64 {
 
 // ---- The cover's colours ----
 
+/// A colour, as red, green and blue.
+type Rgb = (u8, u8, u8);
+
+/// Rows of what and what it is, as the song's details list them.
+type InfoRows = Vec<(String, String)>;
+
 /// The most colourful hue in [rgb] (weighted towards vivid ones) as a light, readable colour
 /// (as the web player's pickAccent); None for black and white, which keeps the app's own.
-fn pick_accent(rgb: &[u8]) -> Option<(u8, u8, u8)> {
+fn pick_accent(rgb: &[u8]) -> Option<Rgb> {
     let (mut x, mut y, mut weight, mut saturation_total) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
     let pixels = rgb.len() / 3;
     for p in rgb.chunks_exact(3) {
@@ -190,7 +204,7 @@ fn hsl(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
     (h / 6.0, s, l)
 }
 
-fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (u8, u8, u8) {
+fn hsl_to_rgb(h: f64, s: f64, l: f64) -> Rgb {
     let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
     let p = 2.0 * l - q;
     let channel = |t: f64| {
@@ -222,7 +236,11 @@ fn blur(rgb: &[u8], side: usize, radius: usize, passes: usize) -> Vec<u8> {
                     for c in 0..3 {
                         let (mut sum, mut n) = (0.0, 0.0);
                         for d in -(radius as isize)..=(radius as isize) {
-                            let (sx, sy) = if horizontal { (x as isize + d, y as isize) } else { (x as isize, y as isize + d) };
+                            let (sx, sy) = if horizontal {
+                                (x as isize + d, y as isize)
+                            } else {
+                                (x as isize, y as isize + d)
+                            };
                             if sx < 0 || sy < 0 || sx >= side as isize || sy >= side as isize {
                                 continue;
                             }
@@ -255,7 +273,7 @@ fn pixels_of(pixbuf: &gtk::gdk_pixbuf::Pixbuf, side: i32) -> Option<Vec<u8>> {
 }
 
 /// The backdrop and the accent for a cover's bytes.
-fn colours_of(bytes: &[u8]) -> Option<(gdk::Texture, Option<(u8, u8, u8)>)> {
+fn colours_of(bytes: &[u8]) -> Option<(gdk::Texture, Option<Rgb>)> {
     let loader = gtk::gdk_pixbuf::PixbufLoader::new();
     loader.write(bytes).ok()?;
     loader.close().ok()?;
@@ -295,8 +313,13 @@ fn image_client() -> &'static reqwest::Client {
 }
 
 async fn fetch(address: String) -> Option<Vec<u8>> {
+    let sign_in = crate::ui::widgets::server_sign_in(&address);
     bg(async move {
-        let response = image_client().get(&address).send().await.ok()?;
+        let mut request = image_client().get(&address);
+        if let Some(token) = sign_in {
+            request = request.bearer_auth(token);
+        }
+        let response = request.send().await.ok()?;
         if !response.status().is_success() {
             return None;
         }
@@ -331,6 +354,7 @@ fn css(accent: &str) -> String {
 .np button {{ color: white; }}
 .np button.flat:hover, .np menubutton.flat > button:hover {{ background: rgba(255, 255, 255, 0.1); }}
 .np button.on {{ color: @np_accent; }}
+.np button.flat:checked {{ background: none; color: @np_accent; }}
 .np-art {{
   border-radius: 22px; background: rgba(255, 255, 255, 0.06);
   box-shadow: 0 30px 70px -24px rgba(0, 0, 0, 0.75), 0 0 140px -40px @np_accent;
@@ -393,7 +417,7 @@ button.np-lyric:hover {{ background: rgba(255, 255, 255, 0.07); }}
     )
 }
 
-fn set_accent(accent: Option<(u8, u8, u8)>) {
+fn set_accent(accent: Option<Rgb>) {
     let colour = accent
         .map(|(r, g, b)| format!("#{r:02x}{g:02x}{b:02x}"))
         .unwrap_or_else(|| DEFAULT_ACCENT.into());
@@ -468,7 +492,11 @@ fn label(text: &str, class: &str) -> gtk::Label {
 }
 
 fn icon_button(icon: &str, tooltip: &str) -> gtk::Button {
-    let b = gtk::Button::builder().icon_name(icon).tooltip_text(tooltip).valign(gtk::Align::Center).build();
+    let b = gtk::Button::builder()
+        .icon_name(icon)
+        .tooltip_text(tooltip)
+        .valign(gtk::Align::Center)
+        .build();
     b.add_css_class("flat");
     b.add_css_class("circular");
     b
@@ -544,7 +572,11 @@ impl Np {
         let cover_frame = gtk::Box::builder().hexpand(true).vexpand(true).build();
         cover_frame.set_overflow(gtk::Overflow::Hidden);
         cover_frame.add_css_class("np-art");
-        let placeholder = gtk::Image::builder().icon_name("folder-music-symbolic").pixel_size(96).hexpand(true).build();
+        let placeholder = gtk::Image::builder()
+            .icon_name("folder-music-symbolic")
+            .pixel_size(96)
+            .hexpand(true)
+            .build();
         placeholder.add_css_class("dim-label");
         let cover_stack = gtk::Stack::new();
         cover_stack.add_named(&placeholder, Some("none"));
@@ -585,7 +617,11 @@ impl Np {
             }
             glib::Propagation::Stop
         });
-        let titles = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(5).hexpand(true).build();
+        let titles = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(5)
+            .hexpand(true)
+            .build();
         titles.append(&title);
         titles.append(&artist);
         let actions = gtk::Box::builder().spacing(2).valign(gtk::Align::Center).build();
@@ -609,7 +645,13 @@ impl Np {
             }
         });
         let menu_holder = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        for w in [thumb_down.upcast_ref::<gtk::Widget>(), thumb_up.upcast_ref(), star.upcast_ref(), info.upcast_ref(), menu_holder.upcast_ref()] {
+        for w in [
+            thumb_down.upcast_ref::<gtk::Widget>(),
+            thumb_up.upcast_ref(),
+            star.upcast_ref(),
+            info.upcast_ref(),
+            menu_holder.upcast_ref(),
+        ] {
             actions.append(w);
         }
         let meta_row = gtk::Box::builder().spacing(12).build();
@@ -660,7 +702,10 @@ impl Np {
         transport.add_css_class("np-transport");
         let previous = icon_button("media-skip-backward-symbolic", "Previous");
         previous.connect_clicked(|_| ctx().player.previous());
-        let play = gtk::Button::builder().icon_name("media-playback-start-symbolic").tooltip_text("Play").build();
+        let play = gtk::Button::builder()
+            .icon_name("media-playback-start-symbolic")
+            .tooltip_text("Play")
+            .build();
         play.add_css_class("circular");
         play.add_css_class("np-play");
         play.connect_clicked(|_| ctx().player.toggle());
@@ -681,7 +726,12 @@ impl Np {
         hero_box.append(&aspect);
         hero_box.append(&meta);
         hero_box.append(&controls);
-        let hero = adw::Clamp::builder().maximum_size(560).tightening_threshold(560).child(&hero_box).hexpand(true).build();
+        let hero = adw::Clamp::builder()
+            .maximum_size(560)
+            .tightening_threshold(560)
+            .child(&hero_box)
+            .hexpand(true)
+            .build();
 
         // Beside it: the tabs, and the lyrics or what's next.
         let tab_box = gtk::Box::builder().halign(gtk::Align::Start).build();
@@ -700,7 +750,11 @@ impl Np {
         let mini = gtk::Box::builder().spacing(12).visible(false).build();
         mini.add_css_class("np-mini");
         let mini_art = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        let mini_text = gtk::Box::builder().orientation(gtk::Orientation::Vertical).valign(gtk::Align::Center).hexpand(true).build();
+        let mini_text = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .valign(gtk::Align::Center)
+            .hexpand(true)
+            .build();
         let mini_title = label("", "np-mini-title");
         mini_title.set_ellipsize(gtk::pango::EllipsizeMode::End);
         let mini_artist = label("", "np-muted");
@@ -731,7 +785,11 @@ impl Np {
             .build();
         panel.add_named(&lyrics.root, Some("lyrics"));
         panel.add_named(&list_scroll, Some("list"));
-        let side = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(14).hexpand(true).build();
+        let side = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(14)
+            .hexpand(true)
+            .build();
         side.append(&tab_box);
         side.append(&mini);
         side.append(&panel);
@@ -748,7 +806,11 @@ impl Np {
         body.append(&side);
 
         // Nothing playing.
-        let empty = crate::ui::widgets::status("folder-music-symbolic", "Nothing playing", "Pick something to play, and it shows here.");
+        let empty = crate::ui::widgets::status(
+            "folder-music-symbolic",
+            "Nothing playing",
+            "Pick something to play, and it shows here.",
+        );
         let find = crate::ui::widgets::button(None, "Find something", "suggested");
         find.set_halign(gtk::Align::Center);
         find.connect_clicked(|_| {
@@ -760,7 +822,11 @@ impl Np {
         });
         empty.append(&find);
 
-        let breakpoints = adw::BreakpointBin::builder().width_request(320).height_request(360).child(&body).build();
+        let breakpoints = adw::BreakpointBin::builder()
+            .width_request(320)
+            .height_request(360)
+            .child(&body)
+            .build();
         let narrow = adw::Breakpoint::new(adw::BreakpointCondition::parse("max-width: 880sp").expect("a breakpoint"));
         breakpoints.add_breakpoint(narrow.clone());
         let content = gtk::Stack::builder().transition_type(gtk::StackTransitionType::Crossfade).build();
@@ -796,7 +862,10 @@ impl Np {
             }
         });
         header.pack_end(&fullscreen);
-        let toolbar = adw::ToolbarView::builder().extend_content_to_top_edge(true).content(&overlay).build();
+        let toolbar = adw::ToolbarView::builder()
+            .extend_content_to_top_edge(true)
+            .content(&overlay)
+            .build();
         toolbar.add_top_bar(&header);
         toolbar.add_css_class("np");
         let page = adw::NavigationPage::builder().title("Now playing").child(&toolbar).build();
@@ -891,12 +960,22 @@ impl Np {
         let weak = Rc::downgrade(&np);
         np.star.connect_toggled(move |b| {
             let Some(np) = weak.upgrade() else { return };
-            b.set_icon_name(if b.is_active() { "starred-symbolic" } else { "non-starred-symbolic" });
-            b.set_tooltip_text(Some(if b.is_active() { "Favourite (click to remove)" } else { "Add to favourites" }));
+            b.set_icon_name(if b.is_active() {
+                "starred-symbolic"
+            } else {
+                "non-starred-symbolic"
+            });
+            b.set_tooltip_text(Some(if b.is_active() {
+                "Favourite (click to remove)"
+            } else {
+                "Add to favourites"
+            }));
             if np.quiet_star.get() {
                 return;
             }
-            let Some(track) = ctx().player.state().current().cloned().filter(|t| t.is_live()) else { return };
+            let Some(track) = ctx().player.state().current().cloned().filter(|t| t.is_live()) else {
+                return;
+            };
             let Some(api) = ctx().api() else { return };
             let on = b.is_active();
             glib::spawn_future_local(async move {
@@ -953,7 +1032,11 @@ impl Np {
     fn layout(&self) {
         let narrow = self.narrow.get();
         let view = self.effective();
-        self.body.set_orientation(if narrow { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal });
+        self.body.set_orientation(if narrow {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        });
         self.body.set_homogeneous(!narrow);
         self.body.set_spacing(if narrow { 18 } else { 64 });
         self.body.set_margin_start(if narrow { 20 } else { 48 });
@@ -981,7 +1064,9 @@ impl Np {
 
     fn follow_link(&self, uri: &str) {
         let Some(shown) = self.shown.borrow().clone() else { return };
-        let Some(song) = shown.song.as_ref().filter(|s| !s.artist.is_empty()) else { return };
+        let Some(song) = shown.song.as_ref().filter(|s| !s.artist.is_empty()) else {
+            return;
+        };
         match uri {
             "artist" => ctx().open_artist(None, &song.artist),
             "album" => ctx().open_album(None, shown.album.as_deref().unwrap_or_default(), &song.artist),
@@ -1068,11 +1153,16 @@ impl Np {
         } else {
             self.cover_frame.remove_css_class("playing");
         }
-        self.play.set_icon_name(if state.playing { "media-playback-pause-symbolic" } else { "media-playback-start-symbolic" });
+        self.play.set_icon_name(if state.playing {
+            "media-playback-pause-symbolic"
+        } else {
+            "media-playback-start-symbolic"
+        });
         self.play.set_tooltip_text(Some(if state.playing { "Pause" } else { "Play" }));
         self.previous.set_sensitive(!shown.live);
         self.next.set_sensitive(state.has_next() && (!shown.live || shown.personal));
-        self.next.set_tooltip_text(Some(if shown.personal { "Skip this song" } else { "Next" }));
+        self.next
+            .set_tooltip_text(Some(if shown.personal { "Skip this song" } else { "Next" }));
         let seekable = !shown.live && state.duration > 0.0;
         self.progress.set_visible(seekable);
         if seekable {
@@ -1109,7 +1199,11 @@ impl Np {
         };
         if let Some(album) = &shown.album {
             markup += "<span alpha=\"60%\"> · </span>";
-            markup += &if linked { format!("<a href=\"album\">{}</a>", escape(album)) } else { escape(album) };
+            markup += &if linked {
+                format!("<a href=\"album\">{}</a>", escape(album))
+            } else {
+                escape(album)
+            };
         }
         self.artist.set_markup(&markup);
         self.artist.set_tooltip_text(None);
@@ -1124,7 +1218,12 @@ impl Np {
             self.channel_art.append(&artwork(shown.base.artwork_url.as_deref(), 28, false));
             self.channel_name.set_text(&shown.base.title);
             let number = if shown.base.source == "SIRIUSXM" {
-                shown.base.artist.trim_start_matches("SiriusXM").trim_start_matches(" · ").to_string()
+                shown
+                    .base
+                    .artist
+                    .trim_start_matches("SiriusXM")
+                    .trim_start_matches(" · ")
+                    .to_string()
             } else {
                 String::new()
             };
@@ -1193,7 +1292,9 @@ impl Np {
                         let mut child = backdrop.first_child();
                         while let Some(c) = child {
                             child = c.next_sibling();
-                            if backdrop.visible_child().as_ref() != Some(&c) && backdrop.page(&c).name().is_some_and(|n| n.starts_with("art")) {
+                            if backdrop.visible_child().as_ref() != Some(&c)
+                                && backdrop.page(&c).name().is_some_and(|n| n.starts_with("art"))
+                            {
                                 backdrop.remove(&c);
                             }
                         }
@@ -1217,13 +1318,27 @@ impl Np {
             format!("queue|{:?}|{}", state.index, keys.join(","))
         } else if shown.personal {
             let p = state.personal.as_ref();
-            let titles = |v: Option<&Vec<NowView>>| v.map(|v| v.iter().map(|n| n.title.clone()).collect::<Vec<_>>().join(",")).unwrap_or_default();
-            format!("coming|{}|{}|{}", p.is_some(), titles(p.map(|p| &p.next)), titles(p.map(|p| &p.recent)))
+            let titles = |v: Option<&Vec<NowView>>| {
+                v.map(|v| v.iter().map(|n| n.title.clone()).collect::<Vec<_>>().join(","))
+                    .unwrap_or_default()
+            };
+            format!(
+                "coming|{}|{}|{}",
+                p.is_some(),
+                titles(p.map(|p| &p.next)),
+                titles(p.map(|p| &p.recent))
+            )
         } else {
             let on = state.on_air.as_ref().map(|o| o.title.clone()).unwrap_or_default();
             let history: Vec<String> = state.live_history.iter().map(|h| h.title.clone()).collect();
             let recent = self.recent.borrow();
-            format!("played|{}|{on}|{}|{}|{}", track_key(&shown.base), history.join(","), recent.0, recent.1.as_ref().map(|r| r.len() as i64).unwrap_or(-1))
+            format!(
+                "played|{}|{on}|{}|{}|{}",
+                track_key(&shown.base),
+                history.join(","),
+                recent.0,
+                recent.1.as_ref().map(|r| r.len() as i64).unwrap_or(-1)
+            )
         };
         if *self.list_key.borrow() == key {
             return;
@@ -1246,8 +1361,14 @@ impl Np {
     fn played(&self, state: &State, shown: &Shown, live_clock: Option<i64>) -> gtk::Widget {
         let channel = &shown.base;
         let sxm = channel.is_channel() && channel.via.is_some();
-        let rows: Vec<(String, String, Option<String>, Option<Track>, Option<i64>)> = if sxm {
-            let on = state.on_air.as_ref().map(|o| format!("{}|{}", o.title, o.artist)).unwrap_or_default();
+        // Each song: its title, artist, cover, the song itself, and how long ago it played.
+        type Played = (String, String, Option<String>, Option<Track>, Option<i64>);
+        let rows: Vec<Played> = if sxm {
+            let on = state
+                .on_air
+                .as_ref()
+                .map(|o| format!("{}|{}", o.title, o.artist))
+                .unwrap_or_default();
             let wanted = format!("{}|{on}", track_key(channel));
             let asked = self.recent.borrow().0 == wanted;
             if !asked {
@@ -1255,7 +1376,9 @@ impl Np {
                 if let (Some(api), Some((kind, id)), Some(via)) = (ctx().api(), channel.channel_parts(), channel.via.clone()) {
                     let at = live_clock.unwrap_or_else(now_ms);
                     glib::spawn_future_local(async move {
-                        let songs = bg(async move { api.channel_recent(&via, &kind, &id, at).await }).await.unwrap_or_default();
+                        let songs = bg(async move { api.channel_recent(&via, &kind, &id, at).await })
+                            .await
+                            .unwrap_or_default();
                         let Some(np) = PAGE.with(|p| p.borrow().clone()) else { return };
                         if np.recent.borrow().0 != wanted {
                             return;
@@ -1267,17 +1390,35 @@ impl Np {
                 }
             }
             let recent = self.recent.borrow();
-            let Some(songs) = recent.1.as_ref() else { return crate::ui::widgets::loading() };
+            let Some(songs) = recent.1.as_ref() else {
+                return crate::ui::widgets::loading();
+            };
             let clock = live_clock.unwrap_or_else(now_ms);
             songs
                 .iter()
-                .map(|r| (r.title.clone(), r.artist.clone(), r.artwork_url.clone(), r.song.clone(), Some(clock - r.start_ms)))
+                .map(|r| {
+                    (
+                        r.title.clone(),
+                        r.artist.clone(),
+                        r.artwork_url.clone(),
+                        r.song.clone(),
+                        Some(clock - r.start_ms),
+                    )
+                })
                 .collect()
         } else {
             state
                 .live_history
                 .iter()
-                .map(|h| (h.title.clone(), h.artist.clone(), h.artwork_url.clone(), h.song.clone(), (h.heard_at > 0).then(|| now_ms() - h.heard_at)))
+                .map(|h| {
+                    (
+                        h.title.clone(),
+                        h.artist.clone(),
+                        h.artwork_url.clone(),
+                        h.song.clone(),
+                        (h.heard_at > 0).then(|| now_ms() - h.heard_at),
+                    )
+                })
                 .collect()
         };
         if rows.is_empty() {
@@ -1292,7 +1433,13 @@ impl Np {
         }
         let list = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(2).build();
         for (title, artist, art, song, at) in rows {
-            list.append(&played_row(&title, &artist, art.as_deref().or(channel.artwork_url.as_deref()), song.as_ref(), at.map(ago)));
+            list.append(&played_row(
+                &title,
+                &artist,
+                art.as_deref().or(channel.artwork_url.as_deref()),
+                song.as_ref(),
+                at.map(ago),
+            ));
         }
         list.add_css_class("np-panel-card");
         list.upcast()
@@ -1320,9 +1467,19 @@ fn note(title: &str, text: &str) -> gtk::Widget {
 
 /// A song the station played or will play: its cover, title and artist, when, and its menu.
 fn played_row(title: &str, artist: &str, art: Option<&str>, song: Option<&Track>, when: Option<String>) -> gtk::Widget {
-    let row = gtk::Box::builder().spacing(12).margin_top(4).margin_bottom(4).margin_start(4).margin_end(4).build();
+    let row = gtk::Box::builder()
+        .spacing(12)
+        .margin_top(4)
+        .margin_bottom(4)
+        .margin_start(4)
+        .margin_end(4)
+        .build();
     row.append(&artwork(art, 48, false));
-    let text = gtk::Box::builder().orientation(gtk::Orientation::Vertical).valign(gtk::Align::Center).hexpand(true).build();
+    let text = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .valign(gtk::Align::Center)
+        .hexpand(true)
+        .build();
     let t = label(title, "track-title");
     t.set_ellipsize(gtk::pango::EllipsizeMode::End);
     let a = label(artist, "track-sub");
@@ -1341,7 +1498,9 @@ fn played_row(title: &str, artist: &str, art: Option<&str>, song: Option<&Track>
 
 /// On one of the person's own stations: what's coming up, and what it played before.
 fn coming_up(state: &State, channel: &Track) -> gtk::Widget {
-    let Some(info) = state.personal.as_ref() else { return crate::ui::widgets::loading() };
+    let Some(info) = state.personal.as_ref() else {
+        return crate::ui::widgets::loading();
+    };
     if info.next.is_empty() && info.recent.is_empty() {
         return note("Warming up", "The station's line-up shows here in a moment.");
     }
@@ -1354,14 +1513,26 @@ fn coming_up(state: &State, channel: &Track) -> gtk::Widget {
     if !info.next.is_empty() {
         section("Coming up");
         for r in &info.next {
-            list.append(&played_row(&r.title, &r.artist, r.artwork_url.as_deref().or(channel.artwork_url.as_deref()), r.song.as_ref(), None));
+            list.append(&played_row(
+                &r.title,
+                &r.artist,
+                r.artwork_url.as_deref().or(channel.artwork_url.as_deref()),
+                r.song.as_ref(),
+                None,
+            ));
         }
     }
     if !info.recent.is_empty() {
         section("Played");
         for r in &info.recent {
             let when = (info.server_time > 0 && r.start_ms > 0).then(|| ago(info.server_time - r.start_ms));
-            list.append(&played_row(&r.title, &r.artist, r.artwork_url.as_deref().or(channel.artwork_url.as_deref()), r.song.as_ref(), when));
+            list.append(&played_row(
+                &r.title,
+                &r.artist,
+                r.artwork_url.as_deref().or(channel.artwork_url.as_deref()),
+                r.song.as_ref(),
+                when,
+            ));
         }
     }
     list.upcast()
@@ -1383,7 +1554,11 @@ pub fn queue_view(state: &State, on_jump: Option<Rc<dyn Fn()>>) -> gtk::Box {
     }
     view.append(&head);
     let Some(index) = state.index.filter(|i| *i < state.queue.len()) else {
-        view.append(&crate::ui::widgets::status("view-list-symbolic", "The queue is empty", "Play something from search or a playlist."));
+        view.append(&crate::ui::widgets::status(
+            "view-list-symbolic",
+            "The queue is empty",
+            "Play something from search or a playlist.",
+        ));
         return view;
     };
     let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
@@ -1421,7 +1596,11 @@ pub fn queue_view(state: &State, on_jump: Option<Rc<dyn Fn()>>) -> gtk::Box {
 fn queue_row(track: &Track, index: usize, current: bool, count: usize) -> gtk::ListBoxRow {
     let line = gtk::Box::builder().spacing(12).build();
     line.append(&artwork(track.artwork_url.as_deref(), 40, false));
-    let text = gtk::Box::builder().orientation(gtk::Orientation::Vertical).valign(gtk::Align::Center).hexpand(true).build();
+    let text = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .valign(gtk::Align::Center)
+        .hexpand(true)
+        .build();
     let title = label(&track.title, "track-title");
     title.set_ellipsize(gtk::pango::EllipsizeMode::End);
     let artist = label(&track.artist, "track-sub");
@@ -1446,7 +1625,11 @@ fn queue_row(track: &Track, index: usize, current: bool, count: usize) -> gtk::L
         line.append(&down);
         line.append(&remove);
     }
-    let row = gtk::ListBoxRow::builder().child(&line).activatable(true).tooltip_text(format!("Play {}", track.title)).build();
+    let row = gtk::ListBoxRow::builder()
+        .child(&line)
+        .activatable(true)
+        .tooltip_text(format!("Play {}", track.title))
+        .build();
     if current {
         row.add_css_class("current");
     }
@@ -1501,7 +1684,10 @@ impl Lyrics {
             .child(&content)
             .build();
         let note_holder = gtk::Box::builder().orientation(gtk::Orientation::Vertical).vexpand(true).build();
-        let stack = gtk::Stack::builder().transition_type(gtk::StackTransitionType::Crossfade).vexpand(true).build();
+        let stack = gtk::Stack::builder()
+            .transition_type(gtk::StackTransitionType::Crossfade)
+            .vexpand(true)
+            .build();
         stack.add_named(&scroll, Some("lines"));
         stack.add_named(&note_holder, Some("note"));
         stack.add_named(&crate::ui::widgets::loading(), Some("loading"));
@@ -1570,8 +1756,10 @@ impl Lyrics {
             if let Some(l) = weak.upgrade() {
                 let page = adjustment.page_size();
                 let synced = l.synced.get();
-                l.lead.set_height_request(if synced { (page * 0.36) as i32 } else { (page * 0.04) as i32 });
-                l.tail.set_height_request(if synced { (page * 0.52) as i32 } else { (page * 0.12) as i32 });
+                l.lead
+                    .set_height_request(if synced { (page * 0.36) as i32 } else { (page * 0.04) as i32 });
+                l.tail
+                    .set_height_request(if synced { (page * 0.52) as i32 } else { (page * 0.12) as i32 });
                 let me = l.clone();
                 glib::idle_add_local_once(move || me.follow(false));
             }
@@ -1623,10 +1811,7 @@ impl Lyrics {
             self.list.remove(&child);
         }
         let Some(track) = track else {
-            self.note(
-                "",
-                "When the channel says which song is on, its lyrics show here.",
-            );
+            self.note("", "When the channel says which song is on, its lyrics show here.");
             return;
         };
         let key = track_key(&track);
@@ -1665,7 +1850,10 @@ impl Lyrics {
 
     fn fill(self: &Rc<Self>, lyrics: LyricsView, seekable: bool) {
         if lyrics.lines.is_empty() {
-            self.note("No lyrics for this one", "Neither your library nor LRCLIB has them. Enjoy the music.");
+            self.note(
+                "No lyrics for this one",
+                "Neither your library nor LRCLIB has them. Enjoy the music.",
+            );
             return;
         }
         let synced = lyrics.synced;
@@ -1686,7 +1874,10 @@ impl Lyrics {
                 .build();
             let can_seek = synced && seekable && line.time_ms.is_some();
             let widget: gtk::Widget = if can_seek {
-                let button = gtk::Button::builder().child(&words).tooltip_text(format!("Play from {}", duration(line.time_ms.unwrap_or(0)))).build();
+                let button = gtk::Button::builder()
+                    .child(&words)
+                    .tooltip_text(format!("Play from {}", duration(line.time_ms.unwrap_or(0))))
+                    .build();
                 let at = line.time_ms.unwrap_or(0);
                 let me = Rc::downgrade(self);
                 button.connect_clicked(move |_| {
@@ -1713,8 +1904,10 @@ impl Lyrics {
             if lyrics.source.is_empty() { "the web" } else { &lyrics.source }
         ));
         let page = self.scroll.vadjustment().page_size();
-        self.lead.set_height_request(if synced { (page * 0.36) as i32 } else { (page * 0.04) as i32 });
-        self.tail.set_height_request(if synced { (page * 0.52) as i32 } else { (page * 0.12) as i32 });
+        self.lead
+            .set_height_request(if synced { (page * 0.36) as i32 } else { (page * 0.04) as i32 });
+        self.tail
+            .set_height_request(if synced { (page * 0.52) as i32 } else { (page * 0.12) as i32 });
         self.stack.set_visible_child_name("lines");
         self.scroll.vadjustment().set_value(0.0);
         self.mark();
@@ -1744,8 +1937,12 @@ impl Lyrics {
             return;
         }
         let lines = self.lines.borrow();
-        let Some((_, line)) = lines.get(self.current.get().unwrap_or(0)) else { return };
-        let Some(point) = line.compute_point(&self.content, &gtk::graphene::Point::new(0.0, 0.0)) else { return };
+        let Some((_, line)) = lines.get(self.current.get().unwrap_or(0)) else {
+            return;
+        };
+        let Some(point) = line.compute_point(&self.content, &gtk::graphene::Point::new(0.0, 0.0)) else {
+            return;
+        };
         let adjustment = self.scroll.vadjustment();
         let target = (point.y() as f64 - adjustment.page_size() * 0.36 + line.height() as f64 / 2.0)
             .clamp(0.0, (adjustment.upper() - adjustment.page_size()).max(0.0));
@@ -1867,7 +2064,11 @@ fn source_of(track: &Track) -> String {
 /// "44.1 kHz · 16-bit · stereo", from the decoded audio's caps.
 fn decoded(heard: &crate::player::Heard) -> Option<String> {
     let rate = heard.rate?;
-    let mut parts = vec![if rate % 1000 == 0 { format!("{} kHz", rate / 1000) } else { format!("{:.1} kHz", rate as f64 / 1000.0) }];
+    let mut parts = vec![if rate % 1000 == 0 {
+        format!("{} kHz", rate / 1000)
+    } else {
+        format!("{:.1} kHz", rate as f64 / 1000.0)
+    }];
     if let Some(format) = &heard.format {
         let bits: String = format.chars().filter(|c| c.is_ascii_digit()).collect();
         if format.starts_with('F') {
@@ -1886,7 +2087,7 @@ fn decoded(heard: &crate::player::Heard) -> Option<String> {
 }
 
 /// The rows of the song's details: about the song, and (while it plays) the copy playing.
-fn info_rows(track: &Track, state: &State, kbps_cap: u32, levelling: (bool, f64, bool)) -> (Vec<(String, String)>, Option<Vec<(String, String)>>) {
+fn info_rows(track: &Track, state: &State, kbps_cap: u32, levelling: (bool, f64, bool)) -> (InfoRows, Option<InfoRows>) {
     let current = state.current().is_some_and(|c| track_key(c) == track_key(track));
     let live = current && state.live();
     let mut rows = vec![];
@@ -1906,7 +2107,10 @@ fn info_rows(track: &Track, state: &State, kbps_cap: u32, levelling: (bool, f64,
     }
     let mut now = vec![("Copy".to_string(), state.description.clone())];
     if live && let Some(on) = &state.on_air {
-        let said: Vec<&str> = [on.title.as_str(), on.artist.as_str()].into_iter().filter(|s| !s.is_empty()).collect();
+        let said: Vec<&str> = [on.title.as_str(), on.artist.as_str()]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect();
         now.push(("On now".into(), said.join(" · ")));
     }
     if live {
@@ -1921,7 +2125,11 @@ fn info_rows(track: &Track, state: &State, kbps_cap: u32, levelling: (bool, f64,
     }
     let copy = state.copy.as_ref();
     if let Some(kbps) = copy.and_then(|c| c.kbps) {
-        let converted = if copy.is_some_and(|c| c.transcoded) { " (converted on your server)" } else { "" };
+        let converted = if copy.is_some_and(|c| c.transcoded) {
+            " (converted on your server)"
+        } else {
+            ""
+        };
         now.push(("Bitrate".into(), format!("{kbps} kbps{converted}")));
     } else if let Some(bits) = state.heard.bitrate {
         now.push(("Bitrate".into(), format!("{} kbps", bits / 1000)));
@@ -1937,8 +2145,16 @@ fn info_rows(track: &Track, state: &State, kbps_cap: u32, levelling: (bool, f64,
         now.push(("Decoded".into(), d));
     }
     if !live {
-        let cap = if kbps_cap == 0 { "Original".to_string() } else { format!("{kbps_cap} kbps") };
-        let over = if copy.is_some_and(|c| !c.within_cap) { " (no copy fits it: the closest plays)" } else { "" };
+        let cap = if kbps_cap == 0 {
+            "Original".to_string()
+        } else {
+            format!("{kbps_cap} kbps")
+        };
+        let over = if copy.is_some_and(|c| !c.within_cap) {
+            " (no copy fits it: the closest plays)"
+        } else {
+            ""
+        };
         now.push(("Quality cap".into(), format!("{cap}{over}")));
     }
     let (on, gain, known) = levelling;
@@ -1950,7 +2166,11 @@ fn info_rows(track: &Track, state: &State, kbps_cap: u32, levelling: (bool, f64,
             format!(
                 "{}{gain:.1} dB ({})",
                 if gain >= 0.0 { "+" } else { "" },
-                if known { "from your library's loudness value" } else { "measured while playing" }
+                if known {
+                    "from your library's loudness value"
+                } else {
+                    "measured while playing"
+                }
             )
         },
     ));
@@ -2029,7 +2249,9 @@ fn info_grid() -> gtk::Grid {
 /// Shows [rows] in [grid], changing only the values when the rows are the same ones.
 fn set_rows(grid: &gtk::Grid, rows: &[(String, String)]) {
     let same = rows.iter().enumerate().all(|(i, (k, _))| {
-        grid.child_at(0, i as i32).and_downcast::<gtk::Label>().is_some_and(|l| l.text() == *k)
+        grid.child_at(0, i as i32)
+            .and_downcast::<gtk::Label>()
+            .is_some_and(|l| l.text() == *k)
     }) && grid.child_at(0, rows.len() as i32).is_none();
     if !same {
         while let Some(child) = grid.first_child() {
@@ -2038,7 +2260,12 @@ fn set_rows(grid: &gtk::Grid, rows: &[(String, String)]) {
         for (i, (key, _)) in rows.iter().enumerate() {
             let k = gtk::Label::builder().label(key).xalign(0.0).yalign(0.0).width_chars(16).build();
             k.add_css_class("dim-label");
-            let v = gtk::Label::builder().xalign(0.0).wrap(true).wrap_mode(gtk::pango::WrapMode::WordChar).hexpand(true).build();
+            let v = gtk::Label::builder()
+                .xalign(0.0)
+                .wrap(true)
+                .wrap_mode(gtk::pango::WrapMode::WordChar)
+                .hexpand(true)
+                .build();
             grid.attach(&k, 0, i as i32, 1, 1);
             grid.attach(&v, 1, i as i32, 1, 1);
         }

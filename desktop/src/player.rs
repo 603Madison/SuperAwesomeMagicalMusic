@@ -1344,6 +1344,18 @@ fn station_track_path(track: &Track) -> Option<String> {
     Some(format!("/api/live/sxm/{}/station-track/{}", enc(via), enc(track_id)))
 }
 
+/// A web address's scheme, name and port ("https://music.example.com:443"): which server it's on.
+fn origin(address: &str) -> Option<String> {
+    let url = url::Url::parse(address).ok()?;
+    Some(format!("{}://{}:{}", url.scheme(), url.host_str()?.to_ascii_lowercase(), url.port_or_known_default()?))
+}
+
+/// [uri] started [seconds] in, by the server (for streams that can't be jumped about in).
+fn with_start(uri: &str, seconds: f64) -> String {
+    let joiner = if uri.contains('?') { '&' } else { '?' };
+    format!("{uri}{joiner}start={seconds:.1}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1410,16 +1422,4 @@ mod tests {
         assert_eq!(Repeat::All.next(), Repeat::One);
         assert_eq!(Repeat::One.next(), Repeat::Off);
     }
-}
-
-/// A web address's scheme, name and port ("https://music.example.com:443"): which server it's on.
-fn origin(address: &str) -> Option<String> {
-    let url = url::Url::parse(address).ok()?;
-    Some(format!("{}://{}:{}", url.scheme(), url.host_str()?.to_ascii_lowercase(), url.port_or_known_default()?))
-}
-
-/// [uri] started [seconds] in, by the server (for streams that can't be jumped about in).
-fn with_start(uri: &str, seconds: f64) -> String {
-    let joiner = if uri.contains('?') { '&' } else { '?' };
-    format!("{uri}{joiner}start={seconds:.1}")
 }
