@@ -9,7 +9,7 @@ use gtk::{gdk, glib};
 
 use crate::api::{DeviceRequest, SessionInfo, User};
 use crate::ui::ctx;
-use crate::ui::forms::{boxed_list, clear, failed_near, field, icon_button, note, run, text_field, toast_near, when};
+use crate::ui::forms::{boxed_list, clear, failed_near, icon_button, note, run, text_field, toast_near, when};
 use crate::ui::sources::{Scope, sources_section};
 
 /// "The DJ talks", under Playback.
@@ -41,7 +41,11 @@ pub fn more_playback(group: &adw::PreferencesGroup) {
 /// The Sources and Account pages, after General.
 pub fn add_pages(dialog: &adw::PreferencesDialog) {
     crate::ui::style::ensure();
-    let sources = adw::PreferencesPage::builder().title("Sources").icon_name("folder-music-symbolic").name("sources").build();
+    let sources = adw::PreferencesPage::builder()
+        .title("Sources")
+        .icon_name("folder-music-symbolic")
+        .name("sources")
+        .build();
     let group = adw::PreferencesGroup::builder()
         .title("Sources")
         .description("Where your music comes from. Searches ask all of them; playback prefers your library, then the best copy within your quality setting.")
@@ -50,7 +54,11 @@ pub fn add_pages(dialog: &adw::PreferencesDialog) {
     sources.add(&group);
     dialog.add(&sources);
 
-    let account = adw::PreferencesPage::builder().title("Account").icon_name("avatar-default-symbolic").name("account").build();
+    let account = adw::PreferencesPage::builder()
+        .title("Account")
+        .icon_name("avatar-default-symbolic")
+        .name("account")
+        .build();
     let you = adw::PreferencesGroup::builder().title("Account").build();
     let you_box = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(16).build();
     you.add(&you_box);
@@ -113,7 +121,11 @@ fn profile(user: &User) -> gtk::Box {
     name_field.set_hexpand(true);
     let row = gtk::Box::builder().spacing(10).build();
     row.append(&name_field);
-    let save = gtk::Button::builder().label("Save").valign(gtk::Align::Center).sensitive(false).build();
+    let save = gtk::Button::builder()
+        .label("Save")
+        .valign(gtk::Align::Center)
+        .sensitive(false)
+        .build();
     save.add_css_class("pill");
     let saved = Rc::new(std::cell::RefCell::new(user.display_name.clone()));
     let (s, b) = (saved.clone(), save.clone());
@@ -217,7 +229,11 @@ fn show_devices(into: &gtk::Box) {
                 badge.add_css_class("badge");
                 row.add_suffix(&badge);
             } else {
-                let tooltip = if session.is_connector() { "Remove this connector link" } else { "Sign out this device" };
+                let tooltip = if session.is_connector() {
+                    "Remove this connector link"
+                } else {
+                    "Sign out this device"
+                };
                 let out = icon_button("system-log-out-symbolic", tooltip);
                 let (id, row_for, list_for) = (session.id.clone(), row.clone(), list.clone());
                 out.connect_clicked(move |button| {
@@ -253,15 +269,27 @@ fn show_devices(into: &gtk::Box) {
 
 /// "bcdf ghjk" as "BCDF-GHJK": capitals, the dash put in, nothing else.
 pub fn tidy_code(typed: &str) -> String {
-    let raw: String = typed.chars().filter(char::is_ascii_alphanumeric).map(|c| c.to_ascii_uppercase()).take(8).collect();
-    if raw.len() > 4 { format!("{}-{}", &raw[..4], &raw[4..]) } else { raw }
+    let raw: String = typed
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_uppercase())
+        .take(8)
+        .collect();
+    if raw.len() > 4 {
+        format!("{}-{}", &raw[..4], &raw[4..])
+    } else {
+        raw
+    }
 }
 
 /// Signing in another device with the code it shows: a flip phone (or anything awkward to type
 /// a password on) is signed in to this account once you allow it.
 fn link_device(near: &gtk::Button, devices: gtk::Box) {
     let dialog = adw::Dialog::builder().title("Sign in a device").content_width(440).build();
-    let stack = gtk::Stack::builder().transition_type(gtk::StackTransitionType::SlideLeft).vhomogeneous(false).build();
+    let stack = gtk::Stack::builder()
+        .transition_type(gtk::StackTransitionType::SlideLeft)
+        .vhomogeneous(false)
+        .build();
     let page = |title: &str, text: &str| {
         let column = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -271,17 +299,30 @@ fn link_device(near: &gtk::Button, devices: gtk::Box) {
             .margin_start(28)
             .margin_end(28)
             .build();
-        let icon = gtk::Image::builder().icon_name("phone-symbolic").pixel_size(36).halign(gtk::Align::Center).build();
+        let icon = gtk::Image::builder()
+            .icon_name("phone-symbolic")
+            .pixel_size(36)
+            .halign(gtk::Align::Center)
+            .build();
         let circle = gtk::Box::builder().halign(gtk::Align::Center).build();
         circle.add_css_class("empty-icon");
         icon.set_hexpand(true);
         icon.set_vexpand(true);
         circle.append(&icon);
         column.append(&circle);
-        let name = gtk::Label::builder().label(title).wrap(true).justify(gtk::Justification::Center).build();
+        let name = gtk::Label::builder()
+            .label(title)
+            .wrap(true)
+            .justify(gtk::Justification::Center)
+            .build();
         name.add_css_class("login-title");
         column.append(&name);
-        let line = gtk::Label::builder().label(text).wrap(true).use_markup(true).justify(gtk::Justification::Center).build();
+        let line = gtk::Label::builder()
+            .label(text)
+            .wrap(true)
+            .use_markup(true)
+            .justify(gtk::Justification::Center)
+            .build();
         line.add_css_class("login-sub");
         column.append(&line);
         (column, name, line)
@@ -291,7 +332,12 @@ fn link_device(near: &gtk::Button, devices: gtk::Box) {
 
     // Typing the code.
     let (ask, _, _) = page("Sign in a device", "Type the code the device shows.");
-    let code = gtk::Entry::builder().placeholder_text("XXXX-XXXX").max_length(9).activates_default(true).xalign(0.5).build();
+    let code = gtk::Entry::builder()
+        .placeholder_text("XXXX-XXXX")
+        .max_length(9)
+        .activates_default(true)
+        .xalign(0.5)
+        .build();
     code.add_css_class("code-entry");
     let tidying = Rc::new(std::cell::Cell::new(false));
     let t = tidying.clone();
@@ -359,15 +405,28 @@ fn link_device(near: &gtk::Button, devices: gtk::Box) {
     let request: Rc<std::cell::RefCell<Option<DeviceRequest>>> = Rc::default();
     let server = ctx().config.borrow().server.clone().unwrap_or_else(|| "this server".into());
     {
-        let (stack, request, code, error, decide_line, shown_code, go_button) =
-            (stack.clone(), request.clone(), code.clone(), error.clone(), decide_line.clone(), shown_code.clone(), go.clone());
+        let (stack, request, code, error, decide_line, shown_code, go_button) = (
+            stack.clone(),
+            request.clone(),
+            code.clone(),
+            error.clone(),
+            decide_line.clone(),
+            shown_code.clone(),
+            go.clone(),
+        );
         let (who_name, who_username) = (who_name.clone(), who_username.clone());
         go.connect_clicked(move |_| {
             let Some(api) = ctx().api() else { return };
             let typed = code.text().to_string();
             go_button.set_sensitive(false);
-            let (stack, request, error, decide_line, shown_code, go_button) =
-                (stack.clone(), request.clone(), error.clone(), decide_line.clone(), shown_code.clone(), go_button.clone());
+            let (stack, request, error, decide_line, shown_code, go_button) = (
+                stack.clone(),
+                request.clone(),
+                error.clone(),
+                decide_line.clone(),
+                shown_code.clone(),
+                go_button.clone(),
+            );
             let (who_name, who_username, server) = (who_name.clone(), who_username.clone(), server.clone());
             run(async move { api.device_request(&typed).await }, move |result| {
                 go_button.set_sensitive(true);
@@ -394,8 +453,14 @@ fn link_device(near: &gtk::Button, devices: gtk::Box) {
         });
     }
     for (button, allowing) in [(allow.clone(), true), (deny.clone(), false)] {
-        let (stack, request, decide_error, done_title, done_line, devices) =
-            (stack.clone(), request.clone(), decide_error.clone(), done_title.clone(), done_line.clone(), devices.clone());
+        let (stack, request, decide_error, done_title, done_line, devices) = (
+            stack.clone(),
+            request.clone(),
+            decide_error.clone(),
+            done_title.clone(),
+            done_line.clone(),
+            devices.clone(),
+        );
         let who_name = who_name.clone();
         let (allow, deny) = (allow.clone(), deny.clone());
         button.connect_clicked(move |_| {
@@ -403,8 +468,14 @@ fn link_device(near: &gtk::Button, devices: gtk::Box) {
             let Some(found) = request.borrow().clone() else { return };
             allow.set_sensitive(false);
             deny.set_sensitive(false);
-            let (stack, decide_error, done_title, done_line, devices, who_name) =
-                (stack.clone(), decide_error.clone(), done_title.clone(), done_line.clone(), devices.clone(), who_name.clone());
+            let (stack, decide_error, done_title, done_line, devices, who_name) = (
+                stack.clone(),
+                decide_error.clone(),
+                done_title.clone(),
+                done_line.clone(),
+                devices.clone(),
+                who_name.clone(),
+            );
             let (allow, deny) = (allow.clone(), deny.clone());
             let user_code = found.user_code.clone();
             run(async move { api.device_decide(&user_code, allowing).await }, move |result| {
@@ -536,13 +607,6 @@ fn show_lidarr(into: &gtk::Box) {
         }
         into.append(&list);
     });
-}
-
-/// Keeps a page's field the width of the page.
-pub fn wide(widget: &impl IsA<gtk::Widget>) -> gtk::Box {
-    let holder = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
-    holder.append(&field("", None, widget));
-    holder
 }
 
 #[cfg(test)]

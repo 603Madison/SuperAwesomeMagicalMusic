@@ -165,7 +165,8 @@ impl Api {
     }
 
     pub async fn update_profile(&self, display_name: &str) -> Result<User> {
-        self.send(Method::PATCH, "/api/me", Some(json!({ "displayName": display_name }))).await
+        self.send(Method::PATCH, "/api/me", Some(json!({ "displayName": display_name })))
+            .await
     }
 
     /// Changes your password (and signs you out everywhere else).
@@ -202,7 +203,8 @@ impl Api {
     }
 
     pub async fn device_decide(&self, user_code: &str, allow: bool) -> Result<Value> {
-        self.post("/api/auth/device/decide", json!({ "userCode": user_code, "allow": allow })).await
+        self.post("/api/auth/device/decide", json!({ "userCode": user_code, "allow": allow }))
+            .await
     }
 
     // Sources.
@@ -213,7 +215,11 @@ impl Api {
 
     /// Adds a source: yours ("personal"), or everyone's ("global", for admins).
     pub async fn add_source(&self, kind: &str, name: &str, scope: &str, fields: Value) -> Result<SourceView> {
-        self.post("/api/sources", json!({ "kind": kind, "name": name, "scope": scope, "fields": fields })).await
+        self.post(
+            "/api/sources",
+            json!({ "kind": kind, "name": name, "scope": scope, "fields": fields }),
+        )
+        .await
     }
 
     pub async fn update_source(&self, id: &str, change: Value) -> Result<SourceView> {
@@ -226,7 +232,12 @@ impl Api {
 
     /// Switches a shared source off (or on again) for yourself.
     pub async fn hide_source(&self, id: &str, hidden: bool) -> Result<SourceView> {
-        self.send(Method::PUT, &format!("/api/sources/{}/hidden", enc(id)), Some(json!({ "hidden": hidden }))).await
+        self.send(
+            Method::PUT,
+            &format!("/api/sources/{}/hidden", enc(id)),
+            Some(json!({ "hidden": hidden })),
+        )
+        .await
     }
 
     pub async fn test_source(&self, id: &str) -> Result<Checked> {
@@ -253,7 +264,8 @@ impl Api {
 
     /// Changes someone's role ("ADMIN", "USER") or turns their account off or on.
     pub async fn update_user(&self, id: &str, change: Value) -> Result<User> {
-        self.send(Method::PATCH, &format!("/api/admin/users/{}", enc(id)), Some(change)).await
+        self.send(Method::PATCH, &format!("/api/admin/users/{}", enc(id)), Some(change))
+            .await
     }
 
     pub async fn delete_user(&self, id: &str) -> Result<Value> {
@@ -261,11 +273,13 @@ impl Api {
     }
 
     pub async fn reset_password(&self, id: &str, password: &str) -> Result<Value> {
-        self.post(&format!("/api/admin/users/{}/password", enc(id)), json!({ "password": password })).await
+        self.post(&format!("/api/admin/users/{}/password", enc(id)), json!({ "password": password }))
+            .await
     }
 
     pub async fn sign_out_user(&self, id: &str) -> Result<Value> {
-        self.send(Method::DELETE, &format!("/api/admin/users/{}/sessions", enc(id)), None).await
+        self.send(Method::DELETE, &format!("/api/admin/users/{}/sessions", enc(id)), None)
+            .await
     }
 
     pub async fn admin_settings(&self) -> Result<AdminSettings> {

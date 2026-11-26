@@ -98,7 +98,10 @@ impl Track {
     /// A station on the person's FM tuner: "FM", or "HD2" for an HD Radio subchannel.
     pub fn tuner_badge(&self) -> Option<String> {
         let id = self.source_id.strip_prefix("tuner:")?;
-        let hd = id.find("-hd").and_then(|at| id[at + 3..].chars().next()).filter(char::is_ascii_digit);
+        let hd = id
+            .find("-hd")
+            .and_then(|at| id[at + 3..].chars().next())
+            .filter(char::is_ascii_digit);
         Some(match hd {
             Some(n) => format!("HD{n}"),
             None => "FM".into(),
@@ -144,8 +147,6 @@ pub struct WrappedSong {
     pub track: Track,
     #[serde(default)]
     pub plays: i64,
-    #[serde(default)]
-    pub minutes: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -168,8 +169,6 @@ pub struct WrappedAlbum {
     pub title: String,
     #[serde(default)]
     pub artist: String,
-    #[serde(default)]
-    pub plays: i64,
     #[serde(default)]
     pub minutes: i64,
     #[serde(default)]
@@ -219,12 +218,18 @@ impl Api {
 
     /// Shares a playlist (yours) with someone: they add, remove and reorder its songs too.
     pub async fn share_playlist(&self, id: &str, user_id: &str) -> Result<PlaylistSummary> {
-        self.post(&format!("/api/playlists/{}/members", enc(id)), json!({ "userId": user_id })).await
+        self.post(&format!("/api/playlists/{}/members", enc(id)), json!({ "userId": user_id }))
+            .await
     }
 
     /// Stops sharing it with someone (its owner), or leaves it (yourself).
     pub async fn unshare_playlist(&self, id: &str, user_id: &str) -> Result<serde_json::Value> {
-        self.send(Method::DELETE, &format!("/api/playlists/{}/members/{}", enc(id), enc(user_id)), None).await
+        self.send(
+            Method::DELETE,
+            &format!("/api/playlists/{}/members/{}", enc(id), enc(user_id)),
+            None,
+        )
+        .await
     }
 
     // Importing, and finding what wasn't found.
@@ -269,7 +274,8 @@ impl Api {
 
     /// Starts (or finds) an artist's station.
     pub async fn artist_station(&self, source: &str, artist: &ArtistView) -> Result<StationTracks> {
-        self.post(&format!("/api/live/sxm/{}/station", enc(source)), json!({ "artist": artist })).await
+        self.post(&format!("/api/live/sxm/{}/station", enc(source)), json!({ "artist": artist }))
+            .await
     }
 
     /// A station already made (a favourite): its songs.
@@ -286,11 +292,13 @@ impl Api {
     /// Stations by name or genre, or (no query) what's popular in [country].
     pub async fn radio_find(&self, source: &str, query: &str, country: Option<&str>) -> Result<Vec<Track>> {
         let country = country.map(|c| format!("&country={}", enc(c))).unwrap_or_default();
-        self.get(&format!("/api/live/radio/{}/search?q={}{country}", enc(source), enc(query))).await
+        self.get(&format!("/api/live/radio/{}/search?q={}{country}", enc(source), enc(query)))
+            .await
     }
 
     pub async fn radio_nearby(&self, source: &str, lat: f64, lon: f64) -> Result<Vec<Track>> {
-        self.get(&format!("/api/live/radio/{}/nearby?lat={lat:.4}&lon={lon:.4}", enc(source))).await
+        self.get(&format!("/api/live/radio/{}/nearby?lat={lat:.4}&lon={lon:.4}", enc(source)))
+            .await
     }
 }
 
@@ -305,11 +313,19 @@ mod tests {
     fn imports_say_where_from() {
         assert_eq!(ImportFrom::Link("https://x".into()).body(), json!({ "url": "https://x" }));
         assert_eq!(
-            ImportFrom::List { text: "A - B".into(), name: "Mine".into() }.body(),
+            ImportFrom::List {
+                text: "A - B".into(),
+                name: "Mine".into()
+            }
+            .body(),
             json!({ "text": "A - B", "name": "Mine" })
         );
         assert_eq!(
-            ImportFrom::Library { source: "s".into(), playlist: "p".into() }.body(),
+            ImportFrom::Library {
+                source: "s".into(),
+                playlist: "p".into()
+            }
+            .body(),
             json!({ "source": "s", "playlist": "p" })
         );
     }
@@ -336,7 +352,7 @@ mod tests {
     fn wrapped_reads_what_the_server_sends() {
         let wrapped: Wrapped = serde_json::from_value(json!({
             "year": 2026, "years": [2025, 2026], "soFar": true, "listens": 3, "minutes": 12,
-            "topSongs": [{ "track": { "source": "JELLYFIN", "sourceId": "1", "title": "T", "artist": "A" }, "plays": 2, "minutes": 7 }],
+            "topSongs": [{ "track": { "source": "JELLYFIN", "sourceId": "1", "title": "T", "artist": "A" }, "plays": 2 }],
             "hours": [0, 1], "biggestDay": { "date": "2026-03-14", "minutes": 9, "listens": 3 },
             "personality": { "name": "The Explorer", "description": "…" }
         }))

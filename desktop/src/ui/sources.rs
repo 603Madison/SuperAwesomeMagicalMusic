@@ -11,7 +11,9 @@ use serde_json::{Map, Value, json};
 
 use crate::api::{FieldSpec, KindSpec, Kinds, SourceView};
 use crate::ui::ctx;
-use crate::ui::forms::{Form, boxed_list, choice, clear, confirm, failed_near, icon_button, letter, note, run, text_field, toast_near, toggle};
+use crate::ui::forms::{
+    Form, boxed_list, choice, clear, confirm, failed_near, icon_button, letter, note, run, text_field, toast_near, toggle,
+};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Scope {
@@ -31,7 +33,10 @@ impl Scope {
 /// The kinds of source, in groups: where music comes from, where it plays, and what helps.
 const KIND_GROUPS: [(&str, &[&str]); 4] = [
     ("Your music library", &["JELLYFIN", "SUBSONIC"]),
-    ("Music services and radio", &["YOUTUBE_MUSIC", "QOBUZ", "SIRIUSXM", "RADIO", "TUNER"]),
+    (
+        "Music services and radio",
+        &["YOUTUBE_MUSIC", "QOBUZ", "SIRIUSXM", "RADIO", "TUNER"],
+    ),
     ("Places to play", &["SONOS", "MUSIC_ASSISTANT"]),
     ("Helpers", &["LIDARR", "AUDD"]),
 ];
@@ -43,7 +48,10 @@ fn grouped(kinds: &Kinds) -> Vec<(String, Vec<KindSpec>)> {
         .map(|(title, names)| (title.to_string(), names.iter().filter_map(|k| kinds.spec(k).cloned()).collect()))
         .collect();
     let known: Vec<&str> = KIND_GROUPS.iter().flat_map(|(_, names)| names.iter().copied()).collect();
-    groups.push(("More".into(), kinds.kinds.iter().filter(|k| !known.contains(&k.kind.as_str())).cloned().collect()));
+    groups.push((
+        "More".into(),
+        kinds.kinds.iter().filter(|k| !known.contains(&k.kind.as_str())).cloned().collect(),
+    ));
     groups.retain(|(_, specs)| !specs.is_empty());
     groups
 }
@@ -105,7 +113,11 @@ fn show(state: &Shared) {
     let s = state.borrow();
     let holder = s.holder.clone();
     clear(&holder);
-    let list: Vec<&SourceView> = s.sources.iter().filter(|src| s.scope == Scope::Personal || src.scope == "global").collect();
+    let list: Vec<&SourceView> = s
+        .sources
+        .iter()
+        .filter(|src| s.scope == Scope::Personal || src.scope == "global")
+        .collect();
     if list.is_empty() {
         holder.append(&note(match s.scope {
             Scope::Global => "No sources yet. Add the services everyone on this server can use.",
@@ -125,7 +137,11 @@ fn show(state: &Shared) {
     if can_add {
         let add = crate::ui::widgets::button(
             Some("list-add-symbolic"),
-            if s.scope == Scope::Global { "Add a shared source" } else { "Add a source" },
+            if s.scope == Scope::Global {
+                "Add a shared source"
+            } else {
+                "Add a source"
+            },
             "tonal",
         );
         add.set_halign(gtk::Align::Start);
@@ -141,8 +157,17 @@ fn show(state: &Shared) {
 
 /// "Shared by the admins · Jellyfin · https://jellyfin.example.com · maddie".
 fn source_line(source: &SourceView, kinds: Option<&Kinds>) -> String {
-    let mut parts = vec![if source.scope == "global" { "Shared by the admins".to_string() } else { "Yours".to_string() }];
-    parts.push(kinds.and_then(|k| k.spec(&source.kind)).map(|s| s.label.clone()).unwrap_or_else(|| source.kind.clone()));
+    let mut parts = vec![if source.scope == "global" {
+        "Shared by the admins".to_string()
+    } else {
+        "Yours".to_string()
+    }];
+    parts.push(
+        kinds
+            .and_then(|k| k.spec(&source.kind))
+            .map(|s| s.label.clone())
+            .unwrap_or_else(|| source.kind.clone()),
+    );
     for key in ["serverUrl", "username"] {
         if let Some(value) = source.settings.get(key).and_then(Value::as_str).filter(|v| !v.is_empty()) {
             parts.push(value.to_string());
@@ -177,7 +202,9 @@ fn source_row(state: &Shared, source: &SourceView) -> adw::ActionRow {
         switch.connect_state_set(move |switch, use_it| {
             let Some(api) = ctx().api() else { return glib::Propagation::Stop };
             let (st, id, switch) = (st.clone(), id.clone(), switch.clone());
-            run(async move { api.hide_source(&id, !use_it).await }, move |result| changed(&st, &switch, result));
+            run(async move { api.hide_source(&id, !use_it).await }, move |result| {
+                changed(&st, &switch, result)
+            });
             glib::Propagation::Proceed
         });
         row.add_suffix(&holder);
@@ -188,7 +215,10 @@ fn source_row(state: &Shared, source: &SourceView) -> adw::ActionRow {
         switch.connect_state_set(move |switch, on| {
             let Some(api) = ctx().api() else { return glib::Propagation::Stop };
             let (st, id, switch) = (st.clone(), id.clone(), switch.clone());
-            run(async move { api.update_source(&id, json!({ "enabled": on })).await }, move |result| changed(&st, &switch, result));
+            run(
+                async move { api.update_source(&id, json!({ "enabled": on })).await },
+                move |result| changed(&st, &switch, result),
+            );
             glib::Propagation::Proceed
         });
         row.add_suffix(&holder);
@@ -222,7 +252,11 @@ fn source_row(state: &Shared, source: &SourceView) -> adw::ActionRow {
         remove.connect_clicked(move |button| {
             let detail = format!(
                 "{} Songs from it in playlists are found in your other sources where possible.",
-                if source.scope == "global" { "Nobody on the server will be able to use it any more." } else { "Its saved sign-in is deleted." }
+                if source.scope == "global" {
+                    "Nobody on the server will be able to use it any more."
+                } else {
+                    "Its saved sign-in is deleted."
+                }
             );
             let (st, id, button) = (st.clone(), source.id.clone(), button.clone());
             confirm(&format!("Remove {}?", source.name), &detail, "Cancel", "Remove", move || {
@@ -267,7 +301,11 @@ fn changed(state: &Shared, switch: &gtk::Switch, result: anyhow::Result<SourceVi
 /// Choosing what to add, in the web's groups.
 fn pick_kind(state: &Shared) {
     let Some(kinds) = state.borrow().kinds.clone() else { return };
-    let dialog = adw::Dialog::builder().title("Add a source").content_width(480).content_height(620).build();
+    let dialog = adw::Dialog::builder()
+        .title("Add a source")
+        .content_width(480)
+        .content_height(620)
+        .build();
     let body = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(8)
@@ -298,7 +336,12 @@ fn pick_kind(state: &Shared) {
     }
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&adw::HeaderBar::new());
-    toolbar.set_content(Some(&gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).child(&body).build()));
+    toolbar.set_content(Some(
+        &gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .child(&body)
+            .build(),
+    ));
     dialog.set_child(Some(&toolbar));
     dialog.present(Some(&ctx().window));
 }
@@ -335,7 +378,11 @@ impl Input {
         match self {
             Input::Text(e) => Some(e.text().to_string()).filter(|t| !t.is_empty()).map(Value::String),
             Input::Switch(s) => Some(Value::Bool(s.is_active())),
-            Input::Pick(d, values) => values.get(d.selected() as usize).filter(|v| !v.is_empty()).cloned().map(Value::String),
+            Input::Pick(d, values) => values
+                .get(d.selected() as usize)
+                .filter(|v| !v.is_empty())
+                .cloned()
+                .map(Value::String),
         }
     }
 }
@@ -351,7 +398,12 @@ fn source_dialog(state: &Shared, spec: KindSpec, source: Option<SourceView>) {
     if !spec.description.is_empty() {
         form.note(&spec.description);
     }
-    let (name_field, name) = text_field("Name", Some("How it's shown in search results."), source.as_ref().map(|s| s.name.as_str()).unwrap_or(""), false);
+    let (name_field, name) = text_field(
+        "Name",
+        Some("How it's shown in search results."),
+        source.as_ref().map(|s| s.name.as_str()).unwrap_or(""),
+        false,
+    );
     if let Some(entry) = name.downcast_ref::<gtk::Entry>() {
         entry.set_placeholder_text(Some(&spec.label));
     }
@@ -379,9 +431,17 @@ fn source_dialog(state: &Shared, spec: KindSpec, source: Option<SourceView>) {
                 inputs.borrow_mut().push((f.key.clone(), Input::Pick(drop, options)));
             }
             _ => {
-                let value = if f.secret { String::new() } else { saved(&f.key).or_else(|| f.default.clone()).unwrap_or_default() };
+                let value = if f.secret {
+                    String::new()
+                } else {
+                    saved(&f.key).or_else(|| f.default.clone()).unwrap_or_default()
+                };
                 let help = if f.secret && source.is_some() {
-                    Some(format!("Leave empty to keep the saved one. {}", f.help.clone().unwrap_or_default()).trim().to_string())
+                    Some(
+                        format!("Leave empty to keep the saved one. {}", f.help.clone().unwrap_or_default())
+                            .trim()
+                            .to_string(),
+                    )
                 } else {
                     f.help.clone()
                 };
@@ -401,8 +461,18 @@ fn source_dialog(state: &Shared, spec: KindSpec, source: Option<SourceView>) {
         run(async move { api.lidarr_options(&id).await }, move |result| {
             let Ok(options) = result else { return };
             let lists = [
-                ("Quality profile", "qualityProfileId", "The root folder's default", options.quality_profiles),
-                ("Metadata profile", "metadataProfileId", "The root folder's default", options.metadata_profiles),
+                (
+                    "Quality profile",
+                    "qualityProfileId",
+                    "The root folder's default",
+                    options.quality_profiles,
+                ),
+                (
+                    "Metadata profile",
+                    "metadataProfileId",
+                    "The root folder's default",
+                    options.metadata_profiles,
+                ),
                 ("Root folder", "rootFolderPath", "The first one", options.root_folders),
             ];
             for (label, key, none, choices) in lists {
@@ -478,7 +548,10 @@ mod tests {
             ]
         }))
         .unwrap();
-        let groups: Vec<(String, Vec<String>)> = grouped(&kinds).into_iter().map(|(t, s)| (t, s.into_iter().map(|k| k.kind).collect())).collect();
+        let groups: Vec<(String, Vec<String>)> = grouped(&kinds)
+            .into_iter()
+            .map(|(t, s)| (t, s.into_iter().map(|k| k.kind).collect()))
+            .collect();
         assert_eq!(
             groups,
             vec![

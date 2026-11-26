@@ -300,6 +300,12 @@ pub fn track_key(track: &Track) -> String {
     format!("{}|{}:{}", track.via.as_deref().unwrap_or(""), track.source, track.source_id)
 }
 
+/// Adds "Song info" to every song's ⋯ menu, which calls [show] with the song.
+#[allow(dead_code)]
+pub fn set_song_info(show: impl Fn(&Track) + 'static) {
+    SONG_INFO.with(|s| s.replace(Some(Rc::new(show))));
+}
+
 /// A song row the player marks while it plays.
 struct Marked {
     row: glib::WeakRef<gtk::ListBoxRow>,
@@ -308,6 +314,8 @@ struct Marked {
 }
 
 thread_local! {
+    /// Shows a song's details: set by the song info view, it adds "Song info" to songs' menus.
+    static SONG_INFO: RefCell<Option<Rc<dyn Fn(&Track)>>> = const { RefCell::new(None) };
     static MARKED: RefCell<Vec<Marked>> = const { RefCell::new(Vec::new()) };
     /// What's playing (its key) and whether it's playing, as last marked.
     static SHOWN: RefCell<(Option<String>, bool)> = const { RefCell::new((None, false)) };
@@ -398,6 +406,8 @@ pub struct ListStyle {
     pub playlist: Option<PlaylistEdit>,
     /// Told when a song in the list starts playing (a playlist notes it was played).
     pub on_play: Option<Rc<dyn Fn()>>,
+    /// A note after each song's artist (on a shared playlist: who added it), by index.
+    pub notes: Option<Rc<Vec<String>>>,
 }
 
 /// Songs, as the web player lists them: click one to play the list from it (or to pause it).
@@ -477,7 +487,10 @@ fn track_row(track: &Track, index: usize, style: &ListStyle) -> gtk::ListBoxRow 
         .build();
     title.add_css_class("track-title");
     text.append(&title);
-    let under = if style.hide_album { track.artist.clone() } else { track.subtitle() };
+    let mut under = if style.hide_album { track.artist.clone() } else { track.subtitle() };
+    if let Some(note) = style.notes.as_ref().and_then(|n| n.get(index)).filter(|n| !n.is_empty()) {
+        under = if under.is_empty() { note.clone() } else { format!("{under} · {note}") };
+    }
     if !under.is_empty() {
         let sub = gtk::Label::builder()
             .label(&under)
@@ -647,6 +660,15 @@ fn track_menu(track: &Track, index: usize, playlist: Option<&PlaylistEdit>) -> g
     let (album, artist) = (track.album.clone().unwrap_or_default(), track.artist.clone());
     action("album", Box::new(move || ctx().open_album(None, &album, &artist)));
     add_actions(&group, Rc::new(vec![track.clone()]));
+    // A Pandora station from the song's artist, through SiriusXM.
+    let station = !live && !missing && !track.artist.is_empty() && crate::ui::radio::can_start_stations();
+    let artist = track.artist.clone();
+    action("station", Box::new(move || crate::ui::radio::start_artist_station(&artist)));
+    let info = SONG_INFO.with(|s| s.borrow().clone());
+    if let Some(show) = info.clone() {
+        let t = track.clone();
+        action("info", Box::new(move || show(&t)));
+    }
 
     if let Some(edit) = playlist {
         let count = edit.entry_ids.len();
@@ -706,7 +728,15 @@ fn track_menu(track: &Track, index: usize, playlist: Option<&PlaylistEdit>) -> g
         if track.album.as_deref().is_some_and(|a| !a.is_empty()) {
             browse.append(Some("Go to album"), Some("song.album"));
         }
+        if station {
+            browse.append(Some("Start a station"), Some("song.station"));
+        }
         menu.append_section(None, &browse);
+    }
+    if info.is_some() && !missing {
+        let about = gio::Menu::new();
+        about.append(Some("Song info"), Some("song.info"));
+        menu.append_section(None, &about);
     }
     if let Some(edit) = playlist {
         let own = gio::Menu::new();

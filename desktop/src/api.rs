@@ -818,10 +818,6 @@ impl Api {
         Ok(response.bytes().await?.to_vec())
     }
 
-    pub async fn history(&self) -> Result<Vec<Listen>> {
-        self.get("/api/history?limit=200").await
-    }
-
     pub async fn add_listens(&self, listens: Vec<Listen>) -> Result<serde_json::Value> {
         self.post("/api/history", json!({ "listens": listens })).await
     }
@@ -870,10 +866,6 @@ impl Api {
         )
         .await
         .map(|_| ())
-    }
-
-    pub async fn radio_search(&self, source: &str, query: &str) -> Result<Vec<Track>> {
-        self.get(&format!("/api/live/radio/{}/search?q={}", enc(source), enc(query))).await
     }
 
     /// What's on a radio station: "Artist - Title", and the song in full where the station says

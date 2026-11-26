@@ -19,7 +19,10 @@ pub struct Form {
 impl Form {
     pub fn new(title: &str, action: &str) -> Form {
         let dialog = adw::Dialog::builder().title(title).content_width(520).build();
-        let header = adw::HeaderBar::builder().show_start_title_buttons(false).show_end_title_buttons(false).build();
+        let header = adw::HeaderBar::builder()
+            .show_start_title_buttons(false)
+            .show_end_title_buttons(false)
+            .build();
         let cancel = gtk::Button::with_label("Cancel");
         let d = dialog.clone();
         cancel.connect_clicked(move |_| {
@@ -51,7 +54,12 @@ impl Form {
         toolbar.set_content(Some(&scroll));
         dialog.set_child(Some(&toolbar));
         dialog.set_default_widget(Some(&button));
-        Form { dialog, body, action: button, banner }
+        Form {
+            dialog,
+            body,
+            action: button,
+            banner,
+        }
     }
 
     /// A line of plain text (what the dialog is about).
@@ -84,11 +92,6 @@ impl Form {
 
     pub fn present(&self) {
         self.dialog.present(Some(&ctx().window));
-    }
-
-    /// Presented over [parent] (another dialog, say).
-    pub fn present_over(&self, parent: &impl IsA<gtk::Widget>) {
-        self.dialog.present(Some(parent));
     }
 }
 
@@ -204,8 +207,12 @@ pub fn boxed_list() -> gtk::ListBox {
 
 /// "just now", "5 min ago", "3 hr ago", "Mar 4", as the web player says when.
 pub fn when(ms: i64) -> String {
-    let Ok(then) = glib::DateTime::from_unix_local(ms / 1000) else { return String::new() };
-    let Ok(now) = glib::DateTime::now_local() else { return String::new() };
+    let Ok(then) = glib::DateTime::from_unix_local(ms / 1000) else {
+        return String::new();
+    };
+    let Ok(now) = glib::DateTime::now_local() else {
+        return String::new();
+    };
     let seconds = now.to_unix() - then.to_unix();
     if seconds < 60 {
         "just now".into()
@@ -227,7 +234,11 @@ pub fn plural(n: i64, word: &str) -> String {
 /// Says [text] where it's seen: in Preferences when [near] is in it (the window's toasts are
 /// under it), or in the window.
 pub fn toast_near(near: &impl IsA<gtk::Widget>, text: &str) {
-    match near.as_ref().ancestor(adw::PreferencesDialog::static_type()).and_downcast::<adw::PreferencesDialog>() {
+    match near
+        .as_ref()
+        .ancestor(adw::PreferencesDialog::static_type())
+        .and_downcast::<adw::PreferencesDialog>()
+    {
         Some(dialog) => {
             let toast = adw::Toast::new(text);
             toast.set_timeout(4);
@@ -254,6 +265,13 @@ pub fn run<T: Send + 'static>(
     glib::spawn_future_local(async move {
         done(crate::rt::bg(work).await);
     });
+}
+
+/// A small heading in capitals, for a dialog's lists.
+pub fn small_heading(text: &str) -> gtk::Label {
+    let label = gtk::Label::builder().label(text.to_uppercase()).xalign(0.0).margin_top(8).build();
+    label.add_css_class("kind-group-title");
+    label
 }
 
 /// Removes every child of [container].
