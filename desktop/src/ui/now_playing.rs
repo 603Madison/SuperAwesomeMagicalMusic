@@ -357,10 +357,10 @@ fn css(accent: &str) -> String {
 .np button.flat:checked {{ background: none; color: @np_accent; }}
 .np-art {{
   border-radius: 22px; background: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 30px 70px -24px rgba(0, 0, 0, 0.75), 0 0 140px -40px @np_accent;
+  box-shadow: 0 24px 56px -20px rgba(0, 0, 0, 0.7), 0 0 72px -12px alpha(@np_accent, 0.5);
   transform: scale(0.94); transition: transform 700ms cubic-bezier(0.2, 0.9, 0.25, 1), box-shadow 700ms;
 }}
-.np-art.playing {{ transform: none; box-shadow: 0 40px 90px -24px rgba(0, 0, 0, 0.8), 0 0 160px -30px @np_accent; }}
+.np-art.playing {{ transform: none; box-shadow: 0 30px 70px -20px rgba(0, 0, 0, 0.75), 0 0 90px -10px alpha(@np_accent, 0.6); }}
 .np-title {{ font-size: 2.1em; font-weight: 700; letter-spacing: -0.015em; }}
 .np-artist {{ font-size: 1.12em; color: rgba(255, 255, 255, 0.74); }}
 .np-artist link {{ color: rgba(255, 255, 255, 0.86); text-decoration-line: none; }}
@@ -1019,6 +1019,9 @@ impl Np {
         let state = ctx().player.state();
         self.list_key.borrow_mut().clear();
         self.update(&state);
+        // Back on the lyrics, once they're laid out again: the line being sung, in view.
+        let lyrics = self.lyrics.clone();
+        glib::idle_add_local_once(move || lyrics.follow(false));
     }
 
     /// The view that's showing (in a wide window, the cover is always there).
