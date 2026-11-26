@@ -24,6 +24,19 @@ view, no Chromium: a 5 MB program that starts at once.
 - **The player** along the bottom, as the web player's: shuffle, repeat, the queue, a sleep timer
   and a star for live stations; **media keys and the desktop's media
   controls** (GNOME's, KDE's, the lock screen) through MPRIS, with the song and its cover.
+- **Now playing**, as the web player's: the cover large and the page washed in its colours, the
+  song's artist and album a click away, its **lyrics** following the song (the line being sung
+  big and bright; click a line to play from there), **Up next** (play from, move, remove, clear),
+  and on live radio the song on the channel (with its lyrics) and what it played before. Open it
+  from the song in the player bar or the sidebar; full screen from its corner.
+- **Song details**: where it's from, the copy your server picked (format, bitrate, quality cap),
+  what GStreamer decodes (codec, sample rate, bits) and the volume levelling applied.
+- **Your devices**: the app is one of them, like the web player and the phone app. The devices
+  button lists your other web players, phones and speakers (Sonos, Music Assistant) with what's
+  on each: play or pause them, or move playback there or here. While another device plays, the
+  player bar controls it ("Play here" brings it back).
+- **Even out volume** (Preferences): your library's loudness values where it has them, else
+  gentle levelling as it plays, with a limiter.
 - What you play counts toward your **history and Wrapped**, live radio included.
 - **The family's look**: Lexend, rounded cards over a soft glow of the theme, as the web player and
   the phone app have it, with the same **themes**: Aurora (purple and green, the default), Violet,
@@ -73,6 +86,8 @@ GitHub release. The version in `Cargo.toml` is the project's version (`versionNa
 without a sound card.
 
 How it fits together: `src/api.rs` and `src/api/` (the server's API, as the web player and phone app use it),
-`src/player.rs` (GStreamer's playbin3, the queue, what's on, listens), `src/mpris.rs` (media
-controls), `src/ui/` (the window, sign-in, pages and the player bar). Media requests carry the
+`src/player.rs` (GStreamer's playbin3, the queue, what's on, listens), `src/leveller.rs` (even
+volume, as the web player's), `src/connect.rs` (the devices hub, `/api/connect/ws`),
+`src/mpris.rs` (media controls), `src/ui/` (the window, sign-in, pages, Now playing, the devices
+and the player bar). Media requests carry the
 sign-in as the session cookie, which GStreamer's HLS downloader passes on to every segment.

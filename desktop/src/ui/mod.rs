@@ -4,9 +4,11 @@ mod admin;
 mod dj;
 mod forms;
 mod history;
+mod devices;
 mod listen;
 mod listen_start;
 mod login;
+pub mod now_playing;
 mod pages;
 mod player_bar;
 mod playlists;
@@ -80,6 +82,10 @@ impl Ctx {
     fn set_signed_in(&self, server: &str, token: Option<String>) {
         let api = Api::new(server, token);
         self.player.set_api(Some(api.clone()));
+        // One of the person's devices, while signed in.
+        if let Some(hub) = crate::connect::hub() {
+            hub.start(&api, &Self::device_name());
+        }
         self.api.replace(Some(api));
     }
 
@@ -107,6 +113,9 @@ impl Ctx {
     }
 
     fn sign_out_here(&self) {
+        if let Some(hub) = crate::connect::hub() {
+            hub.stop();
+        }
         self.player.set_api(None);
         self.api.replace(None);
         {
@@ -142,6 +151,12 @@ impl Ctx {
         if let Some(nav) = self.nav.borrow().as_ref() {
             nav.pop();
         }
+    }
+
+    /// What's playing, made to be looked at (from the player bar, the sidebar, or a shortcut).
+    pub fn open_now_playing(&self) {
+        let Some(nav) = self.nav.borrow().clone() else { return };
+        now_playing::show_in(&nav);
     }
 
     pub fn open_artist(&self, id: Option<&str>, name: &str) {
@@ -180,8 +195,19 @@ fn register_icon() {
         return;
     }
     let down = THUMB_UP.replace("<path ", r#"<path transform="rotate(180 8 8)" "#);
-    let mut ok = std::fs::write(dir.join("samm-thumb-up-symbolic.svg"), THUMB_UP).is_ok();
-    ok &= std::fs::write(dir.join("samm-thumb-down-symbolic.svg"), down).is_ok();
+    let icons = [
+        ("samm-thumb-up-symbolic.svg", THUMB_UP),
+        ("samm-thumb-down-symbolic.svg", down.as_str()),
+        ("samm-devices-symbolic.svg", devices::DEVICES_ICON),
+        ("samm-info-symbolic.svg", now_playing::INFO_ICON),
+    ];
+    // In the hicolor theme's layout (its scalable/apps), where GTK takes them as symbolic icons
+    // and draws them in the text's colour; loose in the folder they'd keep their own grey.
+    let themed = dir.join("hicolor").join("scalable").join("apps");
+    let mut ok = std::fs::create_dir_all(&themed).is_ok();
+    for (name, svg) in icons {
+        ok &= std::fs::write(themed.join(name), svg).is_ok();
+    }
     if !theme.has_icon(crate::APP_ID) {
         let png: &[u8] = include_bytes!("../../data/icons/hicolor/256x256/apps/io.github._603madison.SuperAwesomeMagicalMusic.png");
         ok |= std::fs::write(dir.join(format!("{}.png", crate::APP_ID)), png).is_ok();
@@ -198,7 +224,7 @@ pub fn activate(app: &adw::Application) {
         return;
     }
     register_icon();
-    let config = Config::load();
+    let mut config = Config::load();
     theme::apply(&config.palette, &config.style, config.bold_text);
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -217,6 +243,12 @@ pub fn activate(app: &adw::Application) {
     let player = Player::new();
     player.set_volume(config.volume);
     player.set_choices(config.kbps, config.thorough);
+    player.set_levelling(config.levelling);
+    if config.device_id.is_empty() {
+        config.device_id = crate::connect::new_device_id();
+        config.save();
+    }
+    crate::connect::install(player.clone(), config.device_id.clone());
     player.set_repeat(match config.repeat.as_str() {
         "all" => crate::player::Repeat::All,
         "one" => crate::player::Repeat::One,
@@ -289,6 +321,8 @@ pub fn activate(app: &adw::Application) {
     install_shortcuts(app);
     dj::start();
     style::ensure();
+    // "Song info" in every song's menu: the same details as Now playing's Details button.
+    widgets::set_song_info(|track| now_playing::track_info(track));
     window.present();
 }
 

@@ -16,6 +16,14 @@ fn runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
+/// Runs [future] on the network runtime, for as long as it goes on (a connection).
+pub fn spawn<F>(future: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    runtime().spawn(future);
+}
+
 /// Runs [future] on the network runtime; awaiting it (on the main thread) gives its result.
 pub async fn bg<F, T>(future: F) -> T
 where

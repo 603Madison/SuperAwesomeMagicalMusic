@@ -35,6 +35,12 @@ pub struct Config {
     pub repeat: String,
     /// On the person's own stations, the DJ talks (off: what it says is only shown).
     pub dj_voice: bool,
+    /// Even out volume between songs (as the web player's levelling).
+    pub levelling: bool,
+    /// This app's id among the person's devices (made once).
+    pub device_id: String,
+    /// The Now playing page's tab last chosen: cover, lyrics or queue.
+    pub now_playing_view: String,
 }
 
 impl Default for Config {
@@ -54,6 +60,9 @@ impl Default for Config {
             bold_text: false,
             repeat: "off".into(),
             dj_voice: true,
+            levelling: true,
+            device_id: String::new(),
+            now_playing_view: String::new(),
         }
     }
 }

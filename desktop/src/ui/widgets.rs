@@ -31,10 +31,18 @@ fn image_client() -> &'static reqwest::Client {
 pub fn cover_url(url: &str, px: i32) -> String {
     if url.starts_with('/') {
         let base = ctx().api().map(|a| a.base().to_string()).unwrap_or_default();
-        format!("{base}{url}&px={px}")
+        let joiner = if url.contains('?') { '&' } else { '?' };
+        format!("{base}{url}{joiner}px={px}")
     } else {
         url.to_string()
     }
+}
+
+/// The sign-in, for an address on the signed-in server (none for anywhere else).
+pub fn server_sign_in(address: &str) -> Option<String> {
+    let api = ctx().api()?;
+    let base = format!("{}/", api.base());
+    address.starts_with(&base).then(|| api.token().map(str::to_string)).flatten()
 }
 
 /// A cover, [size] pixels square (rounded, or round for artists), with a note until it loads.
@@ -80,8 +88,14 @@ pub fn artwork(url: Option<&str>, size: i32, round: bool) -> gtk::Widget {
     }
     glib::spawn_future_local(async move {
         let fetch = address.clone();
+        let sign_in = server_sign_in(&fetch);
         let bytes = bg(async move {
-            let response = image_client().get(&fetch).send().await.ok()?;
+            let mut request = image_client().get(&fetch);
+            // Images the server keeps behind the sign-in (a tuner's station logos).
+            if let Some(token) = sign_in {
+                request = request.bearer_auth(token);
+            }
+            let response = request.send().await.ok()?;
             if !response.status().is_success() {
                 return None;
             }
@@ -633,7 +647,7 @@ pub fn add_actions(group: &gio::SimpleActionGroup, tracks: Rc<Vec<Track>>) {
 }
 
 /// Play next, add to the queue or a playlist, the song's artist and album, and a playlist's own.
-fn track_menu(track: &Track, index: usize, playlist: Option<&PlaylistEdit>) -> gtk::MenuButton {
+pub fn track_menu(track: &Track, index: usize, playlist: Option<&PlaylistEdit>) -> gtk::MenuButton {
     let group = gio::SimpleActionGroup::new();
     let action = |name: &str, run: Box<dyn Fn()>| {
         let a = gio::SimpleAction::new(name, None);

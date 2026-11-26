@@ -26,6 +26,11 @@ const SECTIONS: &[Section] = &[
         make: pages::search_page,
     },
     Section {
+        title: "Now playing",
+        icon: "media-optical-cd-audio-symbolic",
+        make: crate::ui::now_playing::page,
+    },
+    Section {
         title: "Radio",
         icon: "network-wireless-signal-excellent-symbolic",
         make: crate::ui::radio::radio_page,
@@ -69,6 +74,11 @@ thread_local! {
     static SECTION_LIST: RefCell<Option<glib::WeakRef<gtk::ListBox>>> = const { RefCell::new(None) };
     /// Your favourite channels and stations (as keys), for the player's star.
     static FAVOURITES: RefCell<std::collections::HashSet<String>> = RefCell::new(Default::default());
+}
+
+/// Where the sidebar has the section called [title].
+pub fn section_of(title: &str) -> Option<usize> {
+    SECTIONS.iter().position(|s| s.title == title)
 }
 
 /// Whether a live channel or station (its key) is among your favourites.
@@ -507,6 +517,21 @@ pub fn preferences(ctx: &Rc<Ctx>) {
         ctx.player.set_choices(kbps, row.is_active());
     });
     playback.add(&thorough);
+    let levelling = adw::SwitchRow::builder()
+        .title("Even out volume")
+        .subtitle("Songs from different services play at about the same loudness.")
+        .active(ctx.config.borrow().levelling)
+        .build();
+    levelling.connect_active_notify(move |row| {
+        let ctx = crate::ui::ctx();
+        {
+            let mut config = ctx.config.borrow_mut();
+            config.levelling = row.is_active();
+            config.save();
+        }
+        ctx.player.set_levelling(row.is_active());
+    });
+    playback.add(&levelling);
     crate::ui::settings::more_playback(&playback);
     page.add(&playback);
     page.set_title("General");
