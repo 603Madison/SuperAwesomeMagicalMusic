@@ -16,6 +16,7 @@ import com.music.connect.net.ApiTrack
 import com.music.connect.net.ConnectClient
 import com.music.connect.net.Listen
 import com.music.connect.net.NetworkMonitor
+import com.music.connect.net.PlaylistPerson
 import com.music.connect.net.ServerApi
 import com.music.connect.speakers.Speakers
 import com.music.player.AppInfo
@@ -66,7 +67,9 @@ class Container(val context: Context) {
     @Volatile
     var youtube: MusicSource = YouTubeMusicSource(plainHttp)
     val db = ConnectDb.build(context)
-    val library = Library(db, api) { SyncWorker.enqueue(context) }
+    val library = Library(db, api, onChanged = { SyncWorker.enqueue(context) }) {
+        settings.value.user?.let { PlaylistPerson(it.id, it.username, it.displayName) }
+    }
     val downloads = Downloads(context, db, api, http, prefs) { DownloadWorker.enqueue(context, settings.value.downloadOnWifiOnly) }
     val signIn = com.music.connect.net.SignIn(context, api, prefs)
 
