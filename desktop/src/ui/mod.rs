@@ -288,6 +288,7 @@ pub fn activate(app: &adw::Application) {
     });
     install_shortcuts(app);
     dj::start();
+    style::ensure();
     window.present();
 }
 

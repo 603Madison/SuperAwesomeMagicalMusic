@@ -18,7 +18,7 @@ pub struct Form {
 
 impl Form {
     pub fn new(title: &str, action: &str) -> Form {
-        let dialog = adw::Dialog::builder().title(title).content_width(520).build();
+        let dialog = adw::Dialog::builder().title(title).follows_content_size(true).build();
         let header = adw::HeaderBar::builder()
             .show_start_title_buttons(false)
             .show_end_title_buttons(false)
@@ -41,6 +41,7 @@ impl Form {
             .margin_bottom(24)
             .margin_start(24)
             .margin_end(24)
+            .width_request(420)
             .build();
         let scroll = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
@@ -97,13 +98,13 @@ impl Form {
 
 /// Muted text that wraps.
 pub fn note(text: &str) -> gtk::Label {
-    let label = gtk::Label::builder().label(text).xalign(0.0).wrap(true).build();
+    let label = gtk::Label::builder().label(text).xalign(0.0).wrap(true).max_width_chars(60).build();
     label.add_css_class("meta");
     label
 }
 
 fn help_label(help: &str) -> gtk::Label {
-    let line = gtk::Label::builder().label(help).xalign(0.0).wrap(true).build();
+    let line = gtk::Label::builder().label(help).xalign(0.0).wrap(true).max_width_chars(60).build();
     line.add_css_class("field-help");
     line
 }
@@ -143,7 +144,12 @@ pub fn toggle(label: &str, help: Option<&str>, on: bool) -> (gtk::Box, gtk::Swit
         .hexpand(true)
         .valign(gtk::Align::Center)
         .build();
-    let name = gtk::Label::builder().label(label).xalign(0.0).wrap(true).build();
+    let name = gtk::Label::builder()
+        .label(label)
+        .xalign(0.0)
+        .wrap(true)
+        .max_width_chars(50)
+        .build();
     name.add_css_class("field-label");
     text.append(&name);
     if let Some(help) = help.filter(|h| !h.trim().is_empty()) {

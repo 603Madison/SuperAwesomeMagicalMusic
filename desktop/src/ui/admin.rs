@@ -401,6 +401,7 @@ fn server_form(into: &gtk::Box, admin: Rc<AdminSettings>) {
         .xalign(0.0)
         .hexpand(true)
         .wrap(true)
+        .max_width_chars(50)
         .wrap_mode(gtk::pango::WrapMode::Char)
         .build();
     uri.add_css_class("copy-text");

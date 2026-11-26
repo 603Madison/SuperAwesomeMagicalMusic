@@ -99,7 +99,7 @@ fn show_results(into: &gtk::Box, query: &str, found: SearchResults) {
         into.append(&status(
             "edit-find-symbolic",
             &format!("Nothing found for “{query}”"),
-            "Try other words, or check your sources on the server.",
+            "Try other words, or check your sources in Preferences.",
         ));
         return;
     }

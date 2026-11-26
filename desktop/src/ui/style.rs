@@ -82,9 +82,10 @@ row.is-off { opacity: 0.6; }
 .story-text { font-size: 1.1em; color: alpha(white, 0.92); }
 .story-rank { font-size: 1.3em; font-weight: 700; color: alpha(white, 0.75); }
 .story button { background: alpha(white, 0.16); color: white; border-radius: 999px; }
-.story button.light { background: white; color: #3b2a8f; }
+.story button.light, .story button.light label, .story button.light image { background: white; color: #3b2a8f; }
 .story-bar-fill { background: alpha(white, 0.85); border-radius: 3px 3px 0 0; }
-.story-dots { padding: 4px; }
+.story progressbar > trough { min-width: 0; min-height: 4px; border-radius: 2px; background: alpha(white, 0.3); }
+.story progressbar > trough > progress { min-width: 0; min-height: 4px; border-radius: 2px; background: white; }
 "#;
 
 thread_local! {

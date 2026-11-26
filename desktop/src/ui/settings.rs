@@ -313,6 +313,7 @@ fn link_device(near: &gtk::Button, devices: gtk::Box) {
         let name = gtk::Label::builder()
             .label(title)
             .wrap(true)
+            .max_width_chars(40)
             .justify(gtk::Justification::Center)
             .build();
         name.add_css_class("login-title");
@@ -320,6 +321,7 @@ fn link_device(near: &gtk::Button, devices: gtk::Box) {
         let line = gtk::Label::builder()
             .label(text)
             .wrap(true)
+            .max_width_chars(40)
             .use_markup(true)
             .justify(gtk::Justification::Center)
             .build();
@@ -555,7 +557,7 @@ fn show_connector(into: &gtk::Box, devices: gtk::Box) {
             Ok(url) => {
                 clear(&holder);
                 let row = gtk::Box::builder().spacing(8).build();
-                let text = gtk::Label::builder().label(&url).selectable(true).wrap(true).wrap_mode(gtk::pango::WrapMode::Char).xalign(0.0).hexpand(true).build();
+                let text = gtk::Label::builder().label(&url).selectable(true).wrap(true).max_width_chars(40).wrap_mode(gtk::pango::WrapMode::Char).xalign(0.0).hexpand(true).build();
                 text.add_css_class("copy-text");
                 row.append(&text);
                 let copy = crate::ui::widgets::button(Some("edit-copy-symbolic"), "Copy", "ghost");

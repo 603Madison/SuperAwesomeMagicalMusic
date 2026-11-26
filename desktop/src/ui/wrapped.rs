@@ -332,10 +332,18 @@ fn two_columns(left: &impl IsA<gtk::Widget>, right: &impl IsA<gtk::Widget>) -> g
         let row = row.downgrade();
         move |window: &adw::ApplicationWindow| {
             let Some(row) = row.upgrade() else { return };
-            let width = if window.width() > 0 { window.width() } else { window.default_width() };
+            let width = if window.width() > 0 {
+                window.width()
+            } else {
+                window.default_width()
+            };
             // The sidebar takes its share of a wide window.
             let wide = width >= 1040;
-            row.set_orientation(if wide { gtk::Orientation::Horizontal } else { gtk::Orientation::Vertical });
+            row.set_orientation(if wide {
+                gtk::Orientation::Horizontal
+            } else {
+                gtk::Orientation::Vertical
+            });
             row.set_homogeneous(wide);
         }
     };
@@ -569,7 +577,12 @@ fn tile(label: &str, value: &str, under: &str) -> gtk::Box {
     let tile = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).build();
     tile.add_css_class("wrapped-tile");
     // Kept narrow enough for three tiles a row on a wide page.
-    let name = gtk::Label::builder().label(label.to_uppercase()).xalign(0.0).wrap(true).max_width_chars(24).build();
+    let name = gtk::Label::builder()
+        .label(label.to_uppercase())
+        .xalign(0.0)
+        .wrap(true)
+        .max_width_chars(24)
+        .build();
     name.add_css_class("wrapped-tile-label");
     tile.append(&name);
     let big = gtk::Label::builder()
@@ -582,7 +595,12 @@ fn tile(label: &str, value: &str, under: &str) -> gtk::Box {
     big.add_css_class("wrapped-tile-value");
     tile.append(&big);
     if !under.is_empty() {
-        let line = gtk::Label::builder().label(under).xalign(0.0).wrap(true).max_width_chars(28).build();
+        let line = gtk::Label::builder()
+            .label(under)
+            .xalign(0.0)
+            .wrap(true)
+            .max_width_chars(28)
+            .build();
         line.add_css_class("meta");
         tile.append(&line);
     }
@@ -842,7 +860,9 @@ fn slides(data: &Wrapped) -> Vec<gtk::Box> {
     let numbers = gtk::Box::builder().spacing(48).halign(gtk::Align::Center).margin_top(12).build();
     for (title, value) in [("MINUTES", num(data.minutes)), ("PERSONALITY", data.personality.name.clone())] {
         let column = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(2).build();
-        column.append(&text(title, "story-eyebrow"));
+        let heading = gtk::Label::new(Some(title));
+        heading.add_css_class("story-eyebrow");
+        column.append(&heading);
         column.append(&text(&value, "story-mid"));
         numbers.append(&column);
     }
@@ -883,7 +903,6 @@ fn play_story(data: Rc<Wrapped>) {
     let mut dashes = vec![];
     for _ in 0..count {
         let dash = gtk::ProgressBar::builder().fraction(0.0).build();
-        dash.add_css_class("osd");
         dots.append(&dash);
         dashes.push(dash);
     }
@@ -961,6 +980,7 @@ fn play_story(data: Rc<Wrapped>) {
             spacer.clone(),
             pause.clone(),
         );
+        let (forward, backward) = (next.clone(), back.clone());
         let weak_dialog = dialog.downgrade();
         move |to: usize| {
             let to = to.min(count - 1);
@@ -975,6 +995,10 @@ fn play_story(data: Rc<Wrapped>) {
             actions.set_visible(last);
             spacer.set_visible(!last);
             pause.set_visible(!last);
+            forward.set_opacity(if last { 0.0 } else { 1.0 });
+            forward.set_sensitive(!last);
+            backward.set_opacity(if to == 0 { 0.0 } else { 1.0 });
+            backward.set_sensitive(to > 0);
             if last {
                 dashes[to].set_fraction(1.0);
             }

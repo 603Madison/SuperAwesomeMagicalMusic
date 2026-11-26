@@ -61,10 +61,8 @@ pub fn new_playlist() {
 
 fn import_dialog() {
     let form = Rc::new(Form::new("Import a playlist", "Import"));
-    let stack = gtk::Stack::builder()
-        .vhomogeneous(false)
-        .transition_type(gtk::StackTransitionType::Crossfade)
-        .build();
+    // The three ways in, one shown at a time.
+    let pages = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     let mode = Rc::new(RefCell::new("link".to_string()));
 
     // From a link.
@@ -77,7 +75,7 @@ fn import_dialog() {
     if let Some(entry) = link.downcast_ref::<gtk::Entry>() {
         entry.set_placeholder_text(Some("https://…"));
     }
-    stack.add_named(&link_field, Some("link"));
+    pages.append(&link_field);
     let focus = link.clone();
 
     // From a list: typed, pasted, or a file's.
@@ -111,11 +109,18 @@ fn import_dialog() {
         pick.connect_clicked(move |b| choose_file(b, &songs, &name, &f));
     }
     list_box.append(&pick);
-    stack.add_named(&list_box, Some("list"));
+    list_box.set_visible(false);
+    pages.append(&list_box);
 
     // From your library: a Subsonic server's playlists.
-    let library = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(14).build();
-    stack.add_named(&library, Some("library"));
+    let library = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(14).visible(false).build();
+    pages.append(&library);
+    let by_id: Vec<(&str, gtk::Widget)> = vec![
+        ("link", link_field.clone().upcast()),
+        ("list", list_box.clone().upcast()),
+        ("library", library.clone().upcast()),
+    ];
+    let by_id = Rc::new(by_id);
     let picked: Rc<RefCell<Option<(String, String)>>> = Rc::default();
 
     let tabs = gtk::Box::builder().halign(gtk::Align::Start).build();
@@ -132,17 +137,19 @@ fn import_dialog() {
             tab.set_visible(false);
             show_libraries(&tab, &library, picked.clone());
         }
-        let (stack, mode) = (stack.clone(), mode.clone());
+        let (by_id, mode) = (by_id.clone(), mode.clone());
         tab.connect_toggled(move |t| {
             if t.is_active() {
-                stack.set_visible_child_name(id);
+                for (page, widget) in by_id.iter() {
+                    widget.set_visible(*page == id);
+                }
                 mode.replace(id.to_string());
             }
         });
         tabs.append(&tab);
     }
     form.add(&tabs);
-    form.add(&stack);
+    form.add(&pages);
     let finding = gtk::Box::builder().spacing(8).visible(false).build();
     finding.append(&gtk::Spinner::builder().spinning(true).build());
     finding.append(&note("Finding the songs… this takes a moment for long playlists."));
@@ -574,7 +581,13 @@ pub fn missing_note(id: &str, missing: usize, changed: Rc<dyn Fn(Playlist)>) -> 
             "{missing} songs weren't found in your sources: they're greyed out and skipped. They're looked for again every few hours, in case they've turned up (Lidarr may be getting them)."
         )
     };
-    let label = gtk::Label::builder().label(text).xalign(0.0).wrap(true).hexpand(true).build();
+    let label = gtk::Label::builder()
+        .label(text)
+        .xalign(0.0)
+        .wrap(true)
+        .max_width_chars(60)
+        .hexpand(true)
+        .build();
     row.append(&label);
     let again = button(Some("system-search-symbolic"), "Look for them again", "tonal");
     again.set_valign(gtk::Align::Center);
