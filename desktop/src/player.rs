@@ -28,6 +28,50 @@ pub struct OnAir {
     pub artwork_url: Option<String>,
     /// The song, to keep in history (SiriusXM says which; stations only give a title).
     pub song: Option<Track>,
+    pub album: Option<String>,
+    /// When the song started (on the live clock) and how long it is, when the channel says.
+    pub start_ms: i64,
+    pub duration_ms: i64,
+    /// When it was first heard here.
+    pub heard_at: i64,
+}
+
+impl OnAir {
+    fn of(now: crate::api::NowView) -> OnAir {
+        OnAir {
+            title: now.title,
+            artist: now.artist,
+            artwork_url: now.artwork_url,
+            song: now.song,
+            album: now.album,
+            start_ms: now.start_ms,
+            duration_ms: now.duration_ms,
+            heard_at: 0,
+        }
+    }
+}
+
+/// The copy the server picked, as it said.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Copy {
+    pub kbps: Option<i32>,
+    pub within_cap: bool,
+    pub gain_db: Option<f64>,
+    pub transcoded: bool,
+    pub extension: String,
+}
+
+/// What GStreamer says of what's playing: from the stream's tags and the decoded audio's caps.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Heard {
+    pub codec: Option<String>,
+    pub container: Option<String>,
+    /// Bits a second.
+    pub bitrate: Option<u32>,
+    pub rate: Option<i32>,
+    pub channels: Option<i32>,
+    /// The decoded samples' format ("S16LE", "F32LE").
+    pub format: Option<String>,
 }
 
 /// Playing the queue again at its end, or the one song again.
@@ -68,6 +112,14 @@ pub struct State {
     pub repeat: Repeat,
     /// A sleep timer is set.
     pub sleeping: bool,
+    /// The copy playing, as the server described it (not for live radio).
+    pub copy: Option<Copy>,
+    /// What GStreamer says of it.
+    pub heard: Heard,
+    /// On live radio: what it played before, since tuned in (newest first).
+    pub live_history: Vec<OnAir>,
+    /// Thumbs given to Pandora stations' songs (by song id): UP or DOWN.
+    pub thumbs: std::collections::HashMap<String, String>,
 }
 
 impl State {
@@ -94,6 +146,24 @@ impl State {
             ),
             None => (track.title.clone(), track.artist.clone(), track.artwork_url.clone()),
         })
+    }
+
+    /// Thumbs for what's playing, where it takes them (one of the person's own stations, or a
+    /// Pandora station's song): whether they can be given now, and the one given.
+    pub fn thumbs_now(&self) -> Option<(bool, Option<String>)> {
+        let track = self.current()?;
+        if track.is_personal() {
+            let info = self.personal.as_ref()?;
+            return Some((info.song_key.is_some(), info.thumb.clone()));
+        }
+        let (_, song) = split_station(track.source_id.strip_prefix("stationtrack:")?);
+        Some((true, self.thumbs.get(&song).cloned()))
+    }
+
+    /// Where the queue is going: after the current song, in order.
+    pub fn upcoming(&self) -> &[Track] {
+        let at = self.index.map(|i| i + 1).unwrap_or(0).min(self.queue.len());
+        &self.queue[at..]
     }
 
     pub fn has_next(&self) -> bool {
@@ -160,6 +230,12 @@ pub struct Player {
     /// The sleep timer: its clock, or pausing at the end of the song.
     sleep_clock: RefCell<Option<glib::SourceId>>,
     sleep_at_end: Cell<bool>,
+    /// Even volume: its arithmetic, and the `volume` element it sets (none without GStreamer's
+    /// good plug-ins, when songs play unlevelled).
+    leveller: RefCell<crate::leveller::Leveller>,
+    level_gain: Option<gst::Element>,
+    /// Where the decoded audio comes in, for its format and rate.
+    audio_in: Option<gst::Pad>,
 }
 
 fn now_ms() -> i64 {
@@ -189,6 +265,13 @@ impl Player {
             playbin.set_property("audio-sink", &sink);
         }
         let cookie = Arc::new(Mutex::new((String::new(), String::new())));
+        let (level_gain, audio_in) = match levelling_filter() {
+            Some((filter, gain, pad)) => {
+                playbin.set_property("audio-filter", &filter);
+                (Some(gain), Some(pad))
+            }
+            None => (None, None),
+        };
         let player = Rc::new(Player {
             playbin,
             state: RefCell::new(State {
@@ -215,6 +298,9 @@ impl Player {
             start_at: Cell::new(0.0),
             sleep_clock: RefCell::new(None),
             sleep_at_end: Cell::new(false),
+            leveller: RefCell::new(Default::default()),
+            level_gain,
+            audio_in,
         });
 
         // The sign-in, as the session cookie, on every HTTP request GStreamer makes to the server.
@@ -410,6 +496,128 @@ impl Player {
         }
     }
 
+    /// Moves the song at [from] to [to] in the queue (what's playing goes on playing).
+    pub fn move_item(&self, from: usize, to: usize) {
+        {
+            let mut state = self.state.borrow_mut();
+            let len = state.queue.len();
+            if from == to || from >= len || to >= len {
+                return;
+            }
+            let moved = state.queue.remove(from);
+            state.queue.insert(to, moved);
+            if let Some(index) = state.index {
+                state.index = Some(moved_index(index, from, to));
+            }
+        }
+        self.notify();
+    }
+
+    /// Takes the song at [index] out of the queue; the one playing gives way to the next.
+    pub fn remove(self: &Rc<Self>, index: usize) {
+        let current = self.state.borrow().index;
+        if index >= self.state.borrow().queue.len() {
+            return;
+        }
+        self.state.borrow_mut().queue.remove(index);
+        match current {
+            Some(i) if i == index => {
+                let (len, playing) = {
+                    let state = self.state.borrow();
+                    (state.queue.len(), state.playing)
+                };
+                if index < len {
+                    self.load(index, playing);
+                } else {
+                    self.stop_here();
+                }
+            }
+            Some(i) if index < i => {
+                self.state.borrow_mut().index = Some(i - 1);
+                self.notify();
+            }
+            _ => self.notify(),
+        }
+    }
+
+    /// Empties what's after the current song.
+    pub fn clear_upcoming(&self) {
+        {
+            let mut state = self.state.borrow_mut();
+            let at = state.index.map(|i| i + 1).unwrap_or(0).min(state.queue.len());
+            state.queue.truncate(at);
+        }
+        self.notify();
+    }
+
+    /// Carries on with a queue another device was playing, from the same moment.
+    pub fn take_over(self: &Rc<Self>, tracks: Vec<Track>, index: usize, seconds: f64, playing: bool) {
+        let tracks: Vec<Track> = tracks.into_iter().filter(|t| !t.is_missing()).collect();
+        if tracks.is_empty() {
+            return;
+        }
+        let index = index.min(tracks.len() - 1);
+        let live = tracks[index].is_live();
+        self.state.borrow_mut().queue = tracks;
+        if !live {
+            self.start_at.set(seconds.max(0.0));
+        }
+        self.load(index, playing);
+    }
+
+    /// The last song was taken out: nothing plays (the volume and repeat stay).
+    fn stop_here(&self) {
+        self.report_listen();
+        self.generation.set(self.generation.get() + 1);
+        let _ = self.playbin.set_state(gst::State::Null);
+        {
+            let mut state = self.state.borrow_mut();
+            state.index = if state.queue.is_empty() { None } else { Some(state.queue.len() - 1) };
+            state.playing = false;
+            state.loading = false;
+            state.on_air = None;
+            state.personal = None;
+            state.live_history.clear();
+            state.copy = None;
+            state.heard = Heard::default();
+        }
+        self.notify();
+    }
+
+    /// Where live radio is, as a time on the station's clock: what's heard, not what's newest
+    /// (None when it can't say, as for internet radio).
+    pub fn live_clock(&self) -> Option<i64> {
+        let state = self.state.borrow();
+        let track = state.current()?;
+        if track.is_personal() {
+            Some(now_ms())
+        } else if track.is_channel() {
+            Some(now_ms() - CHANNEL_DELAY_MS)
+        } else {
+            None
+        }
+    }
+
+    // ---- Even volume ----
+
+    /// Turns even volume on or off.
+    pub fn set_levelling(&self, on: bool) {
+        self.leveller.borrow_mut().set_enabled(on);
+        self.apply_levelling();
+    }
+
+    /// Whether even volume is on, its gain now (dB), and whether that's the song's own.
+    pub fn levelling(&self) -> (bool, f64, bool) {
+        let l = self.leveller.borrow();
+        (l.enabled() && self.level_gain.is_some(), l.gain_db(), l.known())
+    }
+
+    fn apply_levelling(&self) {
+        if let Some(gain) = &self.level_gain {
+            gain.set_property("volume", self.leveller.borrow().amplitude());
+        }
+    }
+
     pub fn toggle(self: &Rc<Self>) {
         if self.state.borrow().playing { self.pause() } else { self.play() }
     }
@@ -580,7 +788,12 @@ impl Player {
             state.on_air = None;
             state.personal = None;
             state.description = String::new();
+            state.copy = None;
+            state.heard = Heard::default();
+            state.live_history.clear();
         }
+        self.leveller.borrow_mut().new_song(None);
+        self.apply_levelling();
         self.notify();
         let Some(api) = self.api.borrow().clone() else { return };
         let (kbps, thorough) = self.choices.get();
@@ -607,8 +820,17 @@ impl Player {
                         if me.generation.get() != generation {
                             return;
                         }
+                        me.leveller.borrow_mut().new_song(resolved.gain_db);
+                        me.apply_levelling();
                         let mut state = me.state.borrow_mut();
                         state.description = resolved.description.clone();
+                        state.copy = Some(Copy {
+                            kbps: resolved.kbps,
+                            within_cap: resolved.within_cap,
+                            gain_db: resolved.gain_db,
+                            transcoded: resolved.transcoded,
+                            extension: resolved.extension.clone(),
+                        });
                         // The copy found may have the cover the request lacked.
                         if let Some(current) = state.queue.get_mut(index)
                             && current.artwork_url.is_none()
@@ -736,6 +958,7 @@ impl Player {
             MessageView::StateChanged(changed) => {
                 if changed.src().map(|s| s == &self.playbin).unwrap_or(false) && changed.current() == gst::State::Playing {
                     self.failures.set(0);
+                    self.read_caps();
                     if self.state.borrow().loading {
                         self.state.borrow_mut().loading = false;
                         self.notify();
@@ -743,7 +966,53 @@ impl Player {
                 }
             }
             MessageView::DurationChanged(..) => self.tick(),
+            MessageView::Tag(tag) => {
+                let tags = tag.tags();
+                let mut heard = self.state.borrow().heard.clone();
+                if let Some(codec) = tags.get::<gst::tags::AudioCodec>() {
+                    heard.codec = Some(codec.get().to_string());
+                }
+                if let Some(container) = tags.get::<gst::tags::ContainerFormat>() {
+                    heard.container = Some(container.get().to_string());
+                }
+                let bitrate = tags
+                    .get::<gst::tags::Bitrate>()
+                    .map(|b| b.get())
+                    .or_else(|| tags.get::<gst::tags::NominalBitrate>().map(|b| b.get()))
+                    .filter(|b| *b > 0);
+                if bitrate.is_some() {
+                    heard.bitrate = bitrate;
+                }
+                if heard != self.state.borrow().heard {
+                    self.state.borrow_mut().heard = heard;
+                    self.notify();
+                }
+            }
+            MessageView::Element(element) => {
+                // Even volume: the level of the music, four times a second.
+                let Some(s) = element.structure().filter(|s| s.name() == "level") else { return };
+                let Ok(rms) = s.get::<glib::ValueArray>("rms") else { return };
+                let loudest = rms.iter().filter_map(|v| v.get::<f64>().ok()).fold(f64::NEG_INFINITY, f64::max);
+                if loudest.is_finite() && self.state.borrow().playing {
+                    self.leveller.borrow_mut().heard(loudest, LEVEL_INTERVAL_S);
+                    self.apply_levelling();
+                }
+            }
             _ => {}
+        }
+    }
+
+    /// The decoded audio's sample rate, channels and format, from where it comes in.
+    fn read_caps(&self) {
+        let Some(caps) = self.audio_in.as_ref().and_then(|p| p.current_caps()) else { return };
+        let Some(s) = caps.structure(0) else { return };
+        let mut heard = self.state.borrow().heard.clone();
+        heard.rate = s.get::<i32>("rate").ok();
+        heard.channels = s.get::<i32>("channels").ok();
+        heard.format = s.get::<String>("format").ok();
+        if heard != self.state.borrow().heard {
+            self.state.borrow_mut().heard = heard;
+            self.notify();
         }
     }
 
@@ -778,8 +1047,13 @@ impl Player {
     // ---- Live radio ----
 
     /// Thumbs the song on one of the person's own stations: "UP" (more like it), "DOWN" (never
-    /// again, and it moves on) or, given again, takes it back.
+    /// again, and it moves on) or, given again, takes it back. A Pandora station's song too
+    /// (down skips it, as Pandora does).
     pub fn thumb(self: &Rc<Self>, direction: &str) {
+        let station_song = self.state.borrow().current().filter(|t| t.is_station_track()).cloned();
+        if let Some(track) = station_song {
+            return self.station_thumb(track, direction);
+        }
         let (id, key, next) = {
             let state = self.state.borrow();
             let Some(track) = state.current().filter(|t| t.is_personal()) else { return };
@@ -797,6 +1071,35 @@ impl Player {
         glib::spawn_future_local(async move {
             if let Err(e) = bg(async move { api.personal_thumb(&id, &key, &next).await }).await {
                 me.tell_error(&format!("The station didn't take the thumb: {e}"));
+            }
+        });
+    }
+
+    fn station_thumb(self: &Rc<Self>, track: Track, direction: &str) {
+        let Some(via) = track.via.clone() else { return };
+        let Some((station, song)) = track.source_id.strip_prefix("stationtrack:").map(split_station) else {
+            return;
+        };
+        let next = {
+            let mut state = self.state.borrow_mut();
+            let next = if state.thumbs.get(&song).map(String::as_str) == Some(direction) { "NONE" } else { direction };
+            if next == "NONE" {
+                state.thumbs.remove(&song);
+            } else {
+                state.thumbs.insert(song.clone(), next.to_string());
+            }
+            next.to_string()
+        };
+        self.notify();
+        let elapsed = (self.state.borrow().position * 1000.0).round() as i64;
+        let Some(api) = self.api.borrow().clone() else { return };
+        let me = self.clone();
+        let down = next == "DOWN";
+        glib::spawn_future_local(async move {
+            match bg(async move { api.station_thumb(&via, &station, &song, &next, elapsed).await }).await {
+                Ok(()) if down => me.next(),
+                Ok(()) => {}
+                Err(e) => me.tell_error(&format!("Pandora didn't take the thumb: {e}")),
             }
         });
     }
@@ -833,15 +1136,10 @@ impl Player {
                             }
                             return;
                         }
-                        let on_air = info.as_ref().and_then(|i| i.now.clone()).map(|now| OnAir {
-                            title: now.title,
-                            artist: now.artist,
-                            artwork_url: now.artwork_url,
-                            song: now.song,
-                        });
+                        let on_air = info.as_ref().and_then(|i| i.now.clone()).map(OnAir::of);
                         if let Some(info) = info {
-                            let changed = player.state.borrow().personal.as_ref().map(|p| (p.dj.clone(), p.next.len(), p.thumb.clone()))
-                                != Some((info.dj.clone(), info.next.len(), info.thumb.clone()));
+                            let changed = player.state.borrow().personal.as_ref().map(|p| (p.dj.clone(), p.next.len(), p.recent.len(), p.thumb.clone()))
+                                != Some((info.dj.clone(), info.next.len(), info.recent.len(), info.thumb.clone()));
                             player.state.borrow_mut().personal = Some(info);
                             if changed {
                                 player.notify();
@@ -853,17 +1151,12 @@ impl Player {
                         let Some((kind, id)) = track.channel_parts() else { return };
                         let via = via.clone();
                         // What's heard is behind the newest of the stream (about three segments).
-                        let at = now_ms() - 30_000;
+                        let at = now_ms() - CHANNEL_DELAY_MS;
                         bg(async move { asking.channel_now(&via, &kind, &id, at).await })
                             .await
                             .ok()
                             .flatten()
-                            .map(|now| OnAir {
-                                title: now.title,
-                                artist: now.artist,
-                                artwork_url: now.artwork_url,
-                                song: now.song,
-                            })
+                            .map(OnAir::of)
                     }
                     LiveKind::Radio => {
                         let via = via.clone();
@@ -873,12 +1166,7 @@ impl Player {
                             .ok()
                             .flatten()
                             .map(|(title, now)| match (now, title.split_once(" - ")) {
-                                (Some(now), _) => OnAir {
-                                    title: now.title,
-                                    artist: now.artist,
-                                    artwork_url: now.artwork_url,
-                                    song: now.song,
-                                },
+                                (Some(now), _) => OnAir::of(now),
                                 (None, Some((artist, song))) => OnAir {
                                     title: song.trim().into(),
                                     artist: artist.trim().into(),
@@ -901,10 +1189,20 @@ impl Player {
                 };
                 if changed {
                     player.end_live_stretch();
-                    player.state.borrow_mut().on_air = on_air;
+                    let mut state = player.state.borrow_mut();
+                    // What was on goes into what was played (once).
+                    if let Some(before) = state.on_air.take() {
+                        state.live_history.retain(|h| h.title != before.title || h.artist != before.artist);
+                        state.live_history.insert(0, before);
+                        state.live_history.truncate(50);
+                    }
+                    state.on_air = on_air.map(|o| OnAir { heard_at: now_ms(), ..o });
+                    drop(state);
                     player.notify();
-                } else if on_air.is_some() {
-                    player.state.borrow_mut().on_air = on_air;
+                } else if let Some(on_air) = on_air {
+                    let mut state = player.state.borrow_mut();
+                    let heard_at = state.on_air.as_ref().map(|o| o.heard_at).unwrap_or_else(now_ms);
+                    state.on_air = Some(OnAir { heard_at, ..on_air });
                 }
                 drop(player);
                 let every = match kind {
@@ -990,6 +1288,51 @@ impl Player {
     }
 }
 
+/// A Pandora station song's "station:song" ids.
+fn split_station(ids: &str) -> (String, String) {
+    match ids.split_once(':') {
+        Some((station, song)) => (station.to_string(), song.to_string()),
+        None => (String::new(), ids.to_string()),
+    }
+}
+
+/// Where the song at [index] is after the one at [from] moved to [to].
+fn moved_index(index: usize, from: usize, to: usize) -> usize {
+    if from == index {
+        to
+    } else if from < index && to >= index {
+        index - 1
+    } else if from > index && to <= index {
+        index + 1
+    } else {
+        index
+    }
+}
+
+/// How often GStreamer's `level` measures, for even volume.
+const LEVEL_INTERVAL_S: f64 = 0.25;
+
+/// How far behind the newest of a SiriusXM channel's stream what's heard is (about three segments).
+const CHANNEL_DELAY_MS: i64 = 30_000;
+
+/// Even volume's part of the pipeline: the music's level is measured, a gain set, and a limiter
+/// stops boosts clipping. Returns the filter, its gain, and where the decoded audio comes in
+/// (None without GStreamer's good plug-ins: songs then play unlevelled).
+fn levelling_filter() -> Option<(gst::Element, gst::Element, gst::Pad)> {
+    let bin = gst::parse::bin_from_description(
+        &format!(
+            "audioconvert name=levelin ! level name=level interval={} post-messages=true ! volume name=levelgain ! audioconvert ! rglimiter ! audioconvert",
+            (LEVEL_INTERVAL_S * 1e9) as u64
+        ),
+        true,
+    )
+    .map_err(|e| eprintln!("Even volume isn't available (GStreamer's good plug-ins): {e}"))
+    .ok()?;
+    let gain = bin.by_name("levelgain")?;
+    let pad = bin.by_name("levelin")?.static_pad("sink")?;
+    Some((bin.upcast(), gain, pad))
+}
+
 /// A Pandora station's song plays from the station on the server.
 fn station_track_path(track: &Track) -> Option<String> {
     if !track.is_station_track() {
@@ -1030,6 +1373,23 @@ mod tests {
             title: id.into(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn moving_songs_keeps_the_one_playing_as_the_web_player_does() {
+        // Playing c (2) in a b c d e.
+        assert_eq!(moved_index(2, 2, 0), 0);
+        assert_eq!(moved_index(2, 0, 3), 1);
+        assert_eq!(moved_index(2, 4, 1), 3);
+        assert_eq!(moved_index(2, 3, 4), 2);
+        let mut state = State {
+            queue: vec![song("a"), song("b"), song("c")],
+            index: Some(0),
+            ..Default::default()
+        };
+        assert_eq!(state.upcoming().len(), 2);
+        state.index = Some(2);
+        assert!(state.upcoming().is_empty());
     }
 
     #[test]

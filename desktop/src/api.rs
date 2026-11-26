@@ -328,6 +328,41 @@ pub struct ResolvedStream {
     /// from where asked.
     #[serde(default = "yes")]
     pub seekable: bool,
+    /// The copy's bitrate, when the server knows it.
+    #[serde(default)]
+    pub kbps: Option<i32>,
+    /// Whether it fits the quality cap asked for.
+    #[serde(default = "yes")]
+    pub within_cap: bool,
+    /// Its loudness gain (Jellyfin's normalization), for even volume.
+    #[serde(default)]
+    pub gain_db: Option<f64>,
+    /// Made smaller (or converted) on the server.
+    #[serde(default)]
+    pub transcoded: bool,
+    /// Its format, as a file extension ("flac", "opus").
+    #[serde(default)]
+    pub extension: String,
+}
+
+/// A song's lyrics: timed lines (synced) or plain ones, and where they're from.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LyricsView {
+    #[serde(default)]
+    pub lines: Vec<LyricLine>,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub synced: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LyricLine {
+    #[serde(default)]
+    pub time_ms: Option<i64>,
+    #[serde(default)]
+    pub text: String,
 }
 
 fn yes() -> bool {
@@ -489,8 +524,14 @@ pub struct PersonalNow {
     pub thumb: Option<String>,
     #[serde(default)]
     pub next: Vec<NowView>,
+    /// What it played before.
+    #[serde(default)]
+    pub recent: Vec<NowView>,
     #[serde(default)]
     pub dj: Option<DjLine>,
+    /// The server's clock, for how long ago [recent] played.
+    #[serde(default)]
+    pub server_time: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -778,6 +819,23 @@ impl Api {
         .await
     }
 
+    /// What the channel played before [at_ms] (its last few hours).
+    pub async fn channel_recent(&self, source: &str, kind: &str, id: &str, at_ms: i64) -> Result<Vec<NowView>> {
+        self.get(&format!(
+            "/api/live/sxm/{}/recent?type={}&id={}&at={at_ms}",
+            enc(source),
+            enc(kind),
+            enc(id)
+        ))
+        .await
+    }
+
+    /// The song's lyrics, from its library or LRCLIB (none: no lines).
+    pub async fn lyrics(&self, track: &Track) -> Result<LyricsView> {
+        let found: Option<LyricsView> = self.post("/api/lyrics", json!({ "track": track })).await?;
+        Ok(found.unwrap_or_default())
+    }
+
     pub async fn personal_stations(&self) -> Result<Vec<PersonalStation>> {
         self.get("/api/radio/personal").await
     }
@@ -799,6 +857,17 @@ impl Api {
             Method::POST,
             &format!("/api/radio/personal/{}/thumb", enc(id)),
             Some(json!({ "key": key, "thumb": thumb })),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Thumbs a Pandora station's song: UP, DOWN or NONE, [elapsed_ms] into it.
+    pub async fn station_thumb(&self, source: &str, station: &str, song: &str, thumb: &str, elapsed_ms: i64) -> Result<()> {
+        self.send::<serde_json::Value>(
+            Method::POST,
+            &format!("/api/live/sxm/{}/station-track/{}/{}/thumb", enc(source), enc(station), enc(song)),
+            Some(json!({ "thumb": thumb, "elapsedMs": elapsed_ms })),
         )
         .await
         .map(|_| ())
