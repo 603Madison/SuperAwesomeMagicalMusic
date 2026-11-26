@@ -115,7 +115,9 @@ fun Artwork(url: String?, size: Dp, modifier: Modifier = Modifier, corner: Dp = 
                 model = uri.toString(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(size),
+                // The whole box, whatever size it ends up (Now Playing's stretches to the screen's
+                // width): a fixed size here left the placeholder colour showing round the cover.
+                modifier = Modifier.fillMaxSize(),
                 error = { Icon(Icons.Rounded.MusicNote, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(size * 0.4f)) },
             )
         }
