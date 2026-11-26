@@ -658,6 +658,9 @@ fn region_name(code: &str) -> String {
         .unwrap_or_else(|| code.to_string())
 }
 
+/// Finding stations (on the network runtime).
+type Finding = std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<Vec<Track>>> + Send>>;
+
 fn local_radio(radio: &Rc<Radio>, into: &gtk::Box, source: &SourceView, tuner: bool) {
     let row = gtk::Box::builder().spacing(10).margin_bottom(6).build();
     let entry = gtk::SearchEntry::builder()
@@ -683,7 +686,7 @@ fn local_radio(radio: &Rc<Radio>, into: &gtk::Box, source: &SourceView, tuner: b
         ));
     }
     // Shows what [load] finds under [label].
-    let show: Rc<dyn Fn(String, std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<Vec<Track>>> + Send>>)> = {
+    let show: Rc<dyn Fn(String, Finding)> = {
         let (radio, results, title) = (radio.clone(), results.clone(), title.clone());
         Rc::new(move |label, load| {
             clear(&results);

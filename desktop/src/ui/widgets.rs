@@ -313,9 +313,12 @@ struct Marked {
     key: String,
 }
 
+/// Shows a song's details (see [set_song_info]).
+type SongInfo = Rc<dyn Fn(&Track)>;
+
 thread_local! {
     /// Shows a song's details: set by the song info view, it adds "Song info" to songs' menus.
-    static SONG_INFO: RefCell<Option<Rc<dyn Fn(&Track)>>> = const { RefCell::new(None) };
+    static SONG_INFO: RefCell<Option<SongInfo>> = const { RefCell::new(None) };
     static MARKED: RefCell<Vec<Marked>> = const { RefCell::new(Vec::new()) };
     /// What's playing (its key) and whether it's playing, as last marked.
     static SHOWN: RefCell<(Option<String>, bool)> = const { RefCell::new((None, false)) };

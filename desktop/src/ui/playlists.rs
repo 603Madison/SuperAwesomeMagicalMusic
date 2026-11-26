@@ -377,6 +377,9 @@ pub fn people_line(summary: &PlaylistSummary) -> String {
 }
 
 /// Sharing a playlist (yours): who it's shared with (each can be taken off), and adding someone.
+/// Shows the share dialog's lists again.
+type Redraw = Rc<dyn Fn()>;
+
 pub fn share_dialog(summary: &PlaylistSummary, changed: Rc<dyn Fn()>) {
     let dialog = adw::Dialog::builder()
         .title(format!("Share “{}”", summary.name))
@@ -397,7 +400,7 @@ pub fn share_dialog(summary: &PlaylistSummary, changed: Rc<dyn Fn()>) {
     body.append(&lists);
     let members: Rc<RefCell<Vec<PlaylistPerson>>> = Rc::new(RefCell::new(summary.members.clone()));
     let people: Rc<RefCell<Option<Vec<PlaylistPerson>>>> = Rc::default();
-    let show: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::default();
+    let show: Rc<RefCell<Option<Redraw>>> = Rc::default();
     let render: Rc<dyn Fn()> = {
         let (lists, members, people, show, id) = (lists.clone(), members.clone(), people.clone(), show.clone(), summary.id.clone());
         Rc::new(move || {
