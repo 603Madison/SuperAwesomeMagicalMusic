@@ -23,7 +23,7 @@ separately for Wi-Fi, mobile data and **satellite**, and anything can be downloa
 | **The server** (`server/`, web player in `web/`) | Your own streaming service in Docker or Podman: accounts (local or single sign-on such as Authentik), sources shared by the admins or added by each person, playlists and history per person, personal radio stations, Listen, Wrapped, a web player, and speakers as places to play. See [server/README.md](server/README.md). | `ghcr.io/603madison/superawesomemagicalmusic` |
 | **SuperAwesomeMagicalMusic** (`connect/`) | The Android app for the server: your library, radio and playlists; downloads; Android Auto; your devices working together; MusicCast and Sonos speakers at home; Listen and Now Playing; Wrapped. | `SuperAwesomeMagicalMusic-vX.Y.Z.apk`, or F-Droid |
 | **SuperAwesomeMagicalMusic Mini** (`mini/`) | The server's app for Android flip phones, made for the keypad, signed in with a short code instead of a password. | `SuperAwesomeMagicalMusic-Mini-vX.Y.Z.apk`, or F-Droid |
-| **SuperAwesomeMagicalMusic for Linux** (`desktop/`) | A native desktop app for the server (GTK 4, libadwaita, GStreamer) for Ubuntu 24.04+ and Fedora 40+. See [desktop/README.md](desktop/README.md). | `…-Desktop-vX.Y.Z-amd64.deb` / `-x86_64.rpm` |
+| **SuperAwesomeMagicalMusic for Linux** (`desktop/`) | A native desktop app for the server (GTK 4, libadwaita, GStreamer) with what the web player has: Now playing with lyrics, your devices (play here or anywhere), playlists (import, share), Radio, History, Wrapped, Preferences and Admin. For Ubuntu 24.04+ and Fedora 40+. See [desktop/README.md](desktop/README.md). | `…-Desktop-vX.Y.Z-amd64.deb` / `-x86_64.rpm` |
 | **SuperAwesomeMagicalMusic Standalone** (`app/`) | The original Android app that works on its own, with no server: it talks to Jellyfin, YouTube Music, SiriusXM, Lidarr and Nextcloud itself. (Called Lite before 1.30.1.) | `SuperAwesomeMagicalMusic-Standalone-vX.Y.Z.apk`, or F-Droid |
 | **The tuner** (`tuner/`) | Local FM and HD Radio for the server, like an HDHomeRun for the radio: RTL-SDR dongles on a Raspberry Pi, in a container. See [tuner/README.md](tuner/README.md). | `ghcr.io/603madison/superawesomemagicalmusic-tuner` |
 | `core/`, `nowplaying/` | The music services as plain Kotlin, shared by the apps and the server; Now Playing as an Android library another app can host. | |
@@ -55,18 +55,32 @@ song (the line being sung is big and bright; click any line to jump there).
 | ![Now Playing's Song view](docs/screenshots/web-now-playing.jpg) | ![Search with a top result, songs and albums](docs/screenshots/web-search.jpg) |
 | **An artist's page** | **The web player on a phone** |
 | ![An artist's page with their popular songs](docs/screenshots/web-artist.jpg) | <img src="docs/screenshots/web-phone.jpg" alt="Now Playing on a phone, with its own controls" width="300"> |
+| **Your playlists, shared ones included** | |
+| ![The Playlists page with a cover for each playlist](docs/screenshots/web-playlists.jpg) | |
 
 The SuperAwesomeMagicalMusic app (for the server), in the same look as the other apps (Lexend,
-rounded cards over a soft gradient, light and dark): an artist's page, controlling the web player
-from the phone (devices work together, like Spotify Connect, and MusicCast and Sonos speakers join them),
-favourite stations at the top of Radio, and a playlist in the dark theme.
+rounded cards over a soft gradient, light and dark): Search with your Wrapped, an artist's page,
+controlling the web player from the phone (devices work together, like Spotify Connect, and
+MusicCast and Sonos speakers join them), favourite stations at the top of Radio, a playlist in the
+dark theme, and your year so far.
 
 <p>
+  <img src="docs/screenshots/app-search.png" alt="The app's Search tab, with Wrapped at the top and the web player playing" width="200">
   <img src="docs/screenshots/app-artist.png" alt="The app's artist page" width="200">
   <img src="docs/screenshots/app-devices.png" alt="The app controlling the web player, with the devices to play on" width="200">
   <img src="docs/screenshots/app-radio.png" alt="Favourite stations at the top of the app's Radio tab" width="200">
   <img src="docs/screenshots/app-playlist-dark.png" alt="A playlist in the dark theme" width="200">
+  <img src="docs/screenshots/app-wrapped.png" alt="Wrapped in the app: minutes, top songs and top artists" width="200">
 </p>
+
+The Linux desktop app has what the web player has, natively (GTK 4 and libadwaita): Now playing
+with its lyrics following the song, a playlist shared with two people (each song says who added
+it), Radio with your own stations and favourites, and Wrapped.
+
+| | |
+| --- | --- |
+| ![The desktop app's Now playing, with lyrics](docs/screenshots/desktop-now-playing-lyrics.png) | ![A shared playlist in the desktop app](docs/screenshots/desktop-playlist.png) |
+| ![The desktop app's Radio: your own stations and favourites](docs/screenshots/desktop-radio.png) | ![Wrapped in the desktop app](docs/screenshots/desktop-wrapped.png) |
 
 The screenshots use a made-up demo library (Velvet Satellites aren't a real band, lol), so the covers
 are generated.

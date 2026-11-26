@@ -4,6 +4,8 @@ The desktop app for your SuperAwesomeMagicalMusic server: native, written in Rus
 libadwaita (GNOME's own toolkit), playing through GStreamer, the system's media framework. No web
 view, no Chromium: a 5 MB program that starts at once.
 
+![Now playing in the desktop app, its lyrics following the song](../docs/screenshots/desktop-now-playing-lyrics.png)
+
 - **Sign in** with your server's address, then your password or your server's single sign-on (it
   opens your browser, which hands the sign-in back to the app).
 - **Search** artists, albums and songs from your library and every service on your server, with
@@ -50,6 +52,14 @@ view, no Chromium: a 5 MB program that starts at once.
 - **Admin**, for admins: people (add, make admin, turn off, set a password, sign out, delete), the
   sources shared with everyone, and the server's settings, single sign-on included.
 - Shortcuts: Ctrl+P play/pause, Ctrl+→ next, Ctrl+← previous, Ctrl+, preferences, Ctrl+Q quit.
+
+| | |
+| --- | --- |
+| ![Up next, and playing on another device](../docs/screenshots/desktop-now-playing-queue.png) | ![A shared playlist](../docs/screenshots/desktop-playlist.png) |
+| ![Radio: your own stations and favourites](../docs/screenshots/desktop-radio.png) | ![Live radio in Now playing](../docs/screenshots/desktop-now-playing-radio.png) |
+| ![Wrapped](../docs/screenshots/desktop-wrapped.png) | ![Wrapped's story](../docs/screenshots/desktop-wrapped-story.png) |
+| ![Song details](../docs/screenshots/desktop-song-info.png) | ![Preferences: your account and where you're signed in](../docs/screenshots/desktop-preferences.png) |
+| ![Controlling a phone from the desktop](../docs/screenshots/desktop-remote-control.png) | ![Admin: people, sources and settings](../docs/screenshots/desktop-admin.png) |
 
 ## Installing
 
