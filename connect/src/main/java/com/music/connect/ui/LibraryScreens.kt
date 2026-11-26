@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,6 +20,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CloudOff
@@ -28,6 +30,8 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.FileUpload
+import androidx.compose.material.icons.rounded.Group
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
@@ -68,7 +72,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.music.connect.data.Library
+import com.music.connect.data.PlaylistInfo
 import com.music.connect.net.ImportResult
+import com.music.connect.net.PlaylistPerson
 import com.music.player.playlists.PlaylistCsv
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -134,6 +140,9 @@ fun PlaylistsScreen(onOpen: (String) -> Unit) {
                         Column(Modifier.weight(1f)) {
                             Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${p.count} songs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            sharedNote(p)?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                         if (p.keepOffline) Pill("Offline", MaterialTheme.colorScheme.primary, icon = Icons.Rounded.DownloadForOffline)
                     }
@@ -296,6 +305,9 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
     val scope = rememberCoroutineScope()
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    var sharing by remember { mutableStateOf(false) }
+    var leaving by remember { mutableStateOf(false) }
+    val me = c.settings.collectAsState().value.user?.id
     val context = LocalContext.current
     // Saved wherever the person picks (Downloads, Drive…), from the playlist as kept on the phone.
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(PlaylistCsv.MIME)) { uri ->
@@ -328,14 +340,22 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(Icons.Rounded.Edit, null) }, onClick = { menu = false; renaming = true })
+                        // Only its owner shares, renames or deletes it; anyone else can leave it.
+                        if (playlist.mine) {
+                            DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(Icons.Rounded.PersonAdd, null) }, onClick = { menu = false; sharing = true })
+                            DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(Icons.Rounded.Edit, null) }, onClick = { menu = false; renaming = true })
+                        }
                         DropdownMenuItem(
                             text = { Text("Export CSV") },
                             leadingIcon = { Icon(Icons.Rounded.FileUpload, null) },
                             enabled = entries.isNotEmpty(),
                             onClick = { menu = false; export.launch(PlaylistCsv.fileName(playlist.name)) },
                         )
-                        DropdownMenuItem(text = { Text("Delete") }, leadingIcon = { Icon(Icons.Rounded.DeleteOutline, null) }, onClick = { menu = false; deleting = true })
+                        if (playlist.mine) {
+                            DropdownMenuItem(text = { Text("Delete") }, leadingIcon = { Icon(Icons.Rounded.DeleteOutline, null) }, onClick = { menu = false; deleting = true })
+                        } else {
+                            DropdownMenuItem(text = { Text("Leave") }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Logout, null) }, onClick = { menu = false; leaving = true })
+                        }
                     }
                 }
             }
@@ -352,6 +372,13 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+        }
+        if (playlist.shared) item {
+            Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Group, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(peopleLine(playlist), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {
@@ -419,6 +446,7 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
                 current = playing.track?.key == entry.track.key,
                 downloaded = entry.track.key in downloaded,
                 available = available,
+                note = entry.addedBy?.takeIf { playlist.shared }?.let { "added by " + if (it.id == me) "you" else it.label },
                 extraActions = buildList {
                     add("Remove from playlist" to { scope.launch { c.library.remove(id, listOf(entry.entryId)) }; Unit })
                     if (i > 0) add("Move up" to { reorder(scope, c, id, entries.map { it.entryId }, i, i - 1) })
@@ -438,14 +466,164 @@ fun PlaylistScreen(id: String, onGone: () -> Unit) {
             dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } },
         )
     }
+    if (sharing) ShareDialog(playlist, onClose = { sharing = false })
+    if (leaving) {
+        AlertDialog(
+            onDismissRequest = { leaving = false },
+            title = { Text("Leave \"${playlist.name}\"?") },
+            text = {
+                Text(
+                    "It goes from your playlists, on every device. The songs you added stay in it" +
+                        (playlist.owner?.let { ", and it stays ${it.label}'s." } ?: "."),
+                )
+            },
+            confirmButton = { TextButton(onClick = { scope.launch { c.library.leave(id); leaving = false; onGone() } }) { Text("Leave") } },
+            dismissButton = { TextButton(onClick = { leaving = false }) { Text("Stay") } },
+        )
+    }
     if (deleting) {
         AlertDialog(
             onDismissRequest = { deleting = false },
             title = { Text("Delete \"${playlist.name}\"?") },
-            text = { Text("It goes on every device. The songs stay in their sources (and downloads stay downloaded).") },
+            text = {
+                Text(
+                    "It goes on every device" + (if (playlist.members.isNotEmpty()) ", and for everyone it's shared with" else "") +
+                        ". The songs stay in their sources (and downloads stay downloaded).",
+                )
+            },
             confirmButton = { TextButton(onClick = { scope.launch { c.library.delete(id); deleting = false; onGone() } }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { deleting = false }) { Text("Keep it") } },
         )
+    }
+}
+
+/**
+ * Sharing one of the person's playlists: who it's shared with (each can be taken off), and the
+ * others on the server to share it with. It needs a connection.
+ */
+@Composable
+private fun ShareDialog(playlist: PlaylistInfo, onClose: () -> Unit) {
+    val c = appContainer()
+    val online by c.online.collectAsState()
+    val scope = rememberCoroutineScope()
+    var people by remember { mutableStateOf<List<PlaylistPerson>?>(null) }
+    var failed by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(online) {
+        if (!online || people != null) return@LaunchedEffect
+        try {
+            people = c.library.people()
+            failed = null
+        } catch (e: Exception) {
+            failed = if (Library.isOffline(e)) "Couldn't reach your server." else e.message ?: "Couldn't find the people on your server."
+        }
+    }
+    fun change(person: PlaylistPerson, share: Boolean) {
+        busy = person.id
+        scope.launch {
+            try {
+                if (share) c.library.share(playlist.id, person) else c.library.stopSharing(playlist.id, person)
+                c.tell(if (share) "Shared with ${person.label}" else "Stopped sharing with ${person.label}")
+            } catch (e: Exception) {
+                c.tell(if (Library.isOffline(e)) "Sharing needs a connection" else e.message ?: "Couldn't change who it's shared with")
+            } finally {
+                busy = null
+            }
+        }
+    }
+    val others = people.orEmpty().filter { p -> playlist.members.none { it.id == p.id } }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Share \"${playlist.name}\"") },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                item {
+                    Text(
+                        "Everyone it's shared with sees it with their playlists, and can add, remove and reorder its songs. Only you can rename it, delete it or share it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
+                if (!online) {
+                    item { Text("Sharing needs a connection, and you're offline.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 8.dp)) }
+                }
+                if (playlist.members.isNotEmpty()) {
+                    item { Text("Shared with", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp)) }
+                    items(playlist.members, key = { "m-${it.id}" }) { person ->
+                        PersonRow(person) {
+                            TextButton(enabled = online && busy == null, onClick = { change(person, share = false) }) {
+                                Text(if (busy == person.id) "Removing…" else "Remove")
+                            }
+                        }
+                    }
+                }
+                if (online) {
+                    item { Text("Share with", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp)) }
+                    val loaded = people
+                    when {
+                        failed != null -> item { Text(failed.orEmpty(), color = MaterialTheme.colorScheme.error) }
+                        loaded == null -> item { CircularProgressIndicator(Modifier.padding(8.dp).size(24.dp)) }
+                        others.isEmpty() -> item {
+                            Text(
+                                if (loaded.isEmpty()) "There's no one else on your server yet." else "It's shared with everyone on your server.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        else -> items(others, key = { "p-${it.id}" }) { person ->
+                            PersonRow(person) {
+                                FilledTonalButton(enabled = busy == null, onClick = { change(person, share = true) }) {
+                                    Text(if (busy == person.id) "Sharing…" else "Share")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Done") } },
+    )
+}
+
+@Composable
+private fun PersonRow(person: PlaylistPerson, action: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(person.label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (person.username.isNotBlank() && person.username != person.label) {
+                Text(person.username, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        action()
+    }
+}
+
+/** "Shared by Maddie", or "Shared with Sam and Alex", under a shared playlist in the list. */
+internal fun sharedNote(p: PlaylistInfo): String? = when {
+    !p.mine && p.owner != null -> "Shared by ${p.owner.label}"
+    p.members.isNotEmpty() -> "Shared with ${names(p.members)}"
+    else -> null
+}
+
+/** Who a shared playlist is between, for its page. */
+internal fun peopleLine(p: PlaylistInfo): String {
+    val everyone = "Everyone adds, removes and reorders songs."
+    if (!p.mine && p.owner != null) {
+        val more = p.members.size - 1
+        return "${p.owner.label}'s, shared with you" + (if (more > 0) " and $more more" else "") + ". $everyone"
+    }
+    if (!p.mine) return "Shared with you. $everyone"
+    return "Shared with ${names(p.members)}. $everyone"
+}
+
+/** "Sam", "Sam and Alex", "Sam, Alex and Jo", or "Sam, Alex and 3 more". */
+internal fun names(people: List<PlaylistPerson>): String {
+    val all = people.map { it.label }
+    return when {
+        all.size <= 1 -> all.joinToString("")
+        all.size <= 3 -> all.dropLast(1).joinToString(", ") + " and " + all.last()
+        else -> all.take(2).joinToString(", ") + " and ${all.size - 2} more"
     }
 }
 
