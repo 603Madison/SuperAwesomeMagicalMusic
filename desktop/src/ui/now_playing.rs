@@ -20,6 +20,9 @@ use crate::ui::widgets::{artwork, cover_url, duration, track_key, track_menu};
 
 /// Scrolling the lyrics by hand stops them following the song for a while.
 const HAND_SCROLL_PAUSE: Duration = Duration::from_secs(4);
+/// An "i" in a circle, as the web player's Details button.
+pub const INFO_ICON: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="#2e3436" d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1zm0 1.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11zM7.25 7h1.5v4.5h-1.5z"/><circle fill="#2e3436" cx="8" cy="5" r=".9"/></svg>"##;
+
 /// The page's colour when the cover has none to give: the app's own, as on dark.
 const DEFAULT_ACCENT: &str = "#cfbdff";
 
@@ -325,7 +328,6 @@ fn css(accent: &str) -> String {
     linear-gradient(180deg, rgba(6, 4, 10, 0.3), rgba(6, 4, 10, 0.5) 55%, rgba(6, 4, 10, 0.74));
 }}
 .np headerbar {{ background: none; box-shadow: none; color: white; }}
-.np label {{ color: inherit; }}
 .np button {{ color: white; }}
 .np button.flat:hover, .np menubutton.flat > button:hover {{ background: rgba(255, 255, 255, 0.1); }}
 .np button.on {{ color: @np_accent; }}
@@ -337,7 +339,8 @@ fn css(accent: &str) -> String {
 .np-art.playing {{ transform: none; box-shadow: 0 40px 90px -24px rgba(0, 0, 0, 0.8), 0 0 160px -30px @np_accent; }}
 .np-title {{ font-size: 2.1em; font-weight: 700; letter-spacing: -0.015em; }}
 .np-artist {{ font-size: 1.12em; color: rgba(255, 255, 255, 0.74); }}
-.np-artist link {{ color: rgba(255, 255, 255, 0.86); }}
+.np-artist link {{ color: rgba(255, 255, 255, 0.86); text-decoration-line: none; }}
+.np-artist link:hover {{ color: white; text-decoration-line: underline; }}
 .np-quality, .np-faint {{ font-size: 0.78em; color: rgba(255, 255, 255, 0.5); }}
 .np-muted {{ color: rgba(255, 255, 255, 0.74); }}
 .np-dj {{ color: rgba(255, 255, 255, 0.86); font-style: italic; }}
@@ -384,6 +387,8 @@ button.np-lyric:hover {{ background: rgba(255, 255, 255, 0.07); }}
 .np .artwork {{ background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.6); }}
 .queue-section {{ font-size: 0.78em; font-weight: 700; letter-spacing: 0.06em; margin: 12px 8px 4px 8px; }}
 .queue-heading {{ font-size: 1.15em; font-weight: 700; }}
+.info-grid {{ padding: 16px 18px; }}
+.np image.accent {{ color: @np_accent; }}
 "#
     )
 }
@@ -596,7 +601,7 @@ impl Np {
             .build();
         star.add_css_class("flat");
         star.add_css_class("circular");
-        let info = icon_button("dialog-information-symbolic", "Details");
+        let info = icon_button("samm-info-symbolic", "Details");
         info.connect_clicked(|_| {
             let state = ctx().player.state();
             if let Some(track) = state.current() {
@@ -848,6 +853,12 @@ impl Np {
         });
         let _ = cover_stack;
 
+        np.tabs[match np.view.get() {
+            View::Cover => 0,
+            View::Lyrics => 1,
+            View::Queue => 2,
+        }]
+        .set_active(true);
         for (tab, view) in np.tabs.iter().zip([View::Cover, View::Lyrics, View::Queue]) {
             let weak = Rc::downgrade(&np);
             tab.connect_toggled(move |tab| {
@@ -1502,7 +1513,10 @@ impl Lyrics {
             .visible(false)
             .build();
         back.add_css_class("np-back");
-        let root = gtk::Overlay::builder().child(&stack).vexpand(true).build();
+        // The lines fade in at the top and out at the bottom, as on the web.
+        let faded = fade::Fade::new(&stack);
+        faded.set_vexpand(true);
+        let root = gtk::Overlay::builder().child(&faded).vexpand(true).build();
         root.add_overlay(&back);
         root.add_css_class("np-lyrics");
         let lyrics = Rc::new(Lyrics {
@@ -1576,6 +1590,13 @@ impl Lyrics {
         }
         if !self.synced.get() {
             return;
+        }
+        // Timed lyrics with no way to tell where the song is (a radio station that doesn't say
+        // when the song started): shown in full, as untimed ones are.
+        if ms.is_some() {
+            self.root.remove_css_class("plain");
+        } else {
+            self.root.add_css_class("plain");
         }
         let times: Vec<Option<i64>> = self.lines.borrow().iter().map(|(t, _)| *t).collect();
         let now = current_line(&times, ms);
@@ -1749,6 +1770,76 @@ impl Lyrics {
     }
 }
 
+/// A box whose content fades out at its top and bottom edges (a mask, as the web's mask-image).
+mod fade {
+    use gtk::subclass::prelude::*;
+    use gtk::{gdk, glib, graphene, gsk, prelude::*};
+
+    #[derive(Default)]
+    pub struct FadeImp;
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for FadeImp {
+        const NAME: &'static str = "SammFade";
+        type Type = Fade;
+        type ParentType = gtk::Widget;
+
+        fn class_init(class: &mut Self::Class) {
+            class.set_layout_manager_type::<gtk::BinLayout>();
+        }
+    }
+
+    impl ObjectImpl for FadeImp {
+        fn dispose(&self) {
+            while let Some(child) = self.obj().first_child() {
+                child.unparent();
+            }
+        }
+    }
+
+    impl WidgetImpl for FadeImp {
+        fn snapshot(&self, snapshot: &gtk::Snapshot) {
+            let widget = self.obj();
+            let (width, height) = (widget.width() as f32, widget.height() as f32);
+            let Some(child) = widget.first_child() else { return };
+            if height <= 0.0 {
+                return;
+            }
+            let clear = gdk::RGBA::new(0.0, 0.0, 0.0, 0.0);
+            let solid = gdk::RGBA::new(0.0, 0.0, 0.0, 1.0);
+            snapshot.push_mask(gsk::MaskMode::Alpha);
+            snapshot.append_linear_gradient(
+                &graphene::Rect::new(0.0, 0.0, width, height),
+                &graphene::Point::new(0.0, 0.0),
+                &graphene::Point::new(0.0, height),
+                &[
+                    gsk::ColorStop::new(0.0, clear),
+                    gsk::ColorStop::new(0.10, solid),
+                    gsk::ColorStop::new(0.78, solid),
+                    gsk::ColorStop::new(1.0, clear),
+                ],
+            );
+            snapshot.pop();
+            widget.snapshot_child(&child, snapshot);
+            snapshot.pop();
+        }
+    }
+
+    glib::wrapper! {
+        pub struct Fade(ObjectSubclass<FadeImp>)
+            @extends gtk::Widget,
+            @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
+    }
+
+    impl Fade {
+        pub fn new(child: &impl IsA<gtk::Widget>) -> Fade {
+            let fade: Fade = glib::Object::new();
+            child.set_parent(&fade);
+            fade
+        }
+    }
+}
+
 // ---- The song's details ----
 
 fn source_name(source: &str) -> &str {
@@ -1869,54 +1960,39 @@ fn info_rows(track: &Track, state: &State, kbps_cap: u32, levelling: (bool, f64,
 /// Where a song comes from and, while it plays, exactly what's playing: the copy your server
 /// picked, its format and bitrate, what GStreamer decodes, the quality cap and volume levelling.
 fn track_info(track: &Track) {
-    let dialog = adw::Dialog::builder().title(&track.title).content_width(460).build();
-    let page = adw::PreferencesPage::new();
-    let about = adw::PreferencesGroup::new();
-    let now_group = adw::PreferencesGroup::new();
-    page.add(&about);
-    page.add(&now_group);
-    let row = |key: &str, value: &str| {
-        let r = adw::ActionRow::builder().title(key).subtitle(value).subtitle_selectable(true).build();
-        r.set_use_markup(false);
-        r.add_css_class("property");
-        r
-    };
-    let shown_rows: Rc<RefCell<Vec<adw::ActionRow>>> = Rc::default();
+    let dialog = adw::Dialog::builder().title(&track.title).content_width(480).build();
+    let column = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(10)
+        .margin_start(18)
+        .margin_end(18)
+        .margin_bottom(22)
+        .build();
+    let about = info_grid();
+    column.append(&about);
+    let heading = gtk::Label::builder().xalign(0.0).margin_top(10).build();
+    heading.add_css_class("heading");
+    column.append(&heading);
+    let now = info_grid();
+    column.append(&now);
+    let note = gtk::Label::builder()
+        .label("When it plays, your server picks the copy: your library first, then the other services, for the best one within your quality setting.")
+        .wrap(true)
+        .xalign(0.0)
+        .build();
+    note.add_css_class("dim-label");
+    column.append(&note);
     let fill = {
-        let (track, about, now_group, shown_rows) = (track.clone(), about.clone(), now_group.clone(), shown_rows.clone());
+        let track = track.clone();
         move || {
             let state = ctx().player.state();
             let cap = ctx().config.borrow().kbps;
-            let (rows, now) = info_rows(&track, &state, cap, ctx().player.levelling());
-            for r in shown_rows.borrow_mut().drain(..) {
-                if r.parent().is_some_and(|p| p.is_ancestor(&about)) {
-                    about.remove(&r);
-                } else {
-                    now_group.remove(&r);
-                }
-            }
-            for (k, v) in rows {
-                let r = row(&k, &v);
-                about.add(&r);
-                shown_rows.borrow_mut().push(r);
-            }
-            match now {
-                Some(now) => {
-                    now_group.set_title("Playing now");
-                    now_group.set_description(None);
-                    for (k, v) in now {
-                        let r = row(&k, &v);
-                        now_group.add(&r);
-                        shown_rows.borrow_mut().push(r);
-                    }
-                }
-                None => {
-                    now_group.set_title("Not playing");
-                    now_group.set_description(Some(
-                        "When it plays, your server picks the copy: your library first, then the other services, for the best one within your quality setting.",
-                    ));
-                }
-            }
+            let (rows, playing) = info_rows(&track, &state, cap, ctx().player.levelling());
+            set_rows(&about, &rows);
+            heading.set_text(if playing.is_some() { "Playing now" } else { "Not playing" });
+            now.set_visible(playing.is_some());
+            note.set_visible(playing.is_none());
+            set_rows(&now, &playing.unwrap_or_default());
         }
     };
     fill();
@@ -1931,9 +2007,49 @@ fn track_info(track: &Track) {
     });
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&adw::HeaderBar::new());
-    toolbar.set_content(Some(&page));
+    toolbar.set_content(Some(
+        &gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .propagate_natural_height(true)
+            .child(&column)
+            .build(),
+    ));
     dialog.set_child(Some(&toolbar));
     dialog.present(Some(&ctx().window));
+}
+
+/// Two columns in a card, as the web player's details list: what, and what it is.
+fn info_grid() -> gtk::Grid {
+    let grid = gtk::Grid::builder().column_spacing(18).row_spacing(10).build();
+    grid.add_css_class("card");
+    grid.add_css_class("info-grid");
+    grid
+}
+
+/// Shows [rows] in [grid], changing only the values when the rows are the same ones.
+fn set_rows(grid: &gtk::Grid, rows: &[(String, String)]) {
+    let same = rows.iter().enumerate().all(|(i, (k, _))| {
+        grid.child_at(0, i as i32).and_downcast::<gtk::Label>().is_some_and(|l| l.text() == *k)
+    }) && grid.child_at(0, rows.len() as i32).is_none();
+    if !same {
+        while let Some(child) = grid.first_child() {
+            grid.remove(&child);
+        }
+        for (i, (key, _)) in rows.iter().enumerate() {
+            let k = gtk::Label::builder().label(key).xalign(0.0).yalign(0.0).width_chars(16).build();
+            k.add_css_class("dim-label");
+            let v = gtk::Label::builder().xalign(0.0).wrap(true).wrap_mode(gtk::pango::WrapMode::WordChar).hexpand(true).build();
+            grid.attach(&k, 0, i as i32, 1, 1);
+            grid.attach(&v, 1, i as i32, 1, 1);
+        }
+    }
+    for (i, (_, value)) in rows.iter().enumerate() {
+        if let Some(v) = grid.child_at(1, i as i32).and_downcast::<gtk::Label>()
+            && v.text() != *value
+        {
+            v.set_text(value);
+        }
+    }
 }
 
 #[cfg(test)]

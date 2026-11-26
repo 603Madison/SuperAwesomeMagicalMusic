@@ -150,7 +150,7 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
         .build();
     star.add_css_class("flat");
     star.add_css_class("circular");
-    let queue_list = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+    let queue_list = gtk::Box::builder().orientation(gtk::Orientation::Vertical).width_request(420).build();
     let queue_scroll = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .min_content_height(320)
@@ -285,6 +285,8 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
         repeat.clone().upcast(),
         sleep_button.upcast(),
         volume.clone().upcast(),
+        lyrics.clone().upcast(),
+        devices.clone().upcast(),
     ];
 
     // Following the player.
@@ -422,6 +424,7 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
     // Another of the person's devices playing (and not this one): the bar controls it instead.
     let bars = gtk::Stack::builder()
         .transition_type(gtk::StackTransitionType::Crossfade)
+        .hhomogeneous(false)
         .vhomogeneous(false)
         .build();
     bars.add_named(&bar, Some("here"));

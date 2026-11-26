@@ -14,7 +14,7 @@ use crate::ui::ctx;
 use crate::ui::widgets::{artwork, duration};
 
 /// A monitor and a speaker, as the web player's devices button.
-pub const DEVICES_ICON: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="#2e3436" fill-rule="evenodd" d="M1 2h8.5v8H1zm1.5 1.5v5H8v-5zM3 11.5h4.5V13H3zM10.5 3H15v11h-4.5zm1.25 1.25v8.5h2v-8.5zm1 4.25a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm0-3a.6.6 0 1 1 0 1.2.6.6 0 0 1 0-1.2z"/></svg>"##;
+pub const DEVICES_ICON: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="#2e3436" d="M1 2h8.5v1.5H1zm0 6.5h8.5V10H1zM1 2h1.5v8H1zm7 0h1.5v8H8zM3 11.5h4.5V13H3zm7.5-8.5H15v1.25h-4.5zm0 9.75H15V14h-4.5zm0-9.75h1.25v11H10.5zm3.25 0H15v11h-1.25z"/><circle fill="#2e3436" cx="12.75" cy="9.5" r="1"/><circle fill="#2e3436" cx="12.75" cy="6" r=".6"/></svg>"##;
 
 fn kind_icon(kind: &str) -> &'static str {
     match kind {

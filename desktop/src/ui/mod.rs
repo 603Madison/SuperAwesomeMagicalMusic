@@ -184,9 +184,19 @@ fn register_icon() {
         return;
     }
     let down = THUMB_UP.replace("<path ", r#"<path transform="rotate(180 8 8)" "#);
-    let mut ok = std::fs::write(dir.join("samm-thumb-up-symbolic.svg"), THUMB_UP).is_ok();
-    ok &= std::fs::write(dir.join("samm-thumb-down-symbolic.svg"), down).is_ok();
-    ok &= std::fs::write(dir.join("samm-devices-symbolic.svg"), devices::DEVICES_ICON).is_ok();
+    let icons = [
+        ("samm-thumb-up-symbolic.svg", THUMB_UP),
+        ("samm-thumb-down-symbolic.svg", down.as_str()),
+        ("samm-devices-symbolic.svg", devices::DEVICES_ICON),
+        ("samm-info-symbolic.svg", now_playing::INFO_ICON),
+    ];
+    // In the hicolor theme's layout (its scalable/apps), where GTK takes them as symbolic icons
+    // and draws them in the text's colour; loose in the folder they'd keep their own grey.
+    let themed = dir.join("hicolor").join("scalable").join("apps");
+    let mut ok = std::fs::create_dir_all(&themed).is_ok();
+    for (name, svg) in icons {
+        ok &= std::fs::write(themed.join(name), svg).is_ok();
+    }
     if !theme.has_icon(crate::APP_ID) {
         let png: &[u8] = include_bytes!("../../data/icons/hicolor/256x256/apps/io.github._603madison.SuperAwesomeMagicalMusic.png");
         ok |= std::fs::write(dir.join(format!("{}.png", crate::APP_ID)), png).is_ok();
