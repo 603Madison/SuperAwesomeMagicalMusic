@@ -617,7 +617,7 @@ pub fn add_actions(group: &gio::SimpleActionGroup, tracks: Rc<Vec<Track>>) {
 }
 
 /// Play next, add to the queue or a playlist, the song's artist and album, and a playlist's own.
-fn track_menu(track: &Track, index: usize, playlist: Option<&PlaylistEdit>) -> gtk::MenuButton {
+pub fn track_menu(track: &Track, index: usize, playlist: Option<&PlaylistEdit>) -> gtk::MenuButton {
     let group = gio::SimpleActionGroup::new();
     let action = |name: &str, run: Box<dyn Fn()>| {
         let a = gio::SimpleAction::new(name, None);
