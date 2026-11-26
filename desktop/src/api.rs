@@ -9,6 +9,11 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+mod account;
+mod library;
+pub use account::*;
+pub use library::*;
+
 // ---- What the server sends ----
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -163,6 +168,30 @@ pub struct User {
     pub display_name: String,
     #[serde(default)]
     pub role: String,
+    /// The admin made at first start, which can always sign in with its password.
+    #[serde(default)]
+    pub break_glass: bool,
+    /// Turned off by an admin (can't sign in).
+    #[serde(default)]
+    pub disabled: bool,
+    /// Signs in through single sign-on.
+    #[serde(default)]
+    pub oidc: bool,
+    #[serde(default)]
+    pub has_password: bool,
+    #[serde(default)]
+    pub last_login_at: Option<i64>,
+}
+
+impl User {
+    pub fn is_admin(&self) -> bool {
+        self.role == "ADMIN"
+    }
+
+    /// Their name, or their username when they have none.
+    pub fn name(&self) -> &str {
+        if self.display_name.is_empty() { &self.username } else { &self.display_name }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -280,20 +309,31 @@ pub struct PlaylistSummary {
     pub members: Vec<PlaylistPerson>,
 }
 
-/// Someone a playlist is shared with, or who shares it.
+/// Someone a playlist is shared with, or who shares it (anyone on the server, to share with).
 #[derive(Debug, Clone, Deserialize)]
 pub struct PlaylistPerson {
     #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
     pub name: String,
+}
+
+impl PlaylistPerson {
+    /// Their name, or their username when they have none.
+    pub fn shown(&self) -> &str {
+        if self.name.is_empty() { &self.username } else { &self.name }
+    }
 }
 
 impl PlaylistSummary {
     /// "Shared by Maddie", or "Shared with Sam and Alex", for a shared playlist.
     pub fn shared_note(&self) -> Option<String> {
         if !self.mine {
-            return self.owner.as_ref().map(|o| format!("Shared by {}", o.name));
+            return self.owner.as_ref().map(|o| format!("Shared by {}", o.shown()));
         }
-        let names: Vec<&str> = self.members.iter().map(|m| m.name.as_str()).collect();
+        let names: Vec<&str> = self.members.iter().map(PlaylistPerson::shown).collect();
         match names.len() {
             0 => None,
             1 => Some(format!("Shared with {}", names[0])),
@@ -308,6 +348,9 @@ pub struct PlaylistEntry {
     #[serde(default)]
     pub entry_id: String,
     pub track: Track,
+    /// Who added it, on a shared playlist.
+    #[serde(default)]
+    pub added_by: Option<PlaylistPerson>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -335,6 +378,7 @@ fn yes() -> bool {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SourceView {
     pub id: String,
     pub kind: String,
@@ -342,6 +386,19 @@ pub struct SourceView {
     pub enabled: bool,
     #[serde(default)]
     pub hidden: bool,
+    #[serde(default)]
+    pub name: String,
+    /// "global" (shared by the admins) or "personal".
+    #[serde(default)]
+    pub scope: String,
+    #[serde(default)]
+    pub editable: bool,
+    /// What's saved, but its secrets (the server's address, the username…).
+    #[serde(default)]
+    pub settings: serde_json::Map<String, serde_json::Value>,
+    /// The secrets that are set, by name (their values are never sent).
+    #[serde(default)]
+    pub secrets_set: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -455,6 +512,9 @@ pub struct PersonalStation {
 pub struct DjLine {
     pub id: String,
     pub text: String,
+    /// When it's said, on the station's clock.
+    #[serde(default, rename = "atMs")]
+    pub at_ms: i64,
 }
 
 /// This app's id when it tunes in to one of the person's own stations (new each time it starts).
@@ -491,6 +551,14 @@ pub struct PersonalNow {
     pub next: Vec<NowView>,
     #[serde(default)]
     pub dj: Option<DjLine>,
+    /// A line for the DJ to say on tuning in.
+    #[serde(default)]
+    pub welcome: Option<String>,
+    /// The server's clock, and how far behind it the station is heard.
+    #[serde(default)]
+    pub server_time: i64,
+    #[serde(default)]
+    pub heard_delay_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

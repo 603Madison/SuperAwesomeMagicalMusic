@@ -479,35 +479,14 @@ pub fn preferences(ctx: &Rc<Ctx>) {
         ctx.player.set_choices(kbps, row.is_active());
     });
     playback.add(&thorough);
+    crate::ui::settings::more_playback(&playback);
     page.add(&playback);
-
-    let account = adw::PreferencesGroup::builder().title("Account").build();
-    let config = ctx.config.borrow();
-    let who = config
-        .user
-        .as_ref()
-        .map(|u| {
-            if u.display_name.is_empty() {
-                u.username.clone()
-            } else {
-                format!("{} ({})", u.display_name, u.username)
-            }
-        })
-        .unwrap_or_default();
-    let row = crate::ui::widgets::plain_row(who.as_str(), config.server.as_deref().unwrap_or_default());
-    let sign_out = gtk::Button::builder().label("Sign out").valign(gtk::Align::Center).build();
-    sign_out.add_css_class("destructive-action");
-    let d = dialog.clone();
-    sign_out.connect_clicked(move |_| {
-        d.close();
-        crate::ui::ctx().sign_out();
-    });
-    row.add_suffix(&sign_out);
-    account.add(&row);
-    page.add(&account);
-    drop(config);
+    page.set_title("General");
+    page.set_icon_name(Some("preferences-system-symbolic"));
 
     dialog.add(&page);
+    // Sources, and the account (signing out included).
+    crate::ui::settings::add_pages(&dialog);
     dialog.present(Some(&ctx.window));
 }
 

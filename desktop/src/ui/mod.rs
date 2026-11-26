@@ -1,9 +1,14 @@
 //! The window: signing in, then the music (a sidebar, pages, and the player along the bottom).
 
+mod dj;
+mod forms;
 mod listen;
 mod login;
 mod pages;
 mod player_bar;
+mod settings;
+mod sources;
+mod style;
 pub mod theme;
 pub mod widgets;
 mod window;
@@ -276,6 +281,7 @@ pub fn activate(app: &adw::Application) {
         glib::Propagation::Proceed
     });
     install_shortcuts(app);
+    dj::start();
     window.present();
 }
 

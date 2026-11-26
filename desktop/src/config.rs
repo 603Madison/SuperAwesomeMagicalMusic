@@ -33,6 +33,8 @@ pub struct Config {
     pub bold_text: bool,
     /// Repeat: off, all or one.
     pub repeat: String,
+    /// On the person's own stations, the DJ talks (off: what it says is only shown).
+    pub dj_voice: bool,
 }
 
 impl Default for Config {
@@ -51,6 +53,7 @@ impl Default for Config {
             style: "system".into(),
             bold_text: false,
             repeat: "off".into(),
+            dj_voice: true,
         }
     }
 }
