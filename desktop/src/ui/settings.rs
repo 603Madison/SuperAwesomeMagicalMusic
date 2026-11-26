@@ -282,14 +282,39 @@ pub fn tidy_code(typed: &str) -> String {
     }
 }
 
+/// One page shown at a time, by name (a GtkStack sizes wrapping text oddly in a dialog).
+#[derive(Clone)]
+struct Pages {
+    holder: gtk::Box,
+    pages: Rc<std::cell::RefCell<Vec<(String, gtk::Widget)>>>,
+}
+
+impl Pages {
+    fn new() -> Pages {
+        Pages {
+            holder: gtk::Box::builder().orientation(gtk::Orientation::Vertical).build(),
+            pages: Rc::default(),
+        }
+    }
+
+    fn add_named(&self, page: &impl IsA<gtk::Widget>, name: Option<&str>) {
+        page.set_visible(self.pages.borrow().is_empty());
+        self.holder.append(page);
+        self.pages.borrow_mut().push((name.unwrap_or_default().to_string(), page.clone().upcast()));
+    }
+
+    fn set_visible_child_name(&self, name: &str) {
+        for (page, widget) in self.pages.borrow().iter() {
+            widget.set_visible(page == name);
+        }
+    }
+}
+
 /// Signing in another device with the code it shows: a flip phone (or anything awkward to type
 /// a password on) is signed in to this account once you allow it.
 fn link_device(near: &gtk::Button, devices: gtk::Box) {
     let dialog = adw::Dialog::builder().title("Sign in a device").content_width(440).build();
-    let stack = gtk::Stack::builder()
-        .transition_type(gtk::StackTransitionType::SlideLeft)
-        .vhomogeneous(false)
-        .build();
+    let stack = Pages::new();
     let page = |title: &str, text: &str| {
         let column = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -304,10 +329,9 @@ fn link_device(near: &gtk::Button, devices: gtk::Box) {
             .pixel_size(36)
             .halign(gtk::Align::Center)
             .build();
-        let circle = gtk::Box::builder().halign(gtk::Align::Center).build();
+        let circle = gtk::Box::builder().halign(gtk::Align::Center).valign(gtk::Align::Center).build();
         circle.add_css_class("empty-icon");
         icon.set_hexpand(true);
-        icon.set_vexpand(true);
         circle.append(&icon);
         column.append(&circle);
         let name = gtk::Label::builder()
@@ -521,7 +545,7 @@ fn link_device(near: &gtk::Button, devices: gtk::Box) {
 
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&adw::HeaderBar::builder().show_title(false).build());
-    toolbar.set_content(Some(&stack));
+    toolbar.set_content(Some(&stack.holder));
     dialog.set_child(Some(&toolbar));
     dialog.set_default_widget(Some(&go));
     dialog.present(Some(near));
