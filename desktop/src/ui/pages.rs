@@ -1,19 +1,18 @@
 //! The pages, as the web player and the phone app lay them out: Search, an artist, an album,
-//! Playlists and a playlist, Radio, and History.
+//! Playlists and a playlist (Radio, History and Wrapped have their own modules).
 
-use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::cell::Cell;
 use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::{gio, glib};
 
-use crate::api::{AlbumSummary, ChannelView, PersonalStation, Playlist, PlaylistSummary, SearchResults, SourceView, TopResult, Track};
+use crate::api::{AlbumSummary, Playlist, PlaylistSummary, SearchResults, TopResult, Track};
 use crate::rt::bg;
 use crate::ui::ctx;
 use crate::ui::widgets::{
     ListStyle, PlaylistEdit, add_actions, artwork, button, card, card_grid, card_with, duration, heading, mosaic, nav_page, page_box,
-    page_title, plain_row, play_buttons, playlist_menu, scrolled, status, track_list, track_list_styled,
+    page_title, play_buttons, playlist_menu, scrolled, status, track_list, track_list_styled,
 };
 use crate::ui::window::load_into;
 
@@ -47,7 +46,13 @@ pub fn search_page() -> adw::NavigationPage {
         .margin_bottom(6)
         .build();
     entry.add_css_class("search-field");
-    content.append(&entry);
+    entry.set_hexpand(true);
+    // Beside it, as on the web: Listen, for what's playing around you.
+    let search_row = gtk::Box::builder().spacing(8).margin_bottom(6).build();
+    entry.set_margin_bottom(0);
+    search_row.append(&entry);
+    search_row.append(&crate::ui::listen_start::listen_button());
+    content.append(&search_row);
     let results = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).build();
     results.append(&search_start());
     content.append(&results);
@@ -94,7 +99,7 @@ fn show_results(into: &gtk::Box, query: &str, found: SearchResults) {
         into.append(&status(
             "edit-find-symbolic",
             &format!("Nothing found for “{query}”"),
-            "Try other words, or check your sources on the server.",
+            "Try other words, or check your sources in Preferences.",
         ));
         return;
     }
@@ -116,13 +121,26 @@ fn show_results(into: &gtk::Box, query: &str, found: SearchResults) {
         let first: Rc<Vec<Track>> = Rc::new(songs.iter().take(5).cloned().collect());
         column.append(&track_list(first, false));
         top_row.append(&column);
+        // The rest under the first five, on asking (as the web's "All 20 songs").
+        if songs.len() > 5 {
+            let rest = gtk::Revealer::builder().transition_type(gtk::RevealerTransitionType::SlideDown).build();
+            let more: Rc<Vec<Track>> = Rc::new(songs.iter().skip(5).cloned().collect());
+            rest.set_child(Some(&track_list(more, false)));
+            column.append(&rest);
+            let all = format!("All {} songs", songs.len());
+            let toggle = button(None, &all, "ghost");
+            toggle.set_halign(gtk::Align::Start);
+            toggle.connect_clicked(move |b| {
+                let open = !rest.reveals_child();
+                rest.set_reveal_child(open);
+                if let Some(label) = b.child().and_then(|c| c.last_child()).and_downcast::<gtk::Label>() {
+                    label.set_label(if open { "Fewer songs" } else { &all });
+                }
+            });
+            column.append(&toggle);
+        }
     }
     into.append(&top_row);
-    if songs.len() > 5 {
-        into.append(&heading("More songs"));
-        let rest: Rc<Vec<Track>> = Rc::new(songs.iter().skip(5).take(10).cloned().collect());
-        into.append(&track_list(rest, false));
-    }
     if !found.artists.is_empty() {
         into.append(&heading("Artists"));
         let grid = card_grid();
@@ -161,6 +179,22 @@ fn top_result(top: TopResult, songs: Rc<Vec<Track>>) -> gtk::Widget {
     let button = gtk::Button::builder().child(&column).build();
     button.add_css_class("flat");
     button.add_css_class("top-result");
+    // Play, in its corner, as on the web: the artist's popular songs, the album, or the song.
+    let play = gtk::Button::builder()
+        .icon_name("media-playback-start-symbolic")
+        .tooltip_text(format!("Play {title}"))
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::End)
+        .margin_end(16)
+        .margin_bottom(16)
+        .build();
+    play.add_css_class("circular");
+    play.add_css_class("suggested-action");
+    play.add_css_class("play-button");
+    {
+        let (top, songs) = (top.clone(), songs.clone());
+        play.connect_clicked(move |b| play_top(&top, &songs, b));
+    }
     button.connect_clicked(move |_| match top.kind.as_str() {
         "artist" => {
             if let Some(a) = &top.artist {
@@ -181,7 +215,40 @@ fn top_result(top: TopResult, songs: Rc<Vec<Track>>) -> gtk::Widget {
             }
         }
     });
-    button.upcast()
+    let overlay = gtk::Overlay::builder().child(&button).build();
+    overlay.add_overlay(&play);
+    overlay.upcast()
+}
+
+/// Plays the top result: the song, or the artist's popular songs, or the album.
+fn play_top(top: &TopResult, songs: &Rc<Vec<Track>>, near: &gtk::Button) {
+    if let Some(t) = &top.track {
+        match songs.iter().position(|s| s == t) {
+            Some(i) => ctx().player.play_tracks(songs.to_vec(), i),
+            None => ctx().player.play_tracks(vec![t.clone()], 0),
+        }
+        return;
+    }
+    let Some(api) = ctx().api() else { return };
+    let (artist, album) = (top.artist.clone(), top.album.clone());
+    near.set_sensitive(false);
+    let near = near.clone();
+    glib::spawn_future_local(async move {
+        let found = bg(async move {
+            match (artist, album) {
+                (Some(a), _) => api.artist(Some(&a.id), &a.name).await.map(|p| p.top_songs),
+                (_, Some(a)) => api.album(Some(&a.id), &a.title, &a.artist).await.map(|p| p.tracks),
+                _ => Ok(vec![]),
+            }
+        })
+        .await;
+        near.set_sensitive(true);
+        match found {
+            Ok(tracks) if !tracks.is_empty() => ctx().player.play_tracks(tracks, 0),
+            Ok(_) => {}
+            Err(e) => ctx().failed(&e),
+        }
+    });
 }
 
 fn album_grid(albums: &[AlbumSummary]) -> gtk::FlowBox {
@@ -201,7 +268,7 @@ fn album_grid(albums: &[AlbumSummary]) -> gtk::FlowBox {
 
 /// A page's top, as the web player's: the cover, a small label over the name, a line, and the
 /// buttons.
-fn hero(cover: gtk::Widget, eyebrow: &str, title: &str, line: &str, buttons: &gtk::Box) -> gtk::Box {
+fn hero(cover: gtk::Widget, eyebrow: &str, title: &str, line: &str, buttons: &impl IsA<gtk::Widget>) -> gtk::Box {
     let row = gtk::Box::builder().spacing(28).margin_top(8).margin_bottom(18).build();
     cover.add_css_class("hero");
     row.append(&cover);
@@ -347,10 +414,13 @@ pub fn album_page(id: Option<String>, title: String, artist: String) -> adw::Nav
 
 pub fn playlists_page() -> adw::NavigationPage {
     let content = page_box();
-    content.append(&page_title(
-        "Playlists",
-        "Yours, on every device: made here, on the web or on your phone.",
-    ));
+    let top = gtk::Box::builder().spacing(12).build();
+    let title = page_title("Playlists", "Yours, on every device: made here, on the web or on your phone.");
+    title.set_hexpand(true);
+    top.append(&title);
+    // Import, and New playlist.
+    top.append(&crate::ui::playlists::header_actions());
+    content.append(&top);
     let holder = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     content.append(&holder);
     let (page, _) = nav_page("Playlists", &scrolled(&content));
@@ -363,7 +433,7 @@ pub fn playlists_page() -> adw::NavigationPage {
                 into.append(&status(
                     "view-list-bullet-symbolic",
                     "No playlists yet",
-                    "Make one in the web player or the phone app; it shows up here.",
+                    "Make one, or import one from Spotify, Apple Music, Tidal, Deezer, YouTube and more. Songs are found in your own sources.",
                 ));
                 return;
             }
@@ -418,9 +488,27 @@ fn show_playlist(into: &gtk::Box, playlist: Playlist, page: glib::WeakRef<adw::N
     if length > 0 {
         line.push_str(&format!(" · {}", duration(length)));
     }
-    if !summary.description.is_empty() {
-        line = format!("{} — {line}", summary.description);
+    // Its description, who it's shared between, and its songs, a line each (as on the web).
+    let shared = crate::ui::playlists::is_shared(&summary);
+    if shared {
+        line = format!("{}\n{line}", crate::ui::playlists::people_line(&summary));
     }
+    if !summary.description.is_empty() {
+        line = format!("{}\n{line}", summary.description);
+    }
+    // Shows it as the server has it now (after sharing, or finding songs).
+    let reload: Rc<dyn Fn()> = {
+        let (holder, page, id) = (into.clone(), page.clone(), summary.id.clone());
+        Rc::new(move || {
+            let Some(api) = ctx().api() else { return };
+            let (holder, page, id) = (holder.clone(), page.clone(), id.clone());
+            glib::spawn_future_local(async move {
+                if let Ok(playlist) = bg(async move { api.playlist(&id).await }).await {
+                    show_playlist(&holder, playlist, page);
+                }
+            });
+        })
+    };
     // Playing it (on any device) puts it first among your playlists.
     let played_id = summary.id.clone();
     let played: Rc<dyn Fn()> = Rc::new(move || {
@@ -450,8 +538,21 @@ fn show_playlist(into: &gtk::Box, playlist: Playlist, page: glib::WeakRef<adw::N
         ctx().toast("Added to the queue");
     });
     buttons.append(&queue);
-    // Someone else's shared playlist: its songs are everyone's, but renaming and deleting are its owner's.
+    // Someone else's shared playlist: its songs are everyone's, but sharing, renaming and deleting are its owner's.
     if summary.mine {
+        let share = button(Some("system-users-symbolic"), "Share", "ghost");
+        let (s, r) = (summary.clone(), reload.clone());
+        share.connect_clicked(move |_| {
+            let r = r.clone();
+            crate::ui::playlists::share_dialog(
+                &s,
+                Rc::new(move || {
+                    r();
+                    crate::ui::window::refresh_sidebar();
+                }),
+            )
+        });
+        buttons.append(&share);
         let rename = button(Some("document-edit-symbolic"), "Rename", "ghost");
         let (holder, p, s) = (into.clone(), page.clone(), summary.clone());
         rename.connect_clicked(move |_| rename_playlist(&s, holder.clone(), p.clone()));
@@ -469,21 +570,35 @@ fn show_playlist(into: &gtk::Box, playlist: Playlist, page: glib::WeakRef<adw::N
         let s = summary.clone();
         delete.connect_clicked(move |_| delete_playlist(&s));
         buttons.append(&delete);
+    } else {
+        let leave = button(Some("system-log-out-symbolic"), "Leave", "ghost");
+        let s = summary.clone();
+        leave.connect_clicked(move |_| crate::ui::playlists::leave(&s));
+        buttons.append(&leave);
     }
-    if let Some(note) = summary.shared_note() {
-        line = format!("{note}: everyone adds, removes and reorders songs — {line}");
-    }
+    // Many buttons: they wrap onto a second line rather than widen the page.
+    let buttons = wrap_buttons(buttons);
 
-    let kind = if summary.shared_note().is_some() { "Shared playlist" } else { "Playlist" };
+    let kind = if shared { "Shared playlist" } else { "Playlist" };
     into.append(&hero(mosaic(&summary.artwork, 200), kind, &summary.name, &line, &buttons));
     if tracks.is_empty() {
         into.append(&status(
             "view-list-bullet-symbolic",
-            "No songs yet",
+            "This playlist is empty",
             "Add songs from a song's menu (⋯, then Add to playlist), here, on the web or on your phone.",
         ));
         return;
     }
+    let missing = tracks.iter().filter(|t| t.is_missing()).count();
+    if missing > 0 {
+        let (holder, p) = (into.clone(), page.clone());
+        into.append(&crate::ui::playlists::missing_note(
+            &summary.id,
+            missing,
+            Rc::new(move |playlist| show_playlist(&holder, playlist, p.clone())),
+        ));
+    }
+    let notes = crate::ui::playlists::added_by_notes(&playlist);
     let holder = into.clone();
     let edit = PlaylistEdit {
         id: summary.id.clone(),
@@ -498,8 +613,26 @@ fn show_playlist(into: &gtk::Box, playlist: Playlist, page: glib::WeakRef<adw::N
             hide_album: false,
             playlist: Some(edit),
             on_play: Some(played),
+            notes,
         },
     ));
+}
+
+/// A row of buttons as a flow that wraps when the page is narrow.
+fn wrap_buttons(row: gtk::Box) -> gtk::FlowBox {
+    let flow = gtk::FlowBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .column_spacing(8)
+        .row_spacing(8)
+        .min_children_per_line(2)
+        .max_children_per_line(12)
+        .margin_top(6)
+        .build();
+    while let Some(child) = row.first_child() {
+        row.remove(&child);
+        flow.append(&child);
+    }
+    flow
 }
 
 fn rename_playlist(summary: &PlaylistSummary, holder: gtk::Box, page: glib::WeakRef<adw::NavigationPage>) {
@@ -585,7 +718,7 @@ fn export_playlist(summary: &PlaylistSummary) {
 fn delete_playlist(summary: &PlaylistSummary) {
     let dialog = adw::AlertDialog::new(
         Some(&format!("Delete “{}”?", summary.name)),
-        Some("It goes from every device. Its songs stay in your library."),
+        Some(&crate::ui::playlists::delete_detail(summary)),
     );
     dialog.add_responses(&[("keep", "Keep it"), ("delete", "Delete")]);
     dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
@@ -608,417 +741,3 @@ fn delete_playlist(summary: &PlaylistSummary) {
     dialog.present(Some(&ctx().window));
 }
 
-// ---- Radio ----
-
-/// Toggle buttons that act as one switch, as a pill (the web's tabs, the phone's segmented control).
-fn segmented(choices: &[(&str, &str)], stack: &gtk::Stack) -> gtk::Box {
-    let bar = gtk::Box::builder().halign(gtk::Align::Start).margin_bottom(10).build();
-    bar.add_css_class("segmented");
-    let mut first: Option<gtk::ToggleButton> = None;
-    for (name, label) in choices {
-        let button = gtk::ToggleButton::builder().label(*label).build();
-        if let Some(group) = &first {
-            button.set_group(Some(group));
-        } else {
-            button.set_active(true);
-            first = Some(button.clone());
-        }
-        let (stack, name) = (stack.clone(), name.to_string());
-        button.connect_toggled(move |b| {
-            if b.is_active() {
-                stack.set_visible_child_name(&name);
-            }
-        });
-        bar.append(&button);
-    }
-    bar
-}
-
-pub fn radio_page() -> adw::NavigationPage {
-    let content = page_box();
-    content.append(&page_title(
-        "Radio",
-        "SiriusXM, local and internet radio, and your favourite stations.",
-    ));
-    // The person's own stations, above the rest.
-    let made_for_you = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(8).build();
-    content.append(&made_for_you);
-    if let Some(api) = ctx().api() {
-        let holder = made_for_you.clone();
-        glib::spawn_future_local(async move {
-            if let Ok(stations) = bg(async move { api.personal_stations().await }).await {
-                show_made_for_you(&holder, stations);
-            }
-        });
-    }
-    let stack = gtk::Stack::builder()
-        .transition_type(gtk::StackTransitionType::Crossfade)
-        .vhomogeneous(false)
-        .build();
-    let favourites = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).build();
-    let siriusxm = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).build();
-    let radio = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).build();
-    stack.add_named(&favourites, Some("favourites"));
-    stack.add_named(&siriusxm, Some("siriusxm"));
-    stack.add_named(&radio, Some("radio"));
-    content.append(&segmented(
-        &[("favourites", "Favourites"), ("siriusxm", "SiriusXM"), ("radio", "Local radio")],
-        &stack,
-    ));
-    content.append(&stack);
-    let (page, _) = nav_page("Radio", &scrolled(&content));
-
-    let Some(api) = ctx().api() else { return page };
-    for holder in [&favourites, &siriusxm, &radio] {
-        holder.append(&crate::ui::widgets::loading());
-    }
-    glib::spawn_future_local(async move {
-        let found = bg(async move { tokio::join!(api.live_favorites(), api.sources()) }).await;
-        for holder in [&favourites, &siriusxm, &radio] {
-            clear(holder);
-        }
-        let (stations, sources) = match found {
-            (Ok(stations), Ok(sources)) => (stations, sources),
-            (Err(e), _) | (_, Err(e)) => {
-                favourites.append(&status("dialog-warning-symbolic", "Couldn't load this", &e.to_string()));
-                return ctx().failed(&e);
-            }
-        };
-        let starred: Starred = Rc::new(RefCell::new(stations.iter().map(favourite_key).collect()));
-        show_favourites(&favourites, stations);
-        let sources: Vec<SourceView> = sources.into_iter().filter(|s| s.enabled && !s.hidden).collect();
-        let sxm: Vec<SourceView> = sources.iter().filter(|s| s.kind == "SIRIUSXM").cloned().collect();
-        let stations: Vec<SourceView> = sources.iter().filter(|s| s.kind == "RADIO").cloned().collect();
-        siriusxm_channels(&siriusxm, sxm, &starred);
-        local_radio(&radio, stations, &starred);
-        // Back on Favourites after starring something: shows it as it is now.
-        stack.connect_visible_child_name_notify(move |stack| {
-            if stack.visible_child_name().as_deref() != Some("favourites") {
-                return;
-            }
-            let Some(api) = ctx().api() else { return };
-            clear(&favourites);
-            load_into(
-                &favourites,
-                async move { bg(async move { api.live_favorites().await }).await },
-                show_favourites,
-            );
-        });
-    });
-    page
-}
-
-/// The person's own stations (their Radio, Rewind and Discovery), made by the server from what
-/// they play and like: one click to tune in.
-fn show_made_for_you(into: &gtk::Box, stations: Vec<PersonalStation>) {
-    if stations.is_empty() {
-        return;
-    }
-    into.append(&heading("Made for you"));
-    let row = gtk::FlowBox::builder()
-        .selection_mode(gtk::SelectionMode::None)
-        .homogeneous(true)
-        .min_children_per_line(1)
-        .max_children_per_line(3)
-        .column_spacing(12)
-        .row_spacing(12)
-        .build();
-    for station in stations {
-        let content = gtk::Box::builder().spacing(14).build();
-        content.append(&artwork(station.track.artwork_url.as_deref(), 72, false));
-        let text = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(3)
-            .valign(gtk::Align::Center)
-            .hexpand(true)
-            .build();
-        let label = |value: &str, class: &str, lines: i32| {
-            let l = gtk::Label::builder()
-                .label(value)
-                .xalign(0.0)
-                .wrap(lines > 1)
-                .lines(lines)
-                .max_width_chars(24)
-                .ellipsize(gtk::pango::EllipsizeMode::End)
-                .build();
-            l.add_css_class(class);
-            l
-        };
-        text.append(&label(&station.name, "personal-name", 1));
-        let tagline = if station.ready { station.tagline.clone() } else { "Play some music, and it fills up with what you love".into() };
-        text.append(&label(&tagline, "personal-tagline", 2));
-        if let Some(on) = &station.on_air {
-            text.append(&label(&format!("On air: {} · {}", on.title, on.artist), "personal-on", 1));
-        }
-        content.append(&text);
-        let card = gtk::Button::builder()
-            .child(&content)
-            .sensitive(station.ready)
-            .tooltip_text(if station.ready { format!("Tune in to {}", station.name) } else { "Listen to some music first".into() })
-            .build();
-        card.add_css_class("personal-card");
-        card.add_css_class(&station.kind);
-        let track = station.track.clone();
-        card.connect_clicked(move |_| ctx().player.play_tracks(vec![track.clone()], 0));
-        row.append(&card);
-    }
-    into.append(&row);
-}
-
-/// Your favourite channels and stations (as keys), so their stars show lit.
-type Starred = Rc<RefCell<std::collections::HashSet<String>>>;
-
-fn favourite_key(track: &Track) -> String {
-    format!("{}:{}", track.source, track.source_id)
-}
-
-fn show_favourites(into: &gtk::Box, stations: Vec<Track>) {
-    let live: Vec<Track> = stations.into_iter().filter(Track::is_live).collect();
-    if live.is_empty() {
-        into.append(&status(
-            "starred-symbolic",
-            "No favourites yet",
-            "Star channels and stations (here, on the web or on your phone) to keep them here.",
-        ));
-        return;
-    }
-    let grid = card_grid();
-    for station in live {
-        let under = if station.is_channel() { "SiriusXM" } else { "Radio" };
-        let t = station.clone();
-        grid.append(&card(
-            station.artwork_url.as_deref(),
-            150,
-            false,
-            &station.title,
-            under,
-            move || ctx().player.play_tracks(vec![t.clone()], 0),
-        ));
-    }
-    into.append(&grid);
-}
-
-fn siriusxm_channels(into: &gtk::Box, sources: Vec<SourceView>, starred: &Starred) {
-    let Some(source) = sources.into_iter().next() else {
-        into.append(&status(
-            "network-wireless-signal-excellent-symbolic",
-            "No SiriusXM",
-            "Add your SiriusXM account to your server's sources to listen here.",
-        ));
-        return;
-    };
-    let filter = gtk::SearchEntry::builder()
-        .placeholder_text("Find a channel")
-        .margin_bottom(6)
-        .build();
-    filter.add_css_class("search-field");
-    into.append(&filter);
-    let list = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).build();
-    into.append(&list);
-    let Some(api) = ctx().api() else { return };
-    let channels: Rc<RefCell<Vec<ChannelView>>> = Rc::new(RefCell::new(vec![]));
-    let show = {
-        let (list, channels, starred) = (list.clone(), channels.clone(), starred.clone());
-        move |filter: &str| {
-            clear(&list);
-            let words: Vec<String> = filter.to_lowercase().split_whitespace().map(String::from).collect();
-            let mut by_category: BTreeMap<String, Vec<ChannelView>> = BTreeMap::new();
-            for channel in channels.borrow().iter() {
-                let text = format!(
-                    "{} {} {}",
-                    channel.track.title,
-                    channel.category,
-                    channel.number.map(|n| n.to_string()).unwrap_or_default()
-                )
-                .to_lowercase();
-                if words.iter().all(|w| text.contains(w)) {
-                    by_category
-                        .entry(if channel.category.is_empty() {
-                            "Channels".into()
-                        } else {
-                            channel.category.clone()
-                        })
-                        .or_default()
-                        .push(channel.clone());
-                }
-            }
-            if by_category.is_empty() {
-                list.append(&status("edit-find-symbolic", "No channels match", ""));
-            }
-            for (category, channels) in by_category {
-                list.append(&heading(&category));
-                let group = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
-                group.add_css_class("boxed-list");
-                for channel in channels {
-                    let title = match channel.number {
-                        Some(n) => format!("{n} · {}", channel.track.title),
-                        None => channel.track.title.clone(),
-                    };
-                    let row = plain_row(title.as_str(), channel.track.artist.as_str());
-                    row.set_activatable(!channel.locked);
-                    row.set_subtitle_lines(1);
-                    row.add_prefix(&artwork(channel.track.artwork_url.as_deref(), 44, false));
-                    if channel.locked {
-                        row.add_suffix(&gtk::Image::from_icon_name("system-lock-screen-symbolic"));
-                        row.set_tooltip_text(Some("Not in your SiriusXM subscription"));
-                    } else {
-                        row.add_suffix(&favourite_button(&channel.track, &starred));
-                    }
-                    let track = channel.track.clone();
-                    row.connect_activated(move |_| ctx().player.play_tracks(vec![track.clone()], 0));
-                    group.append(&row);
-                }
-                list.append(&group);
-            }
-        }
-    };
-    list.append(&crate::ui::widgets::loading());
-    let show_now = show.clone();
-    let id = source.id.clone();
-    glib::spawn_future_local(async move {
-        match bg(async move { api.channels(&id).await }).await {
-            Ok(found) => {
-                channels.replace(found);
-                show_now("");
-            }
-            Err(e) => ctx().failed(&e),
-        }
-    });
-    filter.connect_search_changed(move |entry| show(&entry.text()));
-}
-
-/// A star: keeps the channel or station among your favourites (on every device).
-fn favourite_button(track: &Track, starred: &Starred) -> gtk::ToggleButton {
-    let on = starred.borrow().contains(&favourite_key(track));
-    let button = gtk::ToggleButton::builder()
-        .icon_name(if on { "starred-symbolic" } else { "non-starred-symbolic" })
-        .active(on)
-        .valign(gtk::Align::Center)
-        .tooltip_text("Favourite")
-        .build();
-    button.add_css_class("flat");
-    let (track, starred) = (track.clone(), starred.clone());
-    button.connect_toggled(move |b| {
-        let on = b.is_active();
-        b.set_icon_name(if on { "starred-symbolic" } else { "non-starred-symbolic" });
-        if on {
-            starred.borrow_mut().insert(favourite_key(&track));
-        } else {
-            starred.borrow_mut().remove(&favourite_key(&track));
-        }
-        let Some(api) = ctx().api() else { return };
-        let t = track.clone();
-        glib::spawn_future_local(async move {
-            match bg(async move { api.set_live_favorite(&t, on).await }).await {
-                Ok(_) => crate::ui::window::refresh_sidebar(),
-                Err(e) => ctx().failed(&e),
-            }
-        });
-    });
-    button
-}
-
-fn local_radio(into: &gtk::Box, sources: Vec<SourceView>, starred: &Starred) {
-    let Some(source) = sources.into_iter().next() else {
-        into.append(&status(
-            "audio-speakers-symbolic",
-            "No radio",
-            "Turn on Radio in your server's sources to find stations here.",
-        ));
-        return;
-    };
-    let entry = gtk::SearchEntry::builder()
-        .placeholder_text("Find a station by name, city or genre")
-        .search_delay(400)
-        .margin_bottom(6)
-        .build();
-    entry.add_css_class("search-field");
-    into.append(&entry);
-    let results = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
-    results.append(&status(
-        "audio-speakers-symbolic",
-        "Local and internet radio",
-        "Search for a station to play it.",
-    ));
-    into.append(&results);
-    let id = source.id.clone();
-    let starred = starred.clone();
-    entry.connect_search_changed(move |entry| {
-        let query = entry.text().trim().to_string();
-        clear(&results);
-        if query.len() < 2 {
-            return;
-        }
-        let Some(api) = ctx().api() else { return };
-        let (id, starred) = (id.clone(), starred.clone());
-        load_into(
-            &results,
-            async move { bg(async move { api.radio_search(&id, &query).await }).await },
-            move |into, stations| {
-                if stations.is_empty() {
-                    into.append(&status(
-                        "edit-find-symbolic",
-                        "No stations found",
-                        "Try another name, a city or a genre.",
-                    ));
-                    return;
-                }
-                let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
-                list.add_css_class("boxed-list");
-                for station in stations {
-                    let row = plain_row(station.title.as_str(), station.artist.as_str());
-                    row.set_activatable(true);
-                    row.set_subtitle_lines(1);
-                    row.add_prefix(&artwork(station.artwork_url.as_deref(), 44, false));
-                    row.add_suffix(&favourite_button(&station, &starred));
-                    let t = station.clone();
-                    row.connect_activated(move |_| ctx().player.play_tracks(vec![t.clone()], 0));
-                    list.append(&row);
-                }
-                into.append(&list);
-            },
-        );
-    });
-}
-
-// ---- History ----
-
-pub fn history_page() -> adw::NavigationPage {
-    let content = page_box();
-    content.append(&page_title("History", "What you've listened to, on every device."));
-    let holder = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).build();
-    content.append(&holder);
-    let (page, _) = nav_page("History", &scrolled(&content));
-    let Some(api) = ctx().api() else { return page };
-    load_into(
-        &holder,
-        async move { bg(async move { api.history().await }).await },
-        |into, listens| {
-            if listens.is_empty() {
-                into.append(&status(
-                    "document-open-recent-symbolic",
-                    "Nothing yet",
-                    "Songs show up here once you've listened to a good part of them, on any device.",
-                ));
-                return;
-            }
-            let mut days: Vec<(String, Vec<Track>)> = vec![];
-            for listen in listens {
-                let day = glib::DateTime::from_unix_local(listen.played_at / 1000)
-                    .ok()
-                    .and_then(|d| d.format("%A, %B %-e").ok())
-                    .map(|s| s.to_string())
-                    .unwrap_or_default();
-                if days.last().map(|(d, _)| d != &day).unwrap_or(true) {
-                    days.push((day, vec![]));
-                }
-                days.last_mut().expect("a day").1.push(listen.track);
-            }
-            for (day, tracks) in days {
-                into.append(&heading(&day));
-                into.append(&track_list(Rc::new(tracks), false));
-            }
-        },
-    );
-    page
-}

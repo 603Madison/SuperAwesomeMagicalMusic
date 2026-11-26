@@ -1,4 +1,5 @@
-//! The music: a sidebar of sections (Search, Radio, Playlists, History), their pages (with back to
+//! The music: a sidebar of sections (Search, Radio, Listen, Playlists, History, Wrapped, and
+//! Admin for admins), their pages (with back to
 //! where you were), and the player along the bottom. Narrow windows fold the sidebar away.
 
 use std::cell::{Cell, RefCell};
@@ -18,7 +19,7 @@ struct Section {
     make: fn() -> adw::NavigationPage,
 }
 
-const SECTIONS: [Section; 5] = [
+const SECTIONS: &[Section] = &[
     Section {
         title: "Search",
         icon: "system-search-symbolic",
@@ -27,7 +28,7 @@ const SECTIONS: [Section; 5] = [
     Section {
         title: "Radio",
         icon: "network-wireless-signal-excellent-symbolic",
-        make: pages::radio_page,
+        make: crate::ui::radio::radio_page,
     },
     Section {
         title: "Listen",
@@ -42,15 +43,30 @@ const SECTIONS: [Section; 5] = [
     Section {
         title: "History",
         icon: "document-open-recent-symbolic",
-        make: pages::history_page,
+        make: crate::ui::history::history_page,
+    },
+    Section {
+        title: "Wrapped",
+        icon: "starred-symbolic",
+        make: crate::ui::wrapped::wrapped_page,
+    },
+    // Admins only (always last, so the rows match the sections).
+    Section {
+        title: ADMIN,
+        icon: "security-high-symbolic",
+        make: crate::ui::admin::admin_page,
     },
 ];
+
+const ADMIN: &str = "Admin";
 
 thread_local! {
     /// Fills the sidebar's radio and playlists again (after a change elsewhere).
     static REFRESH_SIDEBAR: RefCell<Option<Rc<dyn Fn()>>> = RefCell::new(None);
     /// Marks the section or playlist that's open.
     static MARK_SIDEBAR: RefCell<Option<Rc<dyn Fn()>>> = RefCell::new(None);
+    /// The sections' list in the sidebar, to open one from elsewhere.
+    static SECTION_LIST: RefCell<Option<glib::WeakRef<gtk::ListBox>>> = const { RefCell::new(None) };
     /// Your favourite channels and stations (as keys), for the player's star.
     static FAVOURITES: RefCell<std::collections::HashSet<String>> = RefCell::new(Default::default());
 }
@@ -63,6 +79,14 @@ pub fn is_favourite(key: &str) -> bool {
 fn mark_sidebar() {
     if let Some(mark) = MARK_SIDEBAR.with(|r| r.borrow().clone()) {
         mark();
+    }
+}
+
+/// Opens a section of the sidebar (History's banner opens Wrapped).
+pub fn show_section(title: &str) {
+    let Some(index) = SECTIONS.iter().position(|s| s.title == title) else { return };
+    if let Some(list) = SECTION_LIST.with(|l| l.borrow().as_ref().and_then(|w| w.upgrade())) {
+        list.select_row(list.row_at_index(index as i32).as_ref());
     }
 }
 
@@ -103,7 +127,9 @@ pub fn music_view() -> (gtk::Widget, adw::NavigationView) {
     let column = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Single).build();
     list.add_css_class("nav-list");
-    for section in &SECTIONS {
+    SECTION_LIST.with(|l| l.replace(Some(list.downgrade())));
+    let admin = ctx().config.borrow().user.as_ref().is_some_and(crate::api::User::is_admin);
+    for section in SECTIONS.iter().filter(|s| admin || s.title != ADMIN) {
         let row = gtk::Box::builder().spacing(14).build();
         row.append(&gtk::Image::from_icon_name(section.icon));
         row.append(&gtk::Label::new(Some(section.title)));
@@ -193,7 +219,7 @@ pub fn music_view() -> (gtk::Widget, adw::NavigationView) {
     let s = stations.clone();
     radio_list.connect_row_activated(move |_, row| {
         if let Some(station) = s.borrow().get(row.index() as usize) {
-            ctx().player.play_tracks(vec![station.clone()], 0);
+            crate::ui::radio::play_favourite(station);
         }
     });
     let (p, split_for_playlists) = (playlists.clone(), split.clone());
@@ -249,6 +275,8 @@ pub fn music_view() -> (gtk::Widget, adw::NavigationView) {
         }
     };
     REFRESH_SIDEBAR.with(|r| r.replace(Some(Rc::new(refresh))));
+    // Whether songs' menus can start a Pandora station.
+    crate::ui::radio::remember_sources();
     list.select_row(list.row_at_index(0).as_ref());
 
     // As on the web: the playlist that's open is marked (and no section), and so is the station
@@ -479,35 +507,14 @@ pub fn preferences(ctx: &Rc<Ctx>) {
         ctx.player.set_choices(kbps, row.is_active());
     });
     playback.add(&thorough);
+    crate::ui::settings::more_playback(&playback);
     page.add(&playback);
-
-    let account = adw::PreferencesGroup::builder().title("Account").build();
-    let config = ctx.config.borrow();
-    let who = config
-        .user
-        .as_ref()
-        .map(|u| {
-            if u.display_name.is_empty() {
-                u.username.clone()
-            } else {
-                format!("{} ({})", u.display_name, u.username)
-            }
-        })
-        .unwrap_or_default();
-    let row = crate::ui::widgets::plain_row(who.as_str(), config.server.as_deref().unwrap_or_default());
-    let sign_out = gtk::Button::builder().label("Sign out").valign(gtk::Align::Center).build();
-    sign_out.add_css_class("destructive-action");
-    let d = dialog.clone();
-    sign_out.connect_clicked(move |_| {
-        d.close();
-        crate::ui::ctx().sign_out();
-    });
-    row.add_suffix(&sign_out);
-    account.add(&row);
-    page.add(&account);
-    drop(config);
+    page.set_title("General");
+    page.set_icon_name(Some("preferences-system-symbolic"));
 
     dialog.add(&page);
+    // Sources, and the account (signing out included).
+    crate::ui::settings::add_pages(&dialog);
     dialog.present(Some(&ctx.window));
 }
 

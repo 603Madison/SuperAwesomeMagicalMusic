@@ -1,12 +1,23 @@
 //! The window: signing in, then the music (a sidebar, pages, and the player along the bottom).
 
+mod admin;
+mod dj;
+mod forms;
+mod history;
 mod listen;
+mod listen_start;
 mod login;
 mod pages;
 mod player_bar;
+mod playlists;
+mod radio;
+mod settings;
+mod sources;
+mod style;
 pub mod theme;
 pub mod widgets;
 mod window;
+mod wrapped;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -276,6 +287,8 @@ pub fn activate(app: &adw::Application) {
         glib::Propagation::Proceed
     });
     install_shortcuts(app);
+    dj::start();
+    style::ensure();
     window.present();
 }
 
