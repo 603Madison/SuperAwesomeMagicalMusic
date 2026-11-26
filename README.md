@@ -108,6 +108,15 @@ are generated.
   (e.g. you get home), every 30 minutes, or when you tap "Send now". Settings › Lidarr lists what's
   waiting.
 
+### Shared playlists
+
+A playlist can be shared with other people on your server: open it in the web player or the phone
+app and choose **Share**, then pick who. They see it with their own playlists, and everyone adds,
+removes and reorders its songs; each song says who added it ("added by Sam"). Only the person
+who made it renames it, deletes it or shares it with more people; the others can **Leave** it
+(the songs they added stay). Each person's "last played" is their own, and in the phone app a
+shared playlist syncs, downloads and changes offline like any other.
+
 ### Devices and speakers
 
 - **Your devices work together**, like Spotify Connect: every signed-in web player, phone and
