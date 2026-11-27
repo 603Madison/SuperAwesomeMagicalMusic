@@ -22,6 +22,8 @@ export interface Device {
   state?: PlayState;
   /** Playing, or the one that played last: what the others show and control. */
   active: boolean;
+  /** What it is, for speakers the server plays on ("Sonos", "Music Assistant · Chromecast"). */
+  detail?: string;
 }
 
 interface ConnectState {

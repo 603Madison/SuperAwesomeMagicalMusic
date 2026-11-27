@@ -198,7 +198,7 @@ private fun ToggleRow(label: String, help: String, checked: Boolean, onChange: (
     }
 }
 
-/** Yamaha MusicCast speakers: on or off, the ones found, and ones added by address. */
+/** Yamaha MusicCast and Sonos speakers: on or off, the ones found, and ones added by address. */
 @Composable
 private fun SpeakerSettings(settings: Settings, update: ((Settings) -> Settings) -> Unit) {
     val c = appContainer()
@@ -208,8 +208,8 @@ private fun SpeakerSettings(settings: Settings, update: ((Settings) -> Settings)
     val scope = rememberCoroutineScope()
     var adding by remember { mutableStateOf(false) }
     ToggleRow(
-        "MusicCast speakers",
-        "At home, Yamaha MusicCast speakers show up among your devices: anything you play, on the web or here, can play on them. The phone hands them each song, so it stays on the Wi-Fi meanwhile.",
+        "MusicCast and Sonos speakers",
+        "At home, Yamaha MusicCast and Sonos speakers show up among your devices (Sonos rooms playing together as one): anything you play, on the web or here, can play on them. The phone hands them each song, so it stays on the Wi-Fi meanwhile.",
         settings.speakers,
     ) { v -> update { it.copy(speakers = v) } }
     if (!settings.speakers) return
@@ -223,7 +223,8 @@ private fun SpeakerSettings(settings: Settings, update: ((Settings) -> Settings)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(speaker.name, style = MaterialTheme.typography.bodyLarge)
-                Text(listOf(speaker.model, speaker.host).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val rooms = speaker.rooms.takeIf { it > 1 }?.let { "$it rooms" }.orEmpty()
+                Text(listOf(speaker.model, rooms, speaker.host).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val problem = c.speakers.problemOf(speaker.deviceId)?.collectAsState()?.value
                 problem?.let { Text("Last problem: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             }
@@ -248,7 +249,7 @@ private fun SpeakerSettings(settings: Settings, update: ((Settings) -> Settings)
             title = { Text("Add a speaker") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Its IP address, from the MusicCast app (the speaker's Settings › Network) or your router.", style = MaterialTheme.typography.bodySmall)
+                    Text("Its IP address, from the MusicCast app (the speaker's Settings › Network), the Sonos app (Settings › System › About my system) or your router. For Sonos, any one speaker brings in the rest.", style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(address, { address = it.trim() }, singleLine = true, placeholder = { Text("192.168.1.40") })
                 }
             },

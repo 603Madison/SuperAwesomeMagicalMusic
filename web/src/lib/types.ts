@@ -1,7 +1,7 @@
 // The server's API, as the web player sees it (see server/src/main/kotlin).
 
-export type SourceType = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "SIRIUSXM" | "RADIO";
-export type SourceKind = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "LIDARR" | "SIRIUSXM" | "RADIO" | "TUNER";
+export type SourceType = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "SIRIUSXM" | "RADIO" | "SUBSONIC";
+export type SourceKind = "JELLYFIN" | "QOBUZ" | "YOUTUBE_MUSIC" | "LIDARR" | "SIRIUSXM" | "RADIO" | "TUNER" | "AUDD" | "SUBSONIC";
 export type Role = "ADMIN" | "USER";
 
 export interface Track {
@@ -84,6 +84,14 @@ export interface SourceView {
   editable: boolean;
   settings: Record<string, string | number | boolean>;
   secretsSet: string[];
+}
+
+/** A playlist kept on a Subsonic server, to import. */
+export interface SourcePlaylist {
+  id: string;
+  name: string;
+  songCount?: number;
+  artworkUrl?: string;
 }
 
 export interface SearchGroup {
@@ -169,12 +177,27 @@ export interface PlaylistSummary {
   playedAt?: number | null;
   /** How many of its songs weren't found (greyed out; looked for again every few hours). */
   missing?: number;
+  /** Whether it's this person's own (false: someone shared it with them). */
+  mine?: boolean;
+  /** Whose it is, when it's someone else's. */
+  owner?: PlaylistPerson | null;
+  /** The people it's shared with (besides its owner); they add, remove and reorder songs too. */
+  members?: PlaylistPerson[];
+}
+
+/** Someone on the server: who shares a playlist, or who it's shared with. */
+export interface PlaylistPerson {
+  id: string;
+  username: string;
+  name: string;
 }
 
 export interface PlaylistEntry {
   entryId: string;
   track: Track;
   addedAt: number;
+  /** Who added it, on a shared playlist. */
+  addedBy?: PlaylistPerson | null;
 }
 
 export interface Playlist {

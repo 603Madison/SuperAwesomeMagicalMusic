@@ -120,8 +120,12 @@ class Services(
     val personalRadio = com.music.server.radio.PersonalRadio(this)
     /** Listen: recognising songs, from the libraries it learns (kept in listen.db) and AudD. */
     val listen = com.music.server.listen.Listen(this, java.io.File(config.dataDir, "listen.db"))
+    /** Sonos speakers and Music Assistant players as devices to play on, and the addresses they play from. */
+    val speakerStreams = com.music.server.speakers.SpeakerStreams(this)
+    val speakers = com.music.server.speakers.Speakers(this)
 
     override fun close() {
+        speakers.close()
         tunerRadio.close()
         scope.cancel()
         db.close()

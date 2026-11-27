@@ -226,6 +226,10 @@ fn css(palette: &Palette, dark: bool, bold: bool) -> String {
 @define-color samm_on_primary_container {on_primary_container};
 @define-color samm_accent {accent};
 @define-color samm_accent_container {accent_container};
+@define-color samm_hero_a {hero_a};
+@define-color samm_hero_b {hero_b};
+@define-color samm_surface2 {surface2};
+@define-color samm_surface3 {surface3};
 
 window, dialog, popover, tooltip {{ font-family: "Lexend", "Cantarell", sans-serif; font-weight: {w400}; }}
 /* The web player's 15px (in points, so the desktop's text scaling still applies). */

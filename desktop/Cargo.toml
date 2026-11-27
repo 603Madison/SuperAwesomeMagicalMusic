@@ -1,6 +1,6 @@
 [package]
 name = "superawesomemagicalmusic"
-version = "1.32.0"
+version = "1.36.0"
 edition = "2024"
 description = "Your SuperAwesomeMagicalMusic server on the Linux desktop"
 license = "GPL-3.0-only"
@@ -13,6 +13,7 @@ publish = false
 adw = { version = "0.9.2", package = "libadwaita", features = ["v1_5"] }
 anyhow = "1.0.104"
 base64 = "0.23.1"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 gst = { version = "0.25.4", package = "gstreamer" }
 gtk = { version = "0.11.5", package = "gtk4", features = ["v4_14"] }
 mpris-server = "0.11.0"
@@ -22,6 +23,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.11.1"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
 url = "2.5.8"
 
 [profile.release]

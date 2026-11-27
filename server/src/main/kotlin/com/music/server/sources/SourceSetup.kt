@@ -8,12 +8,16 @@ import com.music.player.settings.JellyfinConfig
 import com.music.player.settings.LidarrConfig
 import com.music.player.settings.QobuzConfig
 import com.music.player.settings.SiriusXmConfig
+import com.music.player.settings.SubsonicAuth
+import com.music.player.settings.SubsonicConfig
 import com.music.player.settings.TranscodeCodec
+import com.music.player.sources.MusicLibrary
 import com.music.player.sources.MusicSource
 import com.music.player.sources.jellyfin.JellyfinSource
 import com.music.player.sources.qobuz.QobuzSource
 import com.music.player.sources.radio.RadioBrowserClient
 import com.music.player.sources.siriusxm.SiriusXmClient
+import com.music.player.sources.subsonic.SubsonicSource
 import com.music.player.sources.youtube.YouTubeMusicSource
 import com.music.server.ApiError
 import kotlinx.serialization.Serializable
@@ -65,6 +69,20 @@ class SourceSetup(private val http: OkHttpClient) {
             ),
         ),
         KindSpec(
+            SourceKind.SUBSONIC, "Subsonic",
+            "Your music library on a server that speaks the Subsonic API: Navidrome, Gonic, Airsonic, Ampache, LMS, Nextcloud Music and others. " +
+                "Songs from any service are looked for here first.",
+            listOf(
+                FieldSpec("serverUrl", "Server address", "url", required = true, help = "e.g. https://navidrome.example.com"),
+                FieldSpec("username", "Username", help = "Not needed with an API key"),
+                FieldSpec(
+                    "password", "Password", "password", secret = true,
+                    help = "Kept (encrypted), as every request is signed with it. Only a token made from it is sent, unless the server can't check tokens.",
+                ),
+                FieldSpec("apiKey", "API key", "password", secret = true, help = "Instead of a username and password, on servers that give out API keys"),
+            ),
+        ),
+        KindSpec(
             SourceKind.YOUTUBE_MUSIC, "YouTube Music",
             "YouTube Music's catalogue, without an account.",
             emptyList(),
@@ -102,7 +120,7 @@ class SourceSetup(private val http: OkHttpClient) {
         ),
         KindSpec(
             SourceKind.LIDARR, "Lidarr",
-            "Adds artists to Lidarr when their songs are played from outside your Jellyfin library.",
+            "Adds artists to Lidarr when their songs are played from outside your library.",
             listOf(
                 FieldSpec("serverUrl", "Server address", "url", required = true, help = "e.g. https://lidarr.example.com"),
                 FieldSpec("apiKey", "API key", "password", required = true, secret = true, help = "Lidarr: Settings > General > Security"),
@@ -110,7 +128,7 @@ class SourceSetup(private val http: OkHttpClient) {
                 FieldSpec("searchForMissingAlbums", "Search for their albums straight away", "bool", default = "true"),
             ),
         ),
-    )
+    ) + com.music.server.speakers.SpeakerSetup.kinds
 
     /**
      * The settings and secrets to save for [kind] from what was filled in, signing in where the
@@ -150,6 +168,29 @@ class SourceSetup(private val http: OkHttpClient) {
                     put("transcodeCodec", codec.name)
                 } to buildJsonObject { put("accessToken", config.accessToken) }
             }
+            SourceKind.SUBSONIC -> {
+                val serverUrl = url(required("serverUrl", "The server address"))
+                val username = text("username") ?: previous?.setting("username")
+                val sameServer = previous != null && previous.setting("serverUrl") == serverUrl
+                val sameAccount = sameServer && previous!!.setting("username") == username
+                // What's typed now wins: a new password drops a saved API key, and the other way round.
+                val newPassword = text("password")
+                val newKey = text("apiKey")
+                val apiKey = newKey ?: previous?.secret("apiKey")?.ifEmpty { null }?.takeIf { sameServer && newPassword == null }
+                val password = newPassword ?: previous?.secret("password")?.ifEmpty { null }?.takeIf { sameAccount && newKey == null }
+                if (apiKey == null && (username == null || password == null)) throw ApiError.badRequest("A username and password, or an API key, are needed")
+                val (config, server) = service("The Subsonic server") {
+                    SubsonicSource(http, config = { SubsonicConfig() }).connect(SubsonicConfig(serverUrl, username.orEmpty(), password.orEmpty(), apiKey.orEmpty()))
+                }
+                buildJsonObject {
+                    put("serverUrl", serverUrl)
+                    username?.let { put("username", it) }
+                    put("auth", config.auth.name)
+                    server.displayName?.let { put("serverName", it) }
+                } to buildJsonObject {
+                    if (config.auth == SubsonicAuth.API_KEY) put("apiKey", config.apiKey) else put("password", config.password)
+                }
+            }
             // Qobuz's API only works with keys Qobuz gives its partners, so it can't be set up here.
             SourceKind.QOBUZ -> throw ApiError.badRequest("Qobuz can't be added: its API needs an app ID and secret that Qobuz only gives its partners")
             SourceKind.YOUTUBE_MUSIC, SourceKind.RADIO -> JsonObject(emptyMap()) to JsonObject(emptyMap())
@@ -175,6 +216,7 @@ class SourceSetup(private val http: OkHttpClient) {
                 service("AudD") { com.music.server.listen.AudD(http).check(token) }
                 JsonObject(emptyMap()) to buildJsonObject { put("apiToken", token) }
             }
+            SourceKind.SONOS, SourceKind.MUSIC_ASSISTANT -> com.music.server.speakers.SpeakerSetup.configure(kind, fields, previous, http, ::url)
             SourceKind.LIDARR -> {
                 val serverUrl = url(required("serverUrl", "The server address"))
                 val apiKey = text("apiKey") ?: previous?.secret("apiKey")?.ifEmpty { null } ?: throw ApiError.badRequest("The API key is needed")
@@ -214,6 +256,18 @@ class SourceSetup(private val http: OkHttpClient) {
             service("AudD") { com.music.server.listen.AudD(registry.http).check(source.secret("apiToken")) }
             "Working: AudD accepted the API token"
         }
+        SourceKind.SUBSONIC -> {
+            val subsonic = registry.music(source) as SubsonicSource
+            val server = service("The Subsonic server") { subsonic.ping() }
+            val found = service("The Subsonic server") { subsonic.search("love", 3) }
+            val how = when {
+                source.secret("apiKey").isNotEmpty() -> "with an API key"
+                source.setting("auth") == SubsonicAuth.PASSWORD.name -> "as ${source.setting("username")} (with the password itself: it can't check tokens)"
+                else -> "as ${source.setting("username")}"
+            }
+            "Working: ${server.description}, signed in $how; a test search found ${found.size} song${if (found.size == 1) "" else "s"}"
+        }
+        SourceKind.SONOS, SourceKind.MUSIC_ASSISTANT -> com.music.server.speakers.SpeakerSetup.test(source, registry.http)
         else -> {
             val music = registry.music(source) ?: throw ApiError.badRequest("Nothing to test")
             val found = service(source.kind.label) { music.search("love", 3) }
@@ -326,11 +380,40 @@ class SourceRegistry(
             )
             QobuzSource(clientFor(source)) { config }
         }
+        SourceKind.SUBSONIC -> cached(source) {
+            val config = SubsonicConfig(
+                serverUrl = source.setting("serverUrl").orEmpty(),
+                username = source.setting("username").orEmpty(),
+                password = source.secret("password"),
+                apiKey = source.secret("apiKey"),
+                auth = SubsonicAuth.entries.firstOrNull { it.name == source.setting("auth") } ?: SubsonicAuth.TOKEN,
+            )
+            SubsonicSource(clientFor(source), config = { config })
+        }
         SourceKind.YOUTUBE_MUSIC -> youtube
         SourceKind.LIDARR, SourceKind.SIRIUSXM, SourceKind.RADIO, SourceKind.TUNER, SourceKind.AUDD -> null
+        SourceKind.SONOS, SourceKind.MUSIC_ASSISTANT -> null
     }
 
     fun jellyfin(source: StoredSource): JellyfinSource? = music(source) as? JellyfinSource
+
+    /** A library source's client (Jellyfin, Subsonic): what Listen learns from. */
+    fun library(source: StoredSource): MusicLibrary? = music(source) as? MusicLibrary
+
+    /**
+     * [url], one of a Subsonic server's cover addresses (which carry no credentials, so they can
+     * go to the apps), with the credentials of a source on that server added to fetch it; null
+     * for any other address.
+     */
+    suspend fun authorizeArtwork(url: String): String? {
+        if (!url.contains("/rest/getCoverArt")) return null
+        for ((_, music) in instances.values) (music as? SubsonicSource)?.authorize(url)?.let { return it }
+        // None made yet since the server started.
+        for (source in store.all().filter { it.kind == SourceKind.SUBSONIC && it.enabled }) {
+            (music(source) as? SubsonicSource)?.authorize(url)?.let { return it }
+        }
+        return null
+    }
 
     fun lidarrConfig(source: StoredSource) = LidarrConfig(
         serverUrl = source.setting("serverUrl").orEmpty(),

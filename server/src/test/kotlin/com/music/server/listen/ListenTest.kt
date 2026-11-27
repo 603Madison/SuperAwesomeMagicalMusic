@@ -306,6 +306,80 @@ class ListenTest {
     }
 
     @Test
+    fun `a Subsonic library is learned too, and what's heard is found in it`() {
+        assumeTrue("ffmpeg isn't installed", runCatching { ProcessBuilder("ffmpeg", "-version").start().waitFor(10, TimeUnit.SECONDS) }.getOrDefault(false))
+        val titles = listOf("Signal Fires", "Tin Can Telephone", "Northern Static")
+        val audio = titles.indices.associate { "nd$it" to wav(song(30 + it, 40), Fingerprint.RATE) }
+        val navidrome = MockWebServer().apply {
+            dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val url = request.requestUrl!!
+                    fun ok(body: String) = MockResponse().setBody("""{"subsonic-response":{"status":"ok","version":"1.16.1",$body}}""")
+                    fun item(i: Int) = """{"id":"nd$i","title":"${titles[i]}","artist":"Velvet Satellites","album":"Low Orbit","duration":40,"suffix":"wav","type":"music"}"""
+                    if (url.queryParameter("u") != "u" || url.queryParameter("t") == null) {
+                        return MockResponse().setBody("""{"subsonic-response":{"status":"failed","error":{"code":40}}}""")
+                    }
+                    val id = url.queryParameter("id")
+                    return when (url.encodedPath) {
+                        // Everything, two at a time, for an empty search.
+                        "/rest/search3.view" -> {
+                            val offset = url.queryParameter("songOffset")?.toInt() ?: 0
+                            val page = if (url.queryParameter("query").isNullOrEmpty()) titles.indices.drop(offset).take(2) else emptyList()
+                            ok(""""searchResult3":{"song":[${page.joinToString(",") { item(it) }}]}""")
+                        }
+                        "/rest/getSong.view" -> ok(""""song":${item(id!!.removePrefix("nd").toInt())}""")
+                        "/rest/stream.view" -> audio[id]?.let { MockResponse().setHeader("Content-Type", "audio/wav").setBody(Buffer().write(it)) } ?: MockResponse().setResponseCode(404)
+                        else -> MockResponse().setResponseCode(404)
+                    }
+                }
+            }
+            start()
+        }
+        var port = 0
+        val services = testServices(selfUrl = { "http://127.0.0.1:$port" })
+        val server: EmbeddedServer<NettyApplicationEngine, *> = embeddedServer(Netty, port = 0, host = "127.0.0.1") { module(services) }
+        val http = OkHttpClient.Builder().readTimeout(60, TimeUnit.SECONDS).build()
+        try {
+            server.start(wait = false)
+            port = runBlocking { server.engine.resolvedConnectors().first().port }
+            runBlocking {
+                services.bootstrap()
+                services.sources.create(
+                    ownerId = null, kind = SourceKind.SUBSONIC, name = "Navidrome",
+                    settings = buildJsonObject {
+                        put("serverUrl", navidrome.url("/").toString().trimEnd('/'))
+                        put("username", "u")
+                    },
+                    secrets = buildJsonObject { put("password", "p") },
+                )
+                services.listen.learnAll()
+            }
+            val token = http.newCall(
+                Request.Builder().url("http://127.0.0.1:$port/api/auth/login")
+                    .post("""{"username":"admin","password":"break-glass-pw","app":true}""".toRequestBody("application/json".toMediaType())).build(),
+            ).execute().use { Regex("\"token\":\"([^\"]+)\"").find(it.body.string())!!.groupValues[1] }
+            val status = http.newCall(Request.Builder().url("http://127.0.0.1:$port/api/listen/status").header("Authorization", "Bearer $token").build())
+                .execute().use { Json.parseToJsonElement(it.body.string()).jsonObject }
+            assertEquals(status.toString(), 3, status["learned"]!!.jsonPrimitive.content.toInt())
+            assertEquals("true", status["libraries"]!!.jsonPrimitive.content)
+
+            // Tin Can Telephone, from 10 seconds in, across a room.
+            val clip = heard(song(31, 40), 10 * Fingerprint.RATE, 8 * Fingerprint.RATE, noise = 0.4)
+            val heard = http.newCall(
+                Request.Builder().url("http://127.0.0.1:$port/api/listen?final=true").header("Authorization", "Bearer $token")
+                    .post(wav(clip, Fingerprint.RATE).toRequestBody("audio/wav".toMediaType())).build(),
+            ).execute().use { Json.parseToJsonElement(it.body.string()).jsonObject }
+            assertEquals(heard.toString(), "Tin Can Telephone", heard["title"]?.jsonPrimitive?.content)
+            assertEquals("library", heard["via"]!!.jsonPrimitive.content)
+            assertEquals("SUBSONIC", heard["song"]!!.jsonObject["source"]!!.jsonPrimitive.content)
+            assertEquals("nd1", heard["song"]!!.jsonObject["sourceId"]!!.jsonPrimitive.content)
+        } finally {
+            server.stop(100, 1_000)
+            navidrome.shutdown()
+        }
+    }
+
+    @Test
     fun `AudD's answer is read, and a token it refuses is said so`() = runBlocking {
         val audd = MockWebServer().apply {
             dispatcher = object : Dispatcher() {

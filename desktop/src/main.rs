@@ -2,6 +2,8 @@
 
 mod api;
 mod config;
+mod connect;
+mod leveller;
 mod mic;
 mod mpris;
 mod orchestrator;

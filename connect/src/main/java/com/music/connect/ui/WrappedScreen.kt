@@ -109,7 +109,7 @@ fun hourName(hour: Int): String = when (hour) {
 private fun peak(values: List<Long>): Int = values.indices.maxByOrNull { values[it] } ?: 0
 private fun dayName(date: String): String = runCatching { LocalDate.parse(date).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG)) }.getOrDefault(date)
 private fun sourceName(name: String) = when (name) {
-    "JELLYFIN" -> "Jellyfin"; "QOBUZ" -> "Qobuz"; "YOUTUBE_MUSIC" -> "YouTube Music"; "SIRIUSXM" -> "SiriusXM"; "RADIO" -> "Radio"; else -> name
+    "JELLYFIN" -> "Jellyfin"; "QOBUZ" -> "Qobuz"; "YOUTUBE_MUSIC" -> "YouTube Music"; "SIRIUSXM" -> "SiriusXM"; "RADIO" -> "Radio"; "SUBSONIC" -> "Subsonic"; else -> name
 }
 private fun deviceName(name: String) = when (name) { "web" -> "Web player"; "android" -> "Phone app"; "desktop" -> "Desktop app"; else -> name }
 private val MONTHS = listOf("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")

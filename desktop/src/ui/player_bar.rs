@@ -11,7 +11,7 @@ use gtk::{gio, glib};
 use crate::player::{Repeat, Sleep, State};
 use crate::rt::bg;
 use crate::ui::ctx;
-use crate::ui::widgets::{artwork, duration, plain_row, track_key};
+use crate::ui::widgets::{artwork, duration, track_key};
 
 fn icon_button(icon: &str, tooltip: &str) -> gtk::Button {
     let button = gtk::Button::builder()
@@ -65,6 +65,12 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
     text.append(&detail);
     now.append(&art_holder);
     now.append(&text);
+    // Click the song for Now playing, as on the web.
+    let open = gtk::GestureClick::new();
+    open.connect_released(|_, _, _, _| ctx().open_now_playing());
+    now.add_controller(open);
+    now.set_cursor_from_name(Some("pointer"));
+    now.set_tooltip_text(Some("Open what's playing"));
 
     // The controls, over where it is.
     let center = gtk::Box::builder()
@@ -91,19 +97,19 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
     play.add_css_class("play-button");
     let next = icon_button("media-skip-forward-symbolic", "Next (Ctrl+→)");
     let repeat = icon_button("media-playlist-repeat-symbolic", "Repeat: off");
-    // On one of the person's own stations: thumbs for the song on the air.
-    let thumb_down = icon_button("samm-thumb-down-symbolic", "Thumbs down: never play it again");
-    let thumb_up = icon_button("samm-thumb-up-symbolic", "Thumbs up: more like this");
+    // On one of the person's own stations or a Pandora station: thumbs for the song.
+    let thumb_down = icon_button("samm-thumb-down-symbolic", "Thumbs down (never play it again)");
+    let thumb_up = icon_button("samm-thumb-up-symbolic", "Thumbs up (more like this)");
     for (button, direction) in [(&thumb_down, "DOWN"), (&thumb_up, "UP")] {
         button.set_visible(false);
         let player = player.clone();
         button.connect_clicked(move |_| player.thumb(direction));
     }
-    for b in [&thumb_down, &shuffle, &previous] {
+    for b in [&shuffle, &previous] {
         buttons.append(b);
     }
     buttons.append(&play);
-    for b in [&next, &repeat, &thumb_up] {
+    for b in [&next, &repeat] {
         buttons.append(b);
     }
     let progress_row = gtk::Box::builder().spacing(10).build();
@@ -144,13 +150,12 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
         .build();
     star.add_css_class("flat");
     star.add_css_class("circular");
-    let queue_list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
-    queue_list.add_css_class("track-list");
+    let queue_list = gtk::Box::builder().orientation(gtk::Orientation::Vertical).width_request(420).build();
     let queue_scroll = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .min_content_height(320)
-        .max_content_height(520)
-        .min_content_width(380)
+        .max_content_height(560)
+        .min_content_width(420)
         .propagate_natural_height(true)
         .child(&queue_list)
         .build();
@@ -172,6 +177,9 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
     sleep_button.add_css_class("flat");
     sleep_button.add_css_class("circular");
     sleep_button.insert_action_group("sleep", Some(&sleep_actions()));
+    let lyrics = icon_button("audio-input-microphone-symbolic", "Lyrics");
+    lyrics.connect_clicked(|_| crate::ui::now_playing::show_lyrics());
+    let devices = crate::ui::devices::devices_button();
     let mute = icon_button("audio-volume-high-symbolic", "Mute");
     let volume = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.01);
     volume.set_width_request(110);
@@ -179,8 +187,12 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
     volume.set_valign(gtk::Align::Center);
     volume.set_value(player.state().volume);
     for w in [
-        star.upcast_ref::<gtk::Widget>(),
+        thumb_down.upcast_ref::<gtk::Widget>(),
+        thumb_up.upcast_ref(),
+        star.upcast_ref(),
+        lyrics.upcast_ref(),
         queue_button.upcast_ref(),
+        devices.upcast_ref(),
         sleep_button.upcast_ref(),
         mute.upcast_ref(),
         volume.upcast_ref(),
@@ -236,7 +248,12 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
     });
     let p = player.clone();
     let list = queue_list.clone();
-    queue_popover.connect_show(move |popover| fill_queue(&list, &p.state(), popover));
+    let queue_shown = Rc::new(RefCell::new(String::new()));
+    let shown_key = queue_shown.clone();
+    queue_popover.connect_show(move |popover| {
+        shown_key.replace(queue_key(&p.state()));
+        fill_queue(&list, &p.state(), popover);
+    });
     let p = player.clone();
     let quiet_star = Rc::new(Cell::new(false));
     let q = quiet_star.clone();
@@ -268,6 +285,8 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
         repeat.clone().upcast(),
         sleep_button.upcast(),
         volume.clone().upcast(),
+        lyrics.clone().upcast(),
+        devices.clone().upcast(),
     ];
 
     // Following the player.
@@ -308,7 +327,10 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
             }
         }
         detail.set_visible(!detail.text().is_empty());
-        let thumb = state.personal.as_ref().filter(|_| personal).map(|p| (p.song_key.is_some(), p.thumb.clone()));
+        let thumb = state.thumbs_now();
+        let station_song = state.current().is_some_and(crate::api::Track::is_station_track);
+        thumb_down.set_tooltip_text(Some(if station_song { "Thumbs down (skips it)" } else { "Thumbs down (never play it again)" }));
+        thumb_up.set_tooltip_text(Some(if station_song { "Thumbs up" } else { "Thumbs up (more like this)" }));
         for (button, direction) in [(&thumb_down, "DOWN"), (&thumb_up, "UP")] {
             button.set_visible(thumb.is_some());
             button.set_sensitive(thumb.as_ref().is_some_and(|(known, _)| *known));
@@ -322,6 +344,12 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
         repeat.set_visible(!personal);
         let is_live = state.live();
         live.set_visible(is_live);
+        lyrics.set_sensitive(state.index.is_some() && !is_live);
+        // The queue, as it is now, while it's open.
+        if queue_popover.is_visible() && *queue_shown.borrow() != queue_key(state) {
+            queue_shown.replace(queue_key(state));
+            fill_queue(&queue_list, state, &queue_popover);
+        }
         play_icon.set_icon_name(Some(if state.playing {
             "media-playback-pause-symbolic"
         } else {
@@ -393,7 +421,32 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
             }
         }
     });
-    (bar.upcast(), wide_only)
+    // Another of the person's devices playing (and not this one): the bar controls it instead.
+    let bars = gtk::Stack::builder()
+        .transition_type(gtk::StackTransitionType::Crossfade)
+        .hhomogeneous(false)
+        .vhomogeneous(false)
+        .build();
+    bars.add_named(&bar, Some("here"));
+    bars.add_named(&crate::ui::devices::remote_bar(), Some("remote"));
+    let switch = {
+        let bars = bars.downgrade();
+        move || {
+            if let Some(bars) = bars.upgrade() {
+                bars.set_visible_child_name(if crate::ui::devices::showing_remote() { "remote" } else { "here" });
+            }
+        }
+    };
+    if let Some(hub) = crate::connect::hub() {
+        hub.subscribe(switch.clone());
+    }
+    let playing = Cell::new(false);
+    player.subscribe(move |state| {
+        if playing.replace(state.playing) != state.playing {
+            switch();
+        }
+    });
+    (bars.upcast(), wide_only)
 }
 
 /// The sleep timer's choices, as the web player's.
@@ -438,33 +491,27 @@ fn sleep_actions() -> gio::SimpleActionGroup {
     group
 }
 
-/// The queue, from what's playing on; click one to play it.
-fn fill_queue(list: &gtk::ListBox, state: &State, popover: &gtk::Popover) {
-    while let Some(child) = list.first_child() {
-        list.remove(&child);
+/// What the queue is (its songs and where it is), to notice changes.
+fn queue_key(state: &State) -> String {
+    let keys: Vec<String> = state.queue.iter().map(track_key).collect();
+    format!("{:?}|{}", state.index, keys.join(","))
+}
+
+/// The queue, as on the Now playing page: click one to play it; move or take out the rest.
+fn fill_queue(holder: &gtk::Box, state: &State, popover: &gtk::Popover) {
+    while let Some(child) = holder.first_child() {
+        holder.remove(&child);
     }
-    let start = state.index.unwrap_or(0);
-    if state.queue.is_empty() {
-        let row = adw::ActionRow::builder().title("The queue is empty").build();
-        list.append(&row);
-        return;
-    }
-    for (i, track) in state.queue.iter().enumerate().skip(start).take(100) {
-        let row = plain_row(track.title.as_str(), track.artist.as_str());
-        row.set_activatable(true);
-        row.set_title_lines(1);
-        row.add_prefix(&artwork(track.artwork_url.as_deref(), 40, false));
-        if Some(i) == state.index {
-            row.add_css_class("current");
-            let playing = gtk::Image::from_icon_name("media-playback-start-symbolic");
-            playing.add_css_class("accent");
-            row.add_suffix(&playing);
-        }
-        let popover = popover.clone();
-        row.connect_activated(move |_| {
-            ctx().player.jump_to(i);
-            popover.popdown();
-        });
-        list.append(&row);
-    }
+    let popover = popover.downgrade();
+    let view = crate::ui::now_playing::queue_view(
+        state,
+        Some(Rc::new(move || {
+            if let Some(p) = popover.upgrade() {
+                p.popdown();
+            }
+        })),
+    );
+    view.set_margin_top(6);
+    view.set_margin_bottom(6);
+    holder.append(&view);
 }

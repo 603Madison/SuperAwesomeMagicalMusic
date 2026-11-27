@@ -35,9 +35,9 @@ data class Settings(
     val levelling: Boolean = true,
     /** The DJ on the person's own stations speaks (otherwise its words are only shown). */
     val djVoice: Boolean = true,
-    /** Finds MusicCast speakers on the Wi-Fi, and lets the person's devices play on them. */
+    /** Finds MusicCast and Sonos speakers on the Wi-Fi, and lets the person's devices play on them. */
     val speakers: Boolean = true,
-    /** Speakers' addresses typed in, for networks where they can't be found by themselves. */
+    /** Speakers' addresses typed in (MusicCast or Sonos), for networks where they can't be found by themselves. */
     val speakerAddresses: List<String> = emptyList(),
     /** Light, dark, or as the phone is. */
     val themeMode: ThemeMode = ThemeMode.SYSTEM,

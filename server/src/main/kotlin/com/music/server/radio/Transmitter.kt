@@ -16,7 +16,6 @@ import java.util.concurrent.CopyOnWriteArraySet
 import kotlin.concurrent.thread
 import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.sin
 
 /** Raw audio as the station mixes it: 16-bit little-endian stereo at 44.1 kHz. */
 object Pcm {
@@ -47,25 +46,19 @@ object Pcm {
         return end.coerceAtMost((length / BYTES_PER_FRAME) * BYTES_PER_FRAME)
     }
 
-    /**
-     * [outgoing] fading out under [incoming] fading in (equal power, so the level holds), as
-     * long as the shorter of the two.
-     */
-    fun crossfade(outgoing: ByteArray, incoming: ByteArray): ByteArray {
-        val frames = minOf(outgoing.size, incoming.size) / BYTES_PER_FRAME
-        val mixed = ByteArray(frames * BYTES_PER_FRAME)
+    /** [audio] fading out to nothing (a gentle curve: slow at first, then away), as a new array. */
+    fun fadeOut(audio: ByteArray): ByteArray {
+        val frames = audio.size / BYTES_PER_FRAME
+        val faded = ByteArray(frames * BYTES_PER_FRAME)
         for (f in 0 until frames) {
             val t = if (frames <= 1) 1.0 else f.toDouble() / (frames - 1)
-            val out = cos(t * Math.PI / 2)
-            val inn = sin(t * Math.PI / 2)
+            val gain = cos(t * Math.PI / 2)
             for (c in 0 until 2) {
                 val at = f * BYTES_PER_FRAME + c * 2
-                val a = sample(outgoing, at).toShort().toInt()
-                val b = sample(incoming, at).toShort().toInt()
-                put(mixed, at, (a * out + b * inn).toInt())
+                put(faded, at, (sample(audio, at).toShort().toInt() * gain).toInt())
             }
         }
-        return mixed
+        return faded
     }
 }
 
@@ -117,7 +110,7 @@ interface Programme {
 }
 
 /**
- * One station on the air: songs decoded one after another, cut together with crossfades (and
+ * One station on the air: songs decoded one after another, each fading out before the next (and
  * silence at the ends trimmed) into one stream, encoded once and sent to every listener, paced to
  * real time. A listener tuning in gets the last couple of seconds at once (so it starts straight
  * away), then the station as it goes: every one of the person's devices hears the same broadcast.
@@ -393,7 +386,7 @@ class Transmitter(
                     }
                 }
                 if (read <= 0) {
-                    // The end (or a skip): its last moments (silence cut) crossfade into the next song.
+                    // The end (or a skip): its last moments (silence cut) fade out, then the next song.
                     skipRequested = false
                     endedBySkip = skipped
                     song.source.close()
@@ -431,43 +424,28 @@ class Transmitter(
 
     /**
      * From [ending] (its unsent [tail]) to [opening]: the tail with its silence cut, its last
-     * seconds crossfaded into the next song's start. A skip fades out quickly instead. A song
-     * that won't play is passed over for the next.
+     * seconds fading out, a breath of quiet, then the next song from its start (a skip fades out
+     * quickly). The songs never overlap: one ends before the next begins, as on the radio. A
+     * song that won't play is passed over for the next.
      */
     private fun transition(ending: Playing, tail: ByteArray, pipe: OutputStream, skipped: Boolean, opening: Opening?): Playing? {
         val usable = if (skipped) minOf(tail.size, Pcm.bytesOf(SKIP_FADE_MS)) else Pcm.withoutTrailingSilence(tail)
-        val fade = if (skipped) usable else minOf(usable, Pcm.bytesOf(CROSSFADE_MS))
+        val fade = if (skipped) usable else minOf(usable, Pcm.bytesOf(FADE_OUT_MS))
         send(pipe, tail, 0, usable - fade)
-        var outgoing = tail.copyOfRange(usable - fade, usable)
+        val faded = Pcm.fadeOut(tail.copyOfRange(usable - fade, usable))
+        send(pipe, faded, 0, faded.size)
+        val gap = ByteArray(Pcm.bytesOf(GAP_MS))
+        send(pipe, gap, 0, gap.size)
         var next = opening
         var attempts = 0
         while (next != null && running && attempts++ < OPEN_ATTEMPTS) {
-            // Ready to cut to: crossfaded. Not yet: the song ends as it is, and the next follows.
-            val crossfade = next.done && outgoing.isNotEmpty()
-            if (!crossfade) {
-                send(pipe, outgoing, 0, outgoing.size)
-                outgoing = ByteArray(0)
-            }
             val source = next.await(pipe)
             if (source == null) {
                 next = next(joinMidSong = false)
                 continue
             }
-            val playing = Playing(next.song, source, next.song.track.durationMs ?: 0L, source.startMs)
-            if (!crossfade) return begin(playing, pipe, ending)
-            val head = ByteArray(outgoing.size)
-            val got = readFully(source, head)
-            val begun = begin(playing, pipe, ending)
-            if (got > 0) {
-                playing.decodedBytes += got
-                send(pipe, Pcm.crossfade(outgoing, head.copyOf(got)), 0, minOf(outgoing.size, got))
-                if (got < outgoing.size) send(pipe, outgoing, got, outgoing.size - got)
-            } else {
-                send(pipe, outgoing, 0, outgoing.size)
-            }
-            return begun
+            return begin(Playing(next.song, source, next.song.track.durationMs ?: 0L, source.startMs), pipe, ending)
         }
-        send(pipe, outgoing, 0, outgoing.size)
         return null
     }
 
@@ -630,8 +608,10 @@ class Transmitter(
         /** How much of each song is held back to find where its sound ends. */
         private const val WINDOW_MS = 8_000L
         private val WINDOW_BYTES = Pcm.bytesOf(WINDOW_MS)
-        private const val CROSSFADE_MS = 2_500L
-        private const val SKIP_FADE_MS = 1_200L
+        /** How long a song takes to fade out at its end, and on a skip; then a moment's quiet before the next. */
+        private const val FADE_OUT_MS = 3_500L
+        private const val SKIP_FADE_MS = 1_500L
+        private const val GAP_MS = 600L
         private val CHUNK_BYTES = Pcm.bytesOf(100)
         private val SILENCE = ByteArray(Pcm.bytesOf(100))
         private const val OPEN_ATTEMPTS = 6

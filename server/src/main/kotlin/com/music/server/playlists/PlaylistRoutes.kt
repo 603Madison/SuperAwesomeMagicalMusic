@@ -37,9 +37,12 @@ data class RemoveEntries(val entryIds: List<String>)
 @Serializable
 data class Reorder(val revision: Long, val entryIds: List<String>)
 
-/** A link to a playlist or album elsewhere, or a typed or pasted list of songs ([text], named [name]). */
+/**
+ * A link to a playlist or album elsewhere, a typed or pasted list of songs ([text], named [name]),
+ * or a [playlist] kept on one of the person's Subsonic servers ([source]).
+ */
 @Serializable
-data class ImportRequest(val url: String = "", val text: String = "", val name: String = "")
+data class ImportRequest(val url: String = "", val text: String = "", val name: String = "", val source: String = "", val playlist: String = "")
 
 @Serializable
 data class ImportResult(val playlist: Playlist, val found: Int, val missing: List<String>, val note: String? = null)
@@ -51,20 +54,26 @@ data class FoundAgain(val playlist: Playlist, val found: Int, val stillMissing: 
 @Serializable
 data class HistoryUpload(val listens: List<Listen>)
 
+/** Sharing a playlist with someone, by their account's id or username. */
+@Serializable
+data class ShareRequest(val userId: String = "", val username: String = "")
+
 fun Route.playlistRoutes(services: Services) {
     val art = services.artwork
-    // A Pandora station track's link expires, so it's kept as the song itself (found again when
-    // played); live channels and stations aren't songs, and aren't kept.
-    fun keepable(track: ApiTrack): ApiTrack? = when {
-        track.source == SourceType.SIRIUSXM && track.sourceId.startsWith(Track.STATION_TRACK_PREFIX) ->
-            art.incoming(track).copy(sourceId = "song:" + track.sourceId.substringAfterLast(':'), via = null)
-        track.toTrack().isLive -> null
-        else -> art.incoming(track)
-    }
+    fun keepable(track: ApiTrack): ApiTrack? = keepableTrack(art, track)
     fun Playlist.out() = copy(
         summary = summary.out(services),
         entries = entries.map { it.copy(track = art.outgoing(it.track)) },
     )
+
+    // The people on the server, to share playlists with (everyone signed in can see who's here).
+    get("/api/people") {
+        val user = call.requireUser(services)
+        call.respond(
+            services.users.list().filter { it.id != user.id && !it.disabled }
+                .map { PlaylistPerson(it.id, it.username, it.displayName) },
+        )
+    }
 
     route("/api/playlists") {
         get {
@@ -81,6 +90,7 @@ fun Route.playlistRoutes(services: Services) {
             val request = call.receive<ImportRequest>()
             val imported = when {
                 request.url.isNotBlank() -> services.importer.fromLink(user, request.url)
+                request.source.isNotBlank() && request.playlist.isNotBlank() -> services.importer.fromSource(user, request.source, request.playlist)
                 request.text.isNotBlank() -> {
                     if (request.text.length > 1_000_000) throw ApiError.badRequest("That list is too long")
                     services.importer.fromText(user, request.text, request.name)
@@ -131,6 +141,22 @@ fun Route.playlistRoutes(services: Services) {
                 call.response.header(HttpHeaders.CacheControl, "no-store")
                 call.respondText(csv, ContentType.parse("text/csv; charset=utf-8"))
             }
+            // Shares it with someone (its owner only): they can add, remove and reorder its songs too.
+            post("/members") {
+                val user = call.requireUser(services)
+                val request = call.receive<ShareRequest>()
+                val member = (request.userId.takeIf { it.isNotBlank() }?.let { services.users.byId(it) }
+                    ?: request.username.takeIf { it.isNotBlank() }?.let { services.users.byUsername(it) })
+                    ?.takeIf { !it.disabled }
+                    ?: throw ApiError.notFound("There's no one by that name on this server")
+                call.respond(services.playlists.share(user.id, call.parameters["id"].orEmpty(), member.id).out(services))
+            }
+            // Stops sharing it with someone (its owner), or leaves it (anyone, for themself).
+            delete("/members/{member}") {
+                val user = call.requireUser(services)
+                services.playlists.unshare(user.id, call.parameters["id"].orEmpty(), call.parameters["member"].orEmpty())
+                call.respond(mapOf("ok" to true))
+            }
             patch {
                 val user = call.requireUser(services)
                 val change = call.receive<PlaylistChange>()
@@ -179,6 +205,17 @@ fun Route.playlistRoutes(services: Services) {
             call.respond(mapOf("ok" to true))
         }
     }
+}
+
+/**
+ * [track] as a playlist keeps it. A Pandora station track's link expires, so it's kept as the
+ * song itself (found again when played); live channels and stations aren't songs, and aren't kept.
+ */
+internal fun keepableTrack(art: com.music.server.music.Artwork, track: ApiTrack): ApiTrack? = when {
+    track.source == SourceType.SIRIUSXM && track.sourceId.startsWith(Track.STATION_TRACK_PREFIX) ->
+        art.incoming(track).copy(sourceId = "song:" + track.sourceId.substringAfterLast(':'), via = null)
+    track.toTrack().isLive -> null
+    else -> art.incoming(track)
 }
 
 private fun PlaylistSummary.out(services: Services) = copy(artwork = artwork.mapNotNull { services.artwork.wrap(it) })

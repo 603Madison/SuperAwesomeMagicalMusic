@@ -39,7 +39,7 @@ data class ServerSettings(
     val orchestratorUrl: String = "",
     /** Whether users may add their own sources (their own Jellyfin, SiriusXM account…). */
     val allowPersonalSources: Boolean = true,
-    /** Whether the server learns the Jellyfin libraries' songs, so Listen can recognise them. */
+    /** Whether the server learns the libraries' songs (Jellyfin, Subsonic), so Listen can recognise them. */
     val learnLibrary: Boolean = true,
     val oidc: OidcSettings = OidcSettings(),
 )

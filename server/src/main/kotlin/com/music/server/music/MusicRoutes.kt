@@ -125,33 +125,7 @@ fun Route.musicRoutes(services: Services) {
 
     post("/api/play/resolve") {
         val user = call.requireUser(services)
-        val request = call.receive<ResolveRequest>()
-        val wanted = services.artwork.incoming(request.track)
-        val quality = qualityOf(request.kbps)
-        val codecs = codecsOf(request.codecs.joinToString(","))
-        val resolution = services.catalog.resolve(user, wanted.toTrack(), wanted.via, quality, request.thorough)
-        val plan = services.streamer.plan(resolution.stream, quality, codecs, start = 0.0)
-        val url = buildString {
-            append("/api/stream?via=").append(resolution.source.id.encodeURLParameter())
-            append("&id=").append(resolution.track.sourceId.encodeURLParameter())
-            append("&kbps=").append(quality.toStored())
-            if (codecs != null) append("&codecs=").append(codecs.sorted().joinToString(",").encodeURLParameter())
-        }
-        call.respond(
-            ResolvedStream(
-                track = services.artwork.outgoing(ApiTrack.of(resolution.track, resolution.source.id)),
-                streamUrl = url,
-                description = plan.format?.let { format ->
-                    "${resolution.stream.description} → ${format.name}${plan.kbps?.let { " $it kbps" } ?: ""}"
-                } ?: resolution.stream.description,
-                kbps = plan.kbps ?: resolution.stream.kbps,
-                withinCap = resolution.stream.withinCap || plan.transcoded,
-                gainDb = resolution.stream.gainDb,
-                seekable = !plan.transcoded && resolution.stream.supportsRangeRequests,
-                transcoded = plan.transcoded,
-                extension = plan.format?.extension ?: resolution.stream.fileExtension,
-            ),
-        )
+        call.respond(resolveStream(services, user, call.receive<ResolveRequest>()))
     }
 
     get("/api/stream") {
@@ -205,9 +179,11 @@ fun Route.musicRoutes(services: Services) {
         val px = params["px"]?.toIntOrNull()?.coerceIn(32, 2048)
         val sized = Artwork.sized(upstream, px)
         artFailures[sized]?.let { if (services.clock() - it < ART_RETRY_MS) throw ApiError.notFound() }
+        // A Subsonic server's covers need its credentials, which their addresses leave out.
+        val fetched = services.registry.authorizeArtwork(sized) ?: sized
         val (type, bytes) = withContext(Dispatchers.IO) {
             try {
-                artHttp.newCall(Request.Builder().url(sized).build()).execute().use { response ->
+                artHttp.newCall(Request.Builder().url(fetched).build()).execute().use { response ->
                     val type = response.header(HttpHeaders.ContentType).orEmpty()
                     val body = response.body
                     // Only images: anything else from our address could be used against the web player.
@@ -261,6 +237,34 @@ fun Route.musicRoutes(services: Services) {
         val user = call.requireUser(services)
         call.respond(services.lidarr.list(user))
     }
+}
+
+/** Where [request]'s song plays from for [user]: the copy picked, and the server's address for it. */
+internal suspend fun resolveStream(services: Services, user: com.music.server.auth.User, request: ResolveRequest): ResolvedStream {
+    val wanted = services.artwork.incoming(request.track)
+    val quality = qualityOf(request.kbps)
+    val codecs = codecsOf(request.codecs.joinToString(","))
+    val resolution = services.catalog.resolve(user, wanted.toTrack(), wanted.via, quality, request.thorough)
+    val plan = services.streamer.plan(resolution.stream, quality, codecs, start = 0.0)
+    val url = buildString {
+        append("/api/stream?via=").append(resolution.source.id.encodeURLParameter())
+        append("&id=").append(resolution.track.sourceId.encodeURLParameter())
+        append("&kbps=").append(quality.toStored())
+        if (codecs != null) append("&codecs=").append(codecs.sorted().joinToString(",").encodeURLParameter())
+    }
+    return ResolvedStream(
+        track = services.artwork.outgoing(ApiTrack.of(resolution.track, resolution.source.id)),
+        streamUrl = url,
+        description = plan.format?.let { format ->
+            "${resolution.stream.description} → ${format.name}${plan.kbps?.let { " $it kbps" } ?: ""}"
+        } ?: resolution.stream.description,
+        kbps = plan.kbps ?: resolution.stream.kbps,
+        withinCap = resolution.stream.withinCap || plan.transcoded,
+        gainDb = resolution.stream.gainDb,
+        seekable = !plan.transcoded && resolution.stream.supportsRangeRequests,
+        transcoded = plan.transcoded,
+        extension = plan.format?.extension ?: resolution.stream.fileExtension,
+    )
 }
 
 private const val MAX_ART_BYTES = 10 * 1024 * 1024

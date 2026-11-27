@@ -16,7 +16,8 @@ import com.music.player.net.fetchString
 import com.music.player.quality.StreamQuality
 import com.music.player.settings.JellyfinConfig
 import com.music.player.settings.TranscodeCodec
-import com.music.player.sources.MusicSource
+import com.music.player.sources.LibraryPage
+import com.music.player.sources.MusicLibrary
 import com.music.player.sources.SourceStream
 import com.music.player.sources.SourceUnavailableException
 import com.music.player.sources.TrackMatcher
@@ -37,7 +38,7 @@ class JellyfinSource(
     private val deviceId: suspend () -> String,
     /** The format Jellyfin transcodes to when a bitrate cap applies. */
     private val transcodeCodec: suspend () -> TranscodeCodec = { TranscodeCodec.MP3 },
-) : MusicSource, Browsable {
+) : MusicLibrary, Browsable {
     override val type = SourceType.JELLYFIN
 
     override suspend fun isAvailable(): Boolean = config().isConfigured
@@ -107,11 +108,6 @@ class JellyfinSource(
         return albums.flatMap { album ->
             fetchItems(itemsUrl(config).addQueryParameter("parentId", album.id).addQueryParameter("sortBy", "ParentIndexNumber,IndexNumber,SortName").build(), config, deviceId)
         }
-    }
-
-    override suspend fun findMatch(track: Track): Track? {
-        if (track.source == type) return track
-        return lookUp(track)
     }
 
     override suspend fun searchArtists(query: String, limit: Int): List<ArtistRef> {
@@ -188,7 +184,7 @@ class JellyfinSource(
      * Looks for [track] by its title and artist, even when it's a Jellyfin track already (from
      * another Jellyfin server, whose item ids mean nothing here).
      */
-    suspend fun lookUp(track: Track): Track? {
+    override suspend fun lookUp(track: Track): Track? {
         val (config, deviceId) = requireConfig()
         // Search by title and filter by artist…
         val byTitle = searchVariants(TrackMatcher.searchTitle(track.title)).flatMap { term ->
@@ -301,6 +297,13 @@ class JellyfinSource(
         return page.items.map { it.toTrack(config.serverUrl) } to (page.total ?: (start + page.items.size))
     }
 
+    override suspend fun songs(cursor: String?): LibraryPage {
+        val start = cursor?.toIntOrNull() ?: 0
+        val (page, total) = allSongs(start, LIBRARY_PAGE)
+        val next = start + page.size
+        return LibraryPage(page, next.toString().takeIf { page.isNotEmpty() && next < total })
+    }
+
     private fun itemsUrl(config: JellyfinConfig): HttpUrl.Builder =
         "${config.serverUrl}/Items".toHttpUrl().newBuilder()
             .addQueryParameter("userId", config.userId)
@@ -369,6 +372,7 @@ class JellyfinSource(
     companion object {
         private val JSON = "application/json".toMediaType()
         private const val LOSSLESS_KBPS = 1411
+        private const val LIBRARY_PAGE = 500
         private const val TICKS_PER_MS = 10_000L
         private val WORD_ENDING_IN_S = Regex("\\b(\\p{L}{2,})s\\b")
 

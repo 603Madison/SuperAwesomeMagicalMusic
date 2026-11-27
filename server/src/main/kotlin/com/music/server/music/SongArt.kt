@@ -1,7 +1,7 @@
 package com.music.server.music
 
 import com.music.player.model.Track
-import com.music.player.sources.jellyfin.JellyfinSource
+import com.music.player.sources.MusicLibrary
 import com.music.server.auth.User
 import com.music.server.sources.SourceRegistry
 import com.music.server.sources.SourceStore
@@ -44,7 +44,7 @@ class SongArt(
         for (source in sources) {
             val music = registry.music(source) ?: continue
             val copy = try {
-                if (music is JellyfinSource) music.lookUp(song) else music.findMatch(song)
+                if (music is MusicLibrary) music.lookUp(song) else music.findMatch(song)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

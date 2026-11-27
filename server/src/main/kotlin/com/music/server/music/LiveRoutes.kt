@@ -398,22 +398,12 @@ fun Route.liveRoutes(services: Services) {
 
         get("/radio/{src}/station/{id}/stream") {
             val user = call.requireUser(services)
-            // A personal station: the person's own broadcast.
-            if (call.parameters["src"] == Stations.VIA) return@get services.personalRadio.respondStream(call, user, call.parameters["id"].orEmpty())
-            val source = call.radioSource(user)
-            if (source.kind == SourceKind.TUNER) return@get tuners.respondStream(call, user, source, call.parameters["id"].orEmpty())
-            val id = call.parameters["id"].orEmpty().removePrefix("hls:")
-            val station = SourceSetup.service("Radio Browser") { services.registry.radio.station(id) }
-            // The directory ranks stations by plays: count each person's once a day.
-            if (counted.add("${user.id}|$id|${LocalDate.now()}")) {
-                services.scope.launch { services.registry.radio.countPlay(id) }
-                if (counted.size > 50_000) counted.clear()
-            }
-            if (station.isHls) {
-                val (text, finalUrl) = proxy.fetchPlaylist(station.streamUrl)
-                proxy.respondPlaylist(call, proxy.rewrite(text, finalUrl, source.id))
-            } else {
-                proxy.respondRadio(call, station.streamUrl, "${source.id}|$id")
+            respondRadioStation(services, call, user, call.parameters["src"].orEmpty(), call.parameters["id"].orEmpty()) { id ->
+                // The directory ranks stations by plays: count each person's once a day.
+                if (counted.add("${user.id}|$id|${LocalDate.now()}")) {
+                    services.scope.launch { services.registry.radio.countPlay(id) }
+                    if (counted.size > 50_000) counted.clear()
+                }
             }
         }
 
@@ -437,5 +427,27 @@ fun Route.liveRoutes(services: Services) {
                 ?: throw ApiError.notFound()
             tuners.respondImage(call, source, call.parameters["station"].orEmpty(), call.parameters["kind"].orEmpty())
         }
+    }
+}
+
+/**
+ * A radio station's stream for [user]: one of their own stations ([src] "personal"), a tuner's,
+ * or one from Radio Browser ([onDirectoryPlay] hears which). For players and for speakers.
+ */
+suspend fun respondRadioStation(services: Services, call: ApplicationCall, user: User, src: String, rawId: String, onDirectoryPlay: (String) -> Unit = {}) {
+    // A personal station: the person's own broadcast.
+    if (src == Stations.VIA) return services.personalRadio.respondStream(call, user, rawId)
+    val source = services.sources.accessible(user, src)?.takeIf { it.enabled && (it.kind == SourceKind.RADIO || it.kind == SourceKind.TUNER) }
+        ?: throw ApiError.notFound("Radio isn't available")
+    if (source.kind == SourceKind.TUNER) return services.tunerRadio.respondStream(call, user, source, rawId)
+    val id = rawId.removePrefix("hls:")
+    val station = SourceSetup.service("Radio Browser") { services.registry.radio.station(id) }
+    onDirectoryPlay(id)
+    val proxy = services.live
+    if (station.isHls) {
+        val (text, finalUrl) = proxy.fetchPlaylist(station.streamUrl)
+        proxy.respondPlaylist(call, proxy.rewrite(text, finalUrl, source.id))
+    } else {
+        proxy.respondRadio(call, station.streamUrl, "${source.id}|$id")
     }
 }

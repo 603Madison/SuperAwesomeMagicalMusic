@@ -5,7 +5,7 @@ import { usePrefs } from "../player/prefs";
 import { Button, Modal } from "./ui";
 import { duration, trackKey } from "../lib/format";
 
-const SOURCES: Record<string, string> = { JELLYFIN: "Jellyfin", YOUTUBE_MUSIC: "YouTube Music", QOBUZ: "Qobuz", SIRIUSXM: "SiriusXM", RADIO: "Radio station" };
+const SOURCES: Record<string, string> = { JELLYFIN: "Jellyfin", YOUTUBE_MUSIC: "YouTube Music", QOBUZ: "Qobuz", SIRIUSXM: "SiriusXM", RADIO: "Radio station", SUBSONIC: "Subsonic library" };
 
 function sourceOf(track: Track): string {
   if (track.source === "SIRIUSXM" && track.sourceId.startsWith("channel:")) return "SiriusXM live channel";

@@ -273,11 +273,11 @@ class SettingsRepository(context: Context) {
 
     private fun parseFallbackOrder(raw: String?): List<SourceType>? {
         val parsed = raw?.split(",")?.mapNotNull { name -> SourceType.entries.firstOrNull { it.name == name } }
-            ?.filter { it != SourceType.JELLYFIN && it.onDemand }
+            ?.filter { !it.library && it.onDemand }
             ?.distinct()
         if (parsed.isNullOrEmpty()) return null
         // Keep any service missing from an older stored value at the end of the list.
-        return parsed + SourceType.entries.filter { it != SourceType.JELLYFIN && it.onDemand && it !in parsed }
+        return parsed + SourceType.entries.filter { !it.library && it.onDemand && it !in parsed }
     }
 
     private fun <T> MutablePreferences.putOrRemove(key: Preferences.Key<T>, value: T?) {

@@ -115,7 +115,9 @@ fun Artwork(url: String?, size: Dp, modifier: Modifier = Modifier, corner: Dp = 
                 model = uri.toString(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(size),
+                // The whole box, whatever size it ends up (Now Playing's stretches to the screen's
+                // width): a fixed size here left the placeholder colour showing round the cover.
+                modifier = Modifier.fillMaxSize(),
                 error = { Icon(Icons.Rounded.MusicNote, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(size * 0.4f)) },
             )
         }
@@ -130,6 +132,8 @@ fun TrackRow(
     downloaded: Boolean = false,
     available: Boolean = true,
     extraActions: List<Pair<String, () -> Unit>> = emptyList(),
+    /** A third line, small (who added it, on a shared playlist). */
+    note: String? = null,
 ) {
     Row(
         Modifier
@@ -159,6 +163,9 @@ fun TrackRow(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (available) 1f else 0.5f),
             )
+            note?.let {
+                Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         if (downloaded) Icon(Icons.Rounded.DownloadDone, "Downloaded", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
         track.durationMs?.takeIf { it > 0 }?.let {

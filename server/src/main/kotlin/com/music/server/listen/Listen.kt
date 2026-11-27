@@ -72,7 +72,7 @@ data class ListenStatus(
     val learning: Boolean,
     /** The server is set to learn libraries (an admin can turn it off). */
     val enabled: Boolean,
-    /** The person has a library (a Jellyfin source) for it to learn. */
+    /** The person has a library (a Jellyfin or Subsonic source) for it to learn. */
     val libraries: Boolean,
     /** AudD is set up for them, for what the library doesn't know. */
     val audd: Boolean,
@@ -117,7 +117,7 @@ class Listen(private val services: Services, file: File?) {
     /** Lists every library's songs, forgets those gone, and learns those not yet learned. */
     suspend fun learnAll() {
         if (!services.settings.get().learnLibrary) return
-        val libraries = services.sources.all().filter { it.kind == SourceKind.JELLYFIN && it.enabled }
+        val libraries = services.sources.all().filter { it.kind.isLibrary && it.enabled }
         store.forgetSourcesExcept(libraries.map { it.id }.toSet())
         for (library in libraries) {
             try {
@@ -143,14 +143,17 @@ class Listen(private val services: Services, file: File?) {
     }
 
     private suspend fun list(library: StoredSource) {
-        val jellyfin = services.registry.jellyfin(library) ?: return
+        val music = services.registry.library(library) ?: return
         val started = services.clock()
-        var start = 0
+        val seen = HashSet<String>()
+        var cursor: String? = null
         while (true) {
-            val (page, total) = jellyfin.allSongs(start, PAGE)
-            store.sync(library.id, page.map { ApiTrack.of(it, library.id) }, started)
-            start += page.size
-            if (page.isEmpty() || start >= total) break
+            val page = music.songs(cursor)
+            store.sync(library.id, page.tracks.map { ApiTrack.of(it, library.id) }, started)
+            // A server that hands out the same page again (ignoring where to start) has said all it will.
+            val fresh = page.tracks.count { seen.add(it.sourceId) }
+            if (page.tracks.isNotEmpty() && fresh == 0) break
+            cursor = page.next ?: break
         }
         store.forgetUnseen(library.id, started)
     }
@@ -158,13 +161,13 @@ class Listen(private val services: Services, file: File?) {
     /** Fingerprints one song: its audio from the library, through ffmpeg. */
     private suspend fun learn(item: ListenStore.Item): Boolean {
         val library = services.sources.get(item.sourceId)
-        val jellyfin = library?.let { services.registry.jellyfin(it) }
-        if (jellyfin == null) {
+        val music = library?.let { services.registry.library(it) }
+        if (music == null) {
             store.failed(item.id, services.clock())
             return false
         }
         return try {
-            val stream = jellyfin.stream(item.songId, StreamQuality.Original)
+            val stream = music.stream(item.songId, StreamQuality.Original)
             val (relay, url) = services.streamer.openRelay(stream)
             val samples = try {
                 decode(url, MAX_SONG_SECONDS)
@@ -186,7 +189,7 @@ class Listen(private val services: Services, file: File?) {
 
     suspend fun status(user: User): ListenStatus {
         val sources = services.sources.activeFor(user)
-        val libraries = sources.filter { it.kind == SourceKind.JELLYFIN }.map { it.id }
+        val libraries = sources.filter { it.kind.isLibrary }.map { it.id }
         val (learned, total) = store.counts(libraries)
         return ListenStatus(
             learned = learned,
@@ -243,7 +246,7 @@ class Listen(private val services: Services, file: File?) {
         if (!final && leaning != null) return ListenResult(found = false, candidate = leaning)
         val status = status(user)
         val message = when {
-            !status.libraries && !status.audd -> "Listen recognises songs in your library: add your Jellyfin in Settings › Sources (or AudD, for any song)"
+            !status.libraries && !status.audd -> "Listen recognises songs in your library: add your Jellyfin or Subsonic server in Settings › Sources (or AudD, for any song)"
             status.total > 0 && status.learned < status.total -> "Not one of the ${status.learned} songs learned from your library so far (of ${status.total})"
             !final -> null
             leaning != null && !status.audd -> "Not sure: it sounded a little like one of your songs. Try again closer to the music."
@@ -258,7 +261,7 @@ class Listen(private val services: Services, file: File?) {
      * sure (kept in their Recently heard), and the one it leans towards if not.
      */
     private suspend fun inLibrary(user: User, clip: LongArray, heardMs: Long, candidate: String?): Pair<ListenResult?, String?> {
-        val libraries = services.sources.activeFor(user).filter { it.kind == SourceKind.JELLYFIN }.map { it.id }
+        val libraries = services.sources.activeFor(user).filter { it.kind.isLibrary }.map { it.id }
         if (libraries.isEmpty() || clip.isEmpty()) return null to null
         val distinct = clip.map(Fingerprint::hash).distinct().toIntArray()
         val match = withContext(Dispatchers.Default) { Fingerprint.match(clip, store.lookup(distinct, libraries)) } ?: return null to null
@@ -308,7 +311,7 @@ class Listen(private val services: Services, file: File?) {
         for (source in sources.filter { it.kind.isLibrary } + sources.filter { it.kind.isOnDemand && !it.kind.isLibrary }) {
             val music = services.registry.music(source) ?: continue
             val copy = try {
-                (music as? com.music.player.sources.jellyfin.JellyfinSource)?.lookUp(wanted) ?: music.findMatch(wanted)
+                (music as? com.music.player.sources.MusicLibrary)?.lookUp(wanted) ?: music.findMatch(wanted)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -406,7 +409,6 @@ class Listen(private val services: Services, file: File?) {
         private const val EVERY_MS = 6 * 60 * 60 * 1000L
         private const val RETRY_MS = 24 * 60 * 60 * 1000L
         private const val PAUSE_MS = 100L
-        private const val PAGE = 500
         private const val MAX_SONG_SECONDS = 15 * 60
         private const val MAX_CLIP_SECONDS = 20
         private const val MIN_CLIP_MS = 2_000L

@@ -3,8 +3,13 @@ package com.music.player.model
 import kotlinx.serialization.Serializable
 
 @Serializable
-enum class SourceType(val label: String, val onDemand: Boolean = true) {
-    JELLYFIN("Jellyfin"),
+enum class SourceType(
+    val label: String,
+    val onDemand: Boolean = true,
+    /** Someone's own music library: looked in first, before the streaming services. */
+    val library: Boolean = false,
+) {
+    JELLYFIN("Jellyfin", library = true),
     QOBUZ("Qobuz"),
     YOUTUBE_MUSIC("YouTube Music"),
 
@@ -16,11 +21,17 @@ enum class SourceType(val label: String, val onDemand: Boolean = true) {
 
     /** Local and internet radio stations from the Radio Browser directory, played live. */
     RADIO("Radio", onDemand = false),
+
+    /**
+     * A library on a server that speaks the Subsonic API (Navidrome, Gonic, Airsonic, Ampache,
+     * LMS, Nextcloud Music…). Only the server plays from these, for now.
+     */
+    SUBSONIC("Subsonic", library = true),
 }
 
 /**
  * A song from any source. [sourceId] is the identifier inside that source (Jellyfin item id,
- * Qobuz track id or YouTube video id), so a track can always be fetched again later — for
+ * Subsonic song id, Qobuz track id or YouTube video id), so a track can always be fetched again later — for
  * playback, downloads, or after a playlist is restored from Nextcloud on another device.
  */
 @Serializable

@@ -218,7 +218,7 @@ private fun DeviceRow(device: ConnectDevice, name: String, playingHere: Boolean,
     val detail = when {
         playingHere && state?.track != null -> "${if (state.playing) "Playing" else "Paused"} · ${state.track.title}"
         device.kind == "phone" -> "Phone"
-        device.kind == "speaker" -> "Speaker"
+        device.kind == "speaker" -> device.detail ?: "Speaker"
         else -> "Web player"
     }
     Row(

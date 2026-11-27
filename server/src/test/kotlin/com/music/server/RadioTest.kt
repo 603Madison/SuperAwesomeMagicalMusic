@@ -131,14 +131,14 @@ class RadioTest {
     }
 
     @Test
-    fun `crossfades hold the level, and silence at a song's end is cut`() {
+    fun `a song fades out to nothing, and silence at its end is cut`() {
         val frames = 1000
         val loud = ByteArray(frames * 4) { if (it % 2 == 0) 0 else 0x40 }
-        val quiet = ByteArray(frames * 4)
-        val mixed = Pcm.crossfade(loud, quiet)
+        val faded = Pcm.fadeOut(loud)
         fun sampleAt(bytes: ByteArray, frame: Int) = ((bytes[frame * 4].toInt() and 0xff) or (bytes[frame * 4 + 1].toInt() shl 8)).toShort().toInt()
-        assertEquals(sampleAt(loud, 0), sampleAt(mixed, 0))
-        assertEquals(0, sampleAt(mixed, frames - 1))
+        assertEquals(sampleAt(loud, 0), sampleAt(faded, 0))
+        assertTrue(sampleAt(faded, frames / 2) in 1 until sampleAt(loud, frames / 2))
+        assertEquals(0, sampleAt(faded, frames - 1))
         val withSilence = loud.copyOf(loud.size + Pcm.bytesOf(2_000))
         val kept = Pcm.withoutTrailingSilence(withSilence)
         assertTrue(kept in loud.size..loud.size + Pcm.bytesOf(200))
@@ -267,5 +267,54 @@ class RadioTest {
         } finally {
             transmitter.stop()
         }
+    }
+
+    @Test
+    fun `one song fades out, a moment of quiet, then the next starts`() = runBlocking {
+        assumeTrue("ffmpeg isn't installed", ffmpegAvailable())
+        // Short songs, so the station moves on by itself (no skip) within the test.
+        val songs = (1..4).map { Candidate("k$it", "a$it", song("Song $it", "Artist $it").copy(durationMs = 6_000), 1.0, Rotation.POWER, null) }
+        var picked = 0
+        val programme = object : Programme {
+            override suspend fun nextSong(scheduled: List<Candidate>) = songs[picked++ % songs.size]
+            override suspend fun open(song: Candidate, fromMs: Long, exact: Boolean): PcmSource = Tone(6_000 - fromMs, 440.0, fromMs)
+            override fun encoder(): Process = ProcessBuilder(
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "s16le", "-ar", "44100", "-ac", "2", "-i", "pipe:0",
+                "-c:a", "aac", "-b:a", "128k", "-f", "adts", "pipe:1",
+            ).start()
+            override fun aired(now: Transmitter.OnAir, before: Transmitter.OnAir?, coming: List<Candidate>, atMs: Long, skipped: Boolean): DjLine? = null
+        }
+        val transmitter = Transmitter("u1", StationKind.MINE, "Test Radio", programme)
+        transmitter.start()
+        val aac = java.io.ByteArrayOutputStream()
+        try {
+            val (burst, listener) = transmitter.subscribe()
+            burst.forEach(aac::write)
+            // Enough of the station for one song to end and the next to begin (it's paced in real time).
+            withTimeout(30_000) { while (aac.size() < 128_000 / 8 * 14) aac.write(listener.frames.receive()) }
+        } finally {
+            transmitter.stop()
+        }
+        // The broadcast decoded, as loudness every 50 ms.
+        val decoder = ProcessBuilder("ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "aac", "-i", "pipe:0", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1").start()
+        val feeding = kotlin.concurrent.thread { decoder.outputStream.use { it.write(aac.toByteArray()) } }
+        val pcm = decoder.inputStream.readBytes()
+        feeding.join()
+        val levels = (0 until pcm.size / 800).map { block ->
+            var sum = 0.0
+            for (i in 0 until 400) {
+                val v = ((pcm[block * 800 + i * 2].toInt() and 0xff) or (pcm[block * 800 + i * 2 + 1].toInt() shl 8)).toShort().toInt()
+                sum += v.toDouble() * v
+            }
+            kotlin.math.sqrt(sum / 400)
+        }
+        val loud = levels.maxOrNull()!!
+        // Somewhere it falls quiet for half a second (the gap between songs), after fading (not a cut)...
+        val quiet = levels.indices.firstOrNull { at -> at >= 10 && (at until at + 10).all { it < levels.size && levels[it] < loud * 0.02 } }
+        assertNotNull("there's a quiet moment between songs: $levels", quiet)
+        val before = levels.subList(quiet!! - 10, quiet)
+        assertTrue("it fades out before the quiet: $before", before.any { it < loud * 0.6 && it > loud * 0.05 })
+        // ...and then the next song starts at full level.
+        assertTrue("the next song starts after it", levels.drop(quiet + 10).any { it > loud * 0.8 })
     }
 }

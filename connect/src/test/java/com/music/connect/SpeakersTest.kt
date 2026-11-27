@@ -6,6 +6,7 @@ import com.music.connect.net.ServerApi
 import com.music.connect.speakers.MusicCastSpeaker
 import com.music.connect.speakers.SpeakerControl
 import com.music.connect.speakers.SpeakerInfo
+import com.music.connect.speakers.SpeakerMedia
 import com.music.connect.speakers.SpeakerSession
 import com.music.connect.speakers.Ssdp
 import com.music.connect.speakers.StreamRelay
@@ -60,7 +61,9 @@ private class FakeSpeaker(private val http: OkHttpClient) : SpeakerControl {
     override suspend fun status() = ZoneStatus(on, volume, 60, false, input)
     override suspend fun setPower(on: Boolean) { this.on = on }
     override suspend fun setVolume(level: Int) { volume = level }
-    override suspend fun setUri(url: String, metadata: String) {
+    override suspend fun load(media: SpeakerMedia) {
+        val url = media.url
+        val metadata = MusicCastSpeaker.didl(url, media.mime, media.title, media.artist, media.album, media.artUrl, media.durationMs)
         uri = url
         input = "server"
         state = "STOPPED"

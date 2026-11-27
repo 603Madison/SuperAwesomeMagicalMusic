@@ -120,16 +120,16 @@ class ScreensTest {
         compose.onAllNodesWithText("Search").onFirst().assertExists()
         save("search-offline$suffix")
         compose.onNodeWithText("Playlists").performClickSafe()
-        compose.waitForIdle()
-        compose.onNodeWithText("Late-night drive").assertExists()
+        // Loaded from the database off the main thread: wait for it rather than assume it's there.
+        waitForText("Late-night drive")
         save("playlists$suffix")
         compose.onNodeWithText("Late-night drive").performClickSafe()
-        compose.waitForIdle()
-        compose.onNodeWithText("Neon Tidepool").assertExists()
+        // Loaded from the database off the main thread: wait for it rather than assume it's there.
+        waitForText("Neon Tidepool")
         save("playlist$suffix")
         compose.onNodeWithText("Settings").performClickSafe()
-        compose.waitForIdle()
-        compose.onNodeWithText("Bold text").assertExists()
+        // Loaded from the database off the main thread: wait for it rather than assume it's there.
+        waitForText("Bold text")
         save("settings$suffix")
         // Another theme, chosen in Settings, is kept and drawn at once.
         compose.onNodeWithText("Ember").performClickSafe()

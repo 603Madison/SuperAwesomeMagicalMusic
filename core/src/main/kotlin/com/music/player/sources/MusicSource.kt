@@ -40,4 +40,24 @@ interface MusicSource {
     }
 }
 
+/**
+ * Someone's own music library (Jellyfin, a Subsonic server): asked first for every song, and gone
+ * through whole to learn its songs for Listen.
+ */
+interface MusicLibrary : MusicSource {
+    /**
+     * Looks for [track] by its title and artist, even when it's from this kind of library already
+     * (another server's ids mean nothing here).
+     */
+    suspend fun lookUp(track: Track): Track?
+
+    override suspend fun findMatch(track: Track): Track? = if (track.source == type) track else lookUp(track)
+
+    /** A page of every song in the library, from [cursor] (null for the first page). */
+    suspend fun songs(cursor: String?): LibraryPage
+}
+
+/** Some of a library's songs, and where the next page starts (null after the last). */
+data class LibraryPage(val tracks: List<Track>, val next: String?)
+
 class SourceUnavailableException(message: String) : Exception(message)

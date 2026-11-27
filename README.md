@@ -4,55 +4,44 @@
   <a href="https://fdroid.link/#https://603madison.github.io/SuperAwesomeMagicalMusic/repo?fingerprint=ED2C0523BC9120F63952EAE882FA4C0FBD3153967130C0A4ADF1AF98D07B5283"><img alt="Add to F-Droid" src="https://img.shields.io/badge/Add_to-F--Droid-1976D2?style=for-the-badge&amp;logo=fdroid&amp;logoColor=white" height="40"></a>
 </p>
 
-Music for self-hosters. It plays from your **Jellyfin** library first and fills the gaps from
-**YouTube Music**. It also plays **SiriusXM** live radio and Pandora artist stations,
-and songs you hear there can be saved to a playlist. Songs Jellyfin doesn't have get their artist
-added to **Lidarr**, queued until your Lidarr server is reachable. Bitrates are set separately for
-Wi-Fi, cellular and **satellite** (T-Satellite and other direct-to-cell services). Every song can be
-**downloaded** for offline listening, and playlists can stay downloaded and upgrade themselves to
-better copies. Playlists belong to your **Nextcloud** account (sign in through the browser, so SSO
-such as authentik works) and are kept there. Works in **Android Auto**.
+Your own music service, for self-hosters. A server you run at home brings together your **Jellyfin**
+or **Subsonic** library (Navidrome, Gonic, Airsonic…), **YouTube Music**, **SiriusXM** (live
+channels, Xtra and Pandora stations), internet and **local FM/HD radio**, and plays them all in one
+place: a web player, apps for Android phones, flip phones and the Linux desktop, **Android Auto**,
+and your **Sonos**, **MusicCast** and **Music Assistant** speakers. Your library comes first;
+anything it doesn't have plays from a service, and **Lidarr** adds its artist so it soon will.
 
-This repository holds:
+It also makes **radio stations for you** from what you play (with a DJ), recognises songs
+playing around you (**Listen**, and **Now Playing** in the background), sums up your year
+(**Wrapped**), keeps playlists and history per person, and is careful with data: bitrates are set
+separately for Wi-Fi, mobile data and **satellite**, and anything can be downloaded for offline.
 
-- **SuperAwesomeMagicalMusic Standalone** (`app/`, called Lite before 1.30.1): the Android app described below, which works on its own. It talks
-  to every service itself; no server needed.
-- **The server** (`server/`, with the **web player** in `web/`): your own streaming service in
-  Docker or Podman. Accounts (local, or single sign-on such as Authentik), sources shared by the
-  admins or added by each person (SiriusXM and Pandora stations, radio, Jellyfin, YouTube
-  Music, Lidarr), playlists and history per person, and a web player for the computer. See [server/README.md](server/README.md):
-  `docker run -p 8080:8080 -v samm-data:/data ghcr.io/603madison/superawesomemagicalmusic`.
-- **The tuner** (`tuner/`): local FM and HD Radio for the server, like an HDHomeRun for the radio.
-  RTL-SDR dongles on a Raspberry Pi, in a container; stations come with what's playing (RDS and
-  HD Radio's tags, logos and album art), and one that's also online plays from whichever copy is
-  clearer. See [tuner/README.md](tuner/README.md).
-- **core** (`core/`): the music services (Jellyfin, YouTube Music, SiriusXM, radio, Lidarr,
-  lyrics, scrobbling) as plain Kotlin, shared by the app and the server.
-- **SuperAwesomeMagicalMusic** (`connect/`): the Android app for the server. Enter the server's
-  address and sign in (single sign-on through the browser, or a password); your library, radio and
-  playlists are there. Playlists are kept on the phone and changes made offline sync when you're
-  back; songs and whole playlists download for offline listening; quality is set separately for
-  Wi-Fi, mobile data and satellite; Android Auto, voice search and lyrics. Your devices work
-  together (play on one, control it from another, move the music between them), and at home your
-  Yamaha MusicCast speakers join them. **Wrapped** sums up your year (top songs, artists and
-  stations, when you listen) as a story to tap through, here and in the web player. Installs
-  alongside Standalone.
-- **SuperAwesomeMagicalMusic for Linux** (`desktop/`): a native desktop app for the server (Rust,
-  GTK 4 and libadwaita, GStreamer) for Ubuntu 24.04+ and Fedora 40+: search, playlists, history,
-  SiriusXM and radio, with media keys and the desktop's media controls, in the same look and
-  themes as the web player and the phone app. See
-  [desktop/README.md](desktop/README.md).
-- **SuperAwesomeMagicalMusic Mini** (`mini/`): the server's app for Android flip phones (TCL Flip,
-  Kyocera DuraXV, Sonim XP3plus, CAT S22 Flip and the like; Android 8 and later), made for the
-  keypad: the D-pad moves a big highlight, OK chooses, the soft keys open options and go back, and
-  the number keys pick from menus. No password to type: it shows a short code (and a QR code) to
-  type at the server's `/link` page on a phone or computer that's signed in. Search, playlists,
-  your own radio stations and favourites, recently played, and Now playing (OK plays and pauses,
-  left and right change songs, up and down set the volume), playing in the background. Plain
-  Android views, light enough for phones with 512 MB, and streams at 96 kbps by default to save
-  data. Installs alongside the other apps.
+## What's here
 
-Kotlin, Jetpack Compose (Material 3), Media3/ExoPlayer, Room, WorkManager. Android 8.0+ (API 26).
+| | What it is | Get it |
+| --- | --- | --- |
+| **The server** (`server/`, web player in `web/`) | Your own streaming service in Docker or Podman: accounts (local or single sign-on such as Authentik), sources shared by the admins or added by each person, playlists and history per person, personal radio stations, Listen, Wrapped, a web player, and speakers as places to play. See [server/README.md](server/README.md). | `ghcr.io/603madison/superawesomemagicalmusic` |
+| **SuperAwesomeMagicalMusic** (`connect/`) | The Android app for the server: your library, radio and playlists; downloads; Android Auto; your devices working together; MusicCast and Sonos speakers at home; Listen and Now Playing; Wrapped. | `SuperAwesomeMagicalMusic-vX.Y.Z.apk`, or F-Droid |
+| **SuperAwesomeMagicalMusic Mini** (`mini/`) | The server's app for Android flip phones, made for the keypad, signed in with a short code instead of a password. | `SuperAwesomeMagicalMusic-Mini-vX.Y.Z.apk`, or F-Droid |
+| **SuperAwesomeMagicalMusic for Linux** (`desktop/`) | A native desktop app for the server (GTK 4, libadwaita, GStreamer) with what the web player has: Now playing with lyrics, your devices (play here or anywhere), playlists (import, share), Radio, History, Wrapped, Preferences and Admin. For Ubuntu 24.04+ and Fedora 40+. See [desktop/README.md](desktop/README.md). | `…-Desktop-vX.Y.Z-amd64.deb` / `-x86_64.rpm` |
+| **SuperAwesomeMagicalMusic Standalone** (`app/`) | The original Android app that works on its own, with no server: it talks to Jellyfin, YouTube Music, SiriusXM, Lidarr and Nextcloud itself. (Called Lite before 1.30.1.) | `SuperAwesomeMagicalMusic-Standalone-vX.Y.Z.apk`, or F-Droid |
+| **The tuner** (`tuner/`) | Local FM and HD Radio for the server, like an HDHomeRun for the radio: RTL-SDR dongles on a Raspberry Pi, in a container. See [tuner/README.md](tuner/README.md). | `ghcr.io/603madison/superawesomemagicalmusic-tuner` |
+| `core/`, `nowplaying/` | The music services as plain Kotlin, shared by the apps and the server; Now Playing as an Android library another app can host. | |
+
+The apps install side by side. Kotlin throughout (Ktor on the server; Jetpack Compose, Media3 and
+Room on Android, Android 8.0+), React for the web player, Rust for the desktop app.
+
+## Getting started
+
+1. **Run the server:** `docker run -p 8080:8080 -v samm-data:/data ghcr.io/603madison/superawesomemagicalmusic`
+   (or Podman, or Compose; behind a reverse proxy for HTTPS). [server/README.md](server/README.md)
+   has the details, single sign-on included.
+2. **Add your sources** as an admin, in the web player's **Admin › Shared sources › Add a shared
+   source**: your library (**Jellyfin** or **Subsonic**), music services and radio (YouTube Music,
+   SiriusXM, Radio, the FM tuner), places to play (**Sonos**, **Music Assistant**) and helpers
+   (Lidarr, AudD). Admins can also let people add their own (**Admin › Settings**), which then
+   appear under each person's **Settings › Sources**.
+3. **Get the apps** (see [Installing](#installing)) and sign in with the server's address.
 
 ## In action
 
@@ -66,26 +55,47 @@ song (the line being sung is big and bright; click any line to jump there).
 | ![Now Playing's Song view](docs/screenshots/web-now-playing.jpg) | ![Search with a top result, songs and albums](docs/screenshots/web-search.jpg) |
 | **An artist's page** | **The web player on a phone** |
 | ![An artist's page with their popular songs](docs/screenshots/web-artist.jpg) | <img src="docs/screenshots/web-phone.jpg" alt="Now Playing on a phone, with its own controls" width="300"> |
+| **Your playlists, shared ones included** | |
+| ![The Playlists page with a cover for each playlist](docs/screenshots/web-playlists.jpg) | |
 
 The SuperAwesomeMagicalMusic app (for the server), in the same look as the other apps (Lexend,
-rounded cards over a soft gradient, light and dark): an artist's page, controlling the web player
-from the phone (devices work together, like Spotify Connect, and MusicCast speakers join them),
-favourite stations at the top of Radio, and a playlist in the dark theme.
+rounded cards over a soft gradient, light and dark): Search with your Wrapped, an artist's page,
+controlling the web player from the phone (devices work together, like Spotify Connect, and
+MusicCast and Sonos speakers join them), favourite stations at the top of Radio, a playlist in the
+dark theme, and your year so far.
 
 <p>
+  <img src="docs/screenshots/app-search.png" alt="The app's Search tab, with Wrapped at the top and the web player playing" width="200">
   <img src="docs/screenshots/app-artist.png" alt="The app's artist page" width="200">
   <img src="docs/screenshots/app-devices.png" alt="The app controlling the web player, with the devices to play on" width="200">
   <img src="docs/screenshots/app-radio.png" alt="Favourite stations at the top of the app's Radio tab" width="200">
   <img src="docs/screenshots/app-playlist-dark.png" alt="A playlist in the dark theme" width="200">
+  <img src="docs/screenshots/app-wrapped.png" alt="Wrapped in the app: minutes, top songs and top artists" width="200">
 </p>
+
+The Linux desktop app has what the web player has, natively (GTK 4 and libadwaita): Now playing
+with its lyrics following the song, a playlist shared with two people (each song says who added
+it), Radio with your own stations and favourites, and Wrapped.
+
+| | |
+| --- | --- |
+| ![The desktop app's Now playing, with lyrics](docs/screenshots/desktop-now-playing-lyrics.png) | ![A shared playlist in the desktop app](docs/screenshots/desktop-playlist.png) |
+| ![The desktop app's Radio: your own stations and favourites](docs/screenshots/desktop-radio.png) | ![Wrapped in the desktop app](docs/screenshots/desktop-wrapped.png) |
 
 The screenshots use a made-up demo library (Velvet Satellites aren't a real band, lol), so the covers
 are generated.
 
 ## Features
 
-### 1. Sources: Jellyfin first, then YouTube Music, with Lidarr
+### Sources: your library first
 
+- **Your library: Jellyfin or Subsonic.** Jellyfin, or any server that speaks the Subsonic API
+  (Navidrome, Gonic, Airsonic(-Advanced), Ampache, LMS, Nextcloud Music, Funkwhale…), added by an
+  admin like any source. Subsonic servers sign in with a username and password (only a salted
+  token is sent, or the password itself for servers that can't check tokens, such as LDAP
+  accounts) or an API key (OpenSubsonic); their playlists can be imported (**Playlists › Import ›
+  From your library**). Libraries are searched first, played from first, learned by Listen and
+  counted in Wrapped.
 - **Search** works like a streaming app's: every configured source is asked at once and the
   answers become one set of results, with the likeliest match on top (an artist, an album or a
   song), then songs, artists and albums. The same song, artist or album found on several sources
@@ -93,24 +103,57 @@ are generated.
   out. Artists open on their best-known songs, albums and singles; albums on their songs in
   order, taken from your library when it has the whole album. A song's ⋮ menu goes to its artist
   or album.
-- **Playback always prefers Jellyfin.** Before a YouTube track plays, it is matched
+- **Playback always prefers your library.** Before a YouTube track plays, it is matched
   against your library (title + artist + duration, ignoring "Remastered", "feat." and similar
-  tags), and the Jellyfin copy is used when one exists. A playlist built from YouTube therefore
+  tags), and your library's copy is used when there is one. A playlist built from YouTube therefore
   switches to your own files once they are in the library.
-- **When Jellyfin doesn't have a song**, it streams from YouTube Music, at the best quality that
+- **When your library doesn't have a song**, it streams from YouTube Music, at the best quality that
   fits your bitrate cap.
 - **Better networks, better copies:** when you move to a better network (e.g. satellite to Wi-Fi),
   the song playing switches to a better copy where it left off, and songs you replay later are
   picked again for the network you're on.
-- **Lidarr:** when you play, download or save a song that isn't in Jellyfin, its artist is looked
+- **Lidarr:** when you play, download or save a song that isn't in your library, its artist is looked
   up in your Lidarr library. If the artist is missing, they are found on MusicBrainz through Lidarr
   and added. New artists are monitored and their albums are searched for by default. You can pick
   the root folder and the quality and metadata profiles, or use the server defaults. Artists are
   matched by exact name only, so the wrong artist is never added.
-- **Lidarr queue:** Lidarr usually only answers on your home network, so requests are saved and
+- **Lidarr queue** (in the Standalone app, which talks to Lidarr itself): Lidarr usually only answers on your home network, so requests are saved and
   sent when the server can be reached: right away if it can, otherwise when the network changes
   (e.g. you get home), every 30 minutes, or when you tap "Send now". Settings › Lidarr lists what's
   waiting.
+
+### Shared playlists
+
+A playlist can be shared with other people on your server: open it in the web player or the phone
+app and choose **Share**, then pick who. They see it with their own playlists, and everyone adds,
+removes and reorders its songs; each song says who added it ("added by Sam"). Only the person
+who made it renames it, deletes it or shares it with more people; the others can **Leave** it
+(the songs they added stay). Each person's "last played" is their own, and in the phone app a
+shared playlist syncs, downloads and changes offline like any other.
+
+### Devices and speakers
+
+- **Your devices work together**, like Spotify Connect: every signed-in web player, phone and
+  desktop app sees the others, shows what they're playing, controls them and moves the music
+  between them, carrying on from the same moment.
+- **Sonos**, two ways:
+  - **On the server:** an admin adds **Sonos** (Admin › Shared sources). The server finds the
+    speakers on the network, or you give it one speaker's address. They join everyone's devices, and
+    the server plays the queue on them.
+  - **From the phone app:** at home, the app finds Sonos speakers on your Wi-Fi, the way it finds
+    MusicCast ones, or you add one by address in **Settings › Speakers**. The phone plays your queue
+    through them.
+  - Either way, rooms grouped together play as one ("Living Room + Kitchen", with the group's
+    volume), the Sonos app shows the song, artist and cover, and radio and your own stations play
+    too. A Sonos the server already plays on isn't shown twice.
+- **Yamaha MusicCast** speakers join from the phone app at home, the same way (**Settings ›
+  Speakers**).
+- **Music Assistant** (Home Assistant's music server): add it on the server with its address and a
+  token, and its players (Sonos, Chromecast, AirPlay, Squeezebox, DLNA, Home Assistant's media
+  players) become places to play.
+- Speakers fetch each song from the server at an address made for that song alone: signed,
+  short-lived, and opening nothing else, so they never need your sign-in. SiriusXM's live channels
+  don't play on speakers yet.
 
 ### SiriusXM
 
@@ -155,6 +198,9 @@ me** asks once for your approximate (city-level) location, which is sent only to
 search and not stored; stations within 80 km are listed, most listened to first. You can also
 search by name, and star favourites. Favourites and the stations found near you are listed in
 Android Auto under **Radio**. Next and previous move between stations in the list you played from.
+With **the tuner** (`tuner/`), your local FM and HD Radio stations join them, with what's on from
+the broadcast (and HD Radio's logos and album art); a station that's also online plays from the
+tuner while it comes in clearly and from the internet while it's static.
 
 ### Made for you: your own radio stations
 
@@ -166,9 +212,9 @@ keep in playlists and give a thumbs up (or down):
 - **[Your name]'s Rewind**: the songs you couldn't stop playing, months ago, back on the air.
 - **[Your name]'s Discovery**: new to you, from the artists you play most.
 
-They're stations, not playlists: each is one broadcast from the server, so it's on whether you're
-listening or not, and you tune in partway through a song. Songs crossfade into each other at an
-even loudness, with a programmer's clock behind them (no artist twice in a row, no song again
+They're stations, not playlists: each is one broadcast from the server, on the air while you
+listen (and off, fetching nothing, 20 seconds after you stop), and you tune in partway through a
+song. Each song fades out before the next starts, at an even loudness, with a programmer's clock behind them (no artist twice in a row, no song again
 for hours), and a DJ who knows your listening: back-announcing, saying what's coming up,
 introducing a song you've had on repeat or haven't played since spring, and giving the time on
 the hour. The web player and the phone app speak its lines over the start of songs, dipping the
@@ -184,7 +230,7 @@ says what song it is, with **Play**, and **Play from here** to carry on from the
 in the room. Everything it recognises is kept under **Recently heard**.
 
 - **Your library first, on your server.** The server learns every song in your Jellyfin
-  libraries in the background (their audio fingerprints, the technique Shazam uses), so it can
+  and Subsonic libraries in the background (their audio fingerprints, the technique Shazam uses), so it can
   recognise them from a few seconds through a phone's microphone, noise and all, without anything
   leaving the server. It takes a few seconds a song, and about 15 MB of space for every 100 songs
   (in `listen.db`, which can always be made again). Admins can turn this off in **Admin ›
@@ -274,7 +320,7 @@ as well.
 - **Home-screen widget:** what's playing, with previous, play/pause and next. Play picks up
   where you left off even when the app isn't running.
 
-### 2. Bitrates per network, including satellite
+### Bitrates per network, including satellite
 
 Settings has a slider for each of **Wi-Fi**, **Cellular** and **Satellite**: *Original quality*,
 or a cap from 320 kbps down to 64 kbps (the standard MP3 steps). A separate slider sets the
@@ -283,6 +329,7 @@ download quality.
 | Source | How the cap is applied |
 |---|---|
 | Jellyfin | Exact: files at or under the cap play untouched; larger ones are transcoded on the server to the cap (MP3, or AAC, which sounds better at low bitrates). |
+| Subsonic (server) | Files at or under the cap play untouched; larger ones are transcoded to MP3 at the cap by the Subsonic server (with its own transcoding settings). |
 | YouTube Music | Fixed tiers, roughly 48/50/70/128/160 kbps (AAC/Opus). The cap rounds down to the closest tier. |
 
 **Satellite** follows Android's
@@ -319,7 +366,7 @@ from the audio downloaded, which is how SiriusXM and radio streams get one), the
 and how much is buffered. Downloads show where the file came from, its bitrate and
 size.
 
-### 3. Offline listening, from every source
+### Offline listening
 
 "Download" works on songs from Jellyfin and YouTube Music, on whole playlists, and from the
 player. Downloads run in the background (WorkManager) at the download quality. Large files are
@@ -338,7 +385,62 @@ services that Jellyfin has since gained (e.g. once Lidarr brought in the album) 
 every downloaded song. A download from YouTube Music is replaced by the Jellyfin copy
 unless it is clearly better. Songs you stream already play from Jellyfin once it has them.
 
-### 4. Playlists synced to Nextcloud
+## The lite web player
+
+For old or slow devices (old iPads and iPhones, e-readers, smart TVs, cheap Chromebooks, a
+Raspberry Pi), the server has a second, much lighter web player at **`/lite`**
+(`https://music.example.com/lite`). Its pages are made on the server and are a few kilobytes
+each, with one small stylesheet and one small script (plain JavaScript that runs on Safari 9 and
+Android 5's browser). No web fonts, no big downloads.
+
+It does what the web player does, kept simple: search (songs, artists, albums, your playlists and
+radio), artists and albums, playlists (play, make, add and remove songs), radio (your own
+stations with skip and thumbs, favourites, SiriusXM channels, Pandora stations, radio stations),
+Now playing with a queue, shuffle and repeat, history, Recently heard, Wrapped, your devices
+(control them, or move the music between them), the stream quality and signing out. Music keeps
+playing while you move between pages. Signing in is the same as the web player's (password or
+single sign-on), and signing in to one signs you in to the other.
+
+With JavaScript off it still works through plain links and forms, and each song plays on its own
+page. SiriusXM's live channels only play in browsers that play live HLS streams themselves
+(Safari); everything else plays everywhere. Lyrics, the sleep timer and Listen's recording aren't
+there (they're in the web player and the apps).
+
+It isn't linked from the web player: bookmark `/lite` on the device that needs it.
+
+<p>
+  <img src="docs/screenshots/lite/phone-album-playing.png" alt="The lite web player on a phone: an album, playing" width="200">
+  <img src="docs/screenshots/lite/phone-now-playing.png" alt="The lite web player's Now playing" width="200">
+  <img src="docs/screenshots/lite/phone-radio.png" alt="The lite web player's Radio" width="200">
+</p>
+
+## The Standalone app
+
+The Standalone app (`app/`) works without a server: it talks to Jellyfin, YouTube Music,
+SiriusXM, Radio Browser and Lidarr itself, and keeps playlists in your **Nextcloud**. Most of the
+features above started here (search, SiriusXM and Pandora stations, local radio, Android Auto,
+the listening features, bitrates and offline downloads); the server's own features (personal
+stations, Listen, Wrapped, Subsonic, speakers) need the server.
+
+### Setting up
+Open **Settings** in the Standalone app:
+
+- **Jellyfin**: server URL, username and password. The password is used once to get an access
+  token and is not stored.
+- **YouTube Music**: on by default, no account needed.
+- **Subsonic servers** (Navidrome and the like) are added on the server (Settings › Sources), not
+  in Standalone.
+- **SiriusXM**: your SiriusXM e-mail and password. The password is kept, so the app can sign in
+  again when SiriusXM's session expires.
+- **Lidarr**: server URL and API key (Lidarr › Settings › General).
+- **Nextcloud**: the server URL and folder, then **Sign in with browser**. Finish signing in on
+  Nextcloud's page (SSO such as authentik works) and come back to the app.
+
+Plain-HTTP server URLs are allowed, because home servers often run without TLS on the LAN.
+
+
+### Playlists synced to Nextcloud
+
 
 You can create, rename, reorder, shuffle, download and delete playlists. Playlists belong to the
 signed-in Nextcloud account: only that account's playlists are shown, and playlists made before
@@ -366,21 +468,6 @@ phone plays on another (and switches to Jellyfin copies where they exist).
 }
 ```
 
-## Setting up
-
-Open **Settings** in the app:
-
-- **Jellyfin**: server URL, username and password. The password is used once to get an access
-  token and is not stored.
-- **YouTube Music**: on by default, no account needed.
-- **SiriusXM**: your SiriusXM e-mail and password. The password is kept, so the app can sign in
-  again when SiriusXM's session expires.
-- **Lidarr**: server URL and API key (Lidarr › Settings › General).
-- **Nextcloud**: the server URL and folder, then **Sign in with browser**. Finish signing in on
-  Nextcloud's page (SSO such as authentik works) and come back to the app.
-
-Plain-HTTP server URLs are allowed, because home servers often run without TLS on the LAN.
-
 ## Installing
 
 **With F-Droid** (gets updates automatically): add the app's own F-Droid repository. On your
@@ -391,7 +478,9 @@ repository**, or in F-Droid go to Settings › Repositories › **+** and enter
 `ED2C0523BC9120F63952EAE882FA4C0FBD3153967130C0A4ADF1AF98D07B5283`. See
 [fdroid/README.md](fdroid/README.md) for how the repository is built.
 
-**From GitHub:** download `SuperAwesomeMagicalMusic-vX.Y.Z.apk` from the repository's **Releases** page and open it on your phone
+**From GitHub:** download the app from the repository's **Releases** page
+(`SuperAwesomeMagicalMusic-vX.Y.Z.apk` for the server's app, `-Standalone-` for the one that works
+on its own) and open it on your phone
 (allow installing from your browser or file manager when Android asks). Every release is signed
 with the same key, so new versions install over old ones and keep your settings and downloads.
 
@@ -406,41 +495,46 @@ player's Settings › Signed in on has **Sign in a device with a code**.
 `sudo dnf install ./SuperAwesomeMagicalMusic-Desktop-vX.Y.Z-x86_64.rpm` (Fedora 40 and later). See
 [desktop/README.md](desktop/README.md).
 
+**The server and the tuner** are container images: see [server/README.md](server/README.md) and
+[tuner/README.md](tuner/README.md).
+
 ## Building
-
-Needs JDK 17+ and the Android SDK (platform 36).
-
-The **Release APK** workflow (`.github/workflows/release.yml`) tests, builds and publishes the
-signed APK as a GitHub release. Run it from the Actions tab with the version (e.g. `v1.1.0`), or
-push a `v*` tag; notes come from `release-notes/<version>.md`. It needs two repository secrets: `RELEASE_KEYSTORE_BASE64` (the
-release keystore, base64-encoded) and `RELEASE_KEYSTORE_PASSWORD`.
+Needs JDK 17+ and the Android SDK (platform 36) for the apps; the server, core and tuner build
+without it (`SAMM_SERVER_ONLY=1`). The web player needs Node 22; the desktop app Rust and GTK 4's
+development packages (see [desktop/README.md](desktop/README.md)).
 
 ```sh
-./gradlew assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
-./gradlew testDebugUnitTest      # unit tests + Robolectric UI smoke test
-./gradlew lintDebug
+./gradlew testDebugUnitTest lintDebug :server:test :core:test :tuner:test   # everything's tests
+./gradlew assembleDebug                                                     # the Android apps
+SAMM_SERVER_ONLY=1 ./gradlew :server:installDist                            # the server
+cd web && npm ci && npm run build                                           # the web player
+docker build -t samm .                                                      # the server's image
 ```
+
+The **Release APK** workflow (`.github/workflows/release.yml`) tests everything, builds the signed
+APKs, publishes the GitHub release with every app attached, republishes the F-Droid repository,
+pushes the server's and the tuner's container images and adds the desktop packages. Run it from
+the Actions tab with the version (e.g. `v1.33.0`), or push a `v*` tag; notes come from
+`release-notes/<version>.md`. It needs two repository secrets: `RELEASE_KEYSTORE_BASE64` (the
+release keystore, base64-encoded) and `RELEASE_KEYSTORE_PASSWORD`.
 
 ## Project layout
-
 ```
-app/src/main/java/com/music/player/
-├── sources/        Jellyfin, YouTube Music, SiriusXM, Radio Browser clients; TrackMatcher; SourceSelector
-├── quality/        StreamQuality and the round-down tier selection
-├── net/            NetworkMonitor (Wi-Fi / cellular / satellite), OkHttp helpers
-├── lidarr/         Lidarr API client, auto-add-artist service and its request queue
-├── playback/       Media3 PlaybackService + Android Auto library, StreamResolver (download → Jellyfin → fallbacks)
-├── downloads/      DownloadRepository, DownloadWorker, chunked downloader
-├── nextcloud/      WebDAV client and two-way playlist sync
-├── playlists/      Playlist repository
-├── data/           Room database
-├── settings/       DataStore-backed settings
-└── ui/             Compose screens: search, playlists, radio, downloads, settings, now playing
+server/      the server (Ktor): accounts, sources, streaming, radio, Listen, speakers, the lite web player
+web/         the web player (React + TypeScript)
+core/        the music services as plain Kotlin: Jellyfin, Subsonic, YouTube Music, SiriusXM, radio,
+             Lidarr, lyrics, scrobbling, fingerprints, Sonos
+connect/     the Android app for the server
+mini/        the Android app for flip phones
+nowplaying/  Now Playing, as an Android library
+app/         the Standalone Android app
+desktop/     the Linux desktop app (Rust, GTK 4)
+tuner/       the FM and HD Radio tuner (Kotlin, rtl-sdr, redsea, nrsc5) and its container
+fdroid/      how the F-Droid repository is built
 ```
 
-The queue holds `music://track?d=…` URIs. The real stream URL is chosen only when ExoPlayer opens
-a song (`ResolvingDataSource`), so each song uses the network and settings in effect at that
-moment.
+In the Android apps, the queue holds addresses of songs, not of streams: the real stream is chosen
+only when the player opens a song, so each song uses the network and settings in effect then.
 
 ## Licence
 

@@ -66,7 +66,8 @@ pub fn listen_page() -> adw::NavigationPage {
             }
         });
     }
-    let show_recent: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
+    type Show = Rc<RefCell<Option<Rc<dyn Fn()>>>>;
+    let show_recent: Show = Rc::new(RefCell::new(None));
     {
         let recent = recent.clone();
         let api = api.clone();
@@ -87,10 +88,10 @@ pub fn listen_page() -> adw::NavigationPage {
                         let forget = move |id: String| {
                             let (api, again) = (api.clone(), again.clone());
                             glib::spawn_future_local(async move {
-                                if bg(async move { api.forget_heard(&id).await }).await.is_ok() {
-                                    if let Some(show) = again.borrow().clone() {
-                                        show();
-                                    }
+                                if bg(async move { api.forget_heard(&id).await }).await.is_ok()
+                                    && let Some(show) = again.borrow().clone()
+                                {
+                                    show();
                                 }
                             });
                         };

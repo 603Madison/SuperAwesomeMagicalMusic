@@ -5,11 +5,13 @@ import com.music.player.playlists.ImportMatcher
 import com.music.player.playlists.ListedSong
 import com.music.player.playlists.PlaylistReaders
 import com.music.player.playlists.PlaylistService
+import com.music.player.sources.subsonic.SubsonicSource
 import com.music.player.sources.youtube.YouTubeMusicSource
 import com.music.server.ApiError
 import com.music.server.auth.User
 import com.music.server.music.ApiTrack
 import com.music.server.sources.SourceRegistry
+import com.music.server.sources.SourceSetup
 import com.music.server.sources.SourceStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -74,6 +76,14 @@ class Importer(
             matched.filter { it.second == null }.map { it.first },
             null,
         )
+    }
+
+    /** A playlist kept on one of the person's Subsonic servers ([sourceId]), its songs as they are there. */
+    suspend fun fromSource(user: User, sourceId: String, playlistId: String): Imported {
+        val source = store.accessible(user, sourceId)?.takeIf { it.enabled } ?: throw ApiError.notFound("No such source")
+        val subsonic = registry.music(source) as? SubsonicSource ?: throw ApiError.badRequest("${source.name} doesn't keep playlists")
+        val (playlist, tracks) = SourceSetup.service(source.name) { subsonic.playlist(playlistId) }
+        return Imported(playlist.name, "Imported from ${source.name}", tracks.map { ApiTrack.of(it, source.id) }, emptyList(), null)
     }
 
     /** Looks again for songs that weren't found ([missing] stand-ins): each as found now, or null. */

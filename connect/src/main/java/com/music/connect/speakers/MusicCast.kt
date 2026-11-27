@@ -17,17 +17,32 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
+/** The kinds of speaker the phone plays on. */
+enum class SpeakerKind(val label: String, val idPrefix: String) {
+    MUSICCAST("MusicCast", "musiccast-"),
+    SONOS("Sonos", "sonos-"),
+}
+
 /** What a speaker says about itself. */
 data class SpeakerInfo(
-    /** Yamaha's id for the device (stays the same when its address changes). */
+    /** Its own id (Yamaha's device id, a Sonos's RINCON_…): stays the same when its address changes. */
     val deviceId: String,
-    /** The name it was given in the MusicCast app ("Living Room"). */
+    /** The name it was given in its own app ("Living Room", "Living Room + Kitchen"). */
     val name: String,
     val model: String,
     val host: String,
     /** Where its AVTransport service takes commands. */
     val transportUrl: String,
-)
+    val kind: SpeakerKind = SpeakerKind.MUSICCAST,
+    /** How many rooms play together (a Sonos group); 1 on its own. */
+    val rooms: Int = 1,
+) {
+    /** Its id among the person's devices. */
+    val connectId: String get() = kind.idPrefix + deviceId.lowercase().filter { it.isLetterOrDigit() }.take(40)
+
+    /** Shown under its name among the devices: "MusicCast", "Sonos", "Sonos · 2 rooms". */
+    val detail: String get() = if (rooms > 1) "${kind.label} · $rooms rooms" else kind.label
+}
 
 /** The speaker's main zone. */
 data class ZoneStatus(val on: Boolean, val volume: Int, val maxVolume: Int, val muted: Boolean, val input: String)
@@ -92,8 +107,14 @@ class MusicCastSpeaker(
         getJson("$yxc/main/setVolume?volume=${level.coerceAtLeast(0)}")
     }
 
+    override suspend fun load(media: SpeakerMedia) {
+        // A stop first, so a speaker busy with the last song takes the new one.
+        runCatching { stop() }
+        setUri(media.url, didl(media.url, media.mime, media.title, media.artist, media.album, media.artUrl, media.durationMs))
+    }
+
     /** Plays [url] next ([metadata] is its DIDL-Lite description, for the speaker's display). */
-    override suspend fun setUri(url: String, metadata: String) {
+    suspend fun setUri(url: String, metadata: String) {
         soap("SetAVTransportURI", "<CurrentURI>${xmlEscape(url)}</CurrentURI><CurrentURIMetaData>${xmlEscape(metadata)}</CurrentURIMetaData>")
     }
 

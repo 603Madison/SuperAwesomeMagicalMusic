@@ -44,6 +44,8 @@ data class ConnectDevice(
     val kind: String = "web",
     val state: PlayState? = null,
     val active: Boolean = false,
+    /** What it is, for speakers the server plays on ("Sonos", "Music Assistant · Chromecast"). */
+    val detail: String? = null,
 )
 
 /** Something another device asks this one to do ("take" carries the queue it hands over). */
@@ -76,7 +78,9 @@ class ConnectClient(
     private val kind: String = "phone",
     /** The device's id and name, when it isn't this phone. */
     private val fixedId: String? = null,
-    private val fixedName: String? = null,
+    @Volatile private var fixedName: String? = null,
+    /** What it is, for a speaker ("Sonos · 2 rooms"), shown under its name. */
+    @Volatile private var detail: String? = null,
 ) {
     private val http = http.newBuilder().pingInterval(25, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS).build()
     private val _devices = MutableStateFlow<List<ConnectDevice>>(emptyList())
@@ -122,6 +126,22 @@ class ConnectClient(
             retries = 0
             open()
         }
+    }
+
+    /**
+     * A speaker this phone stands in for got a new name (a Sonos group gained a room): it joins
+     * again under it, saying what it's playing as before.
+     */
+    @Synchronized
+    fun rename(name: String, detail: String?) {
+        if (name == fixedName && detail == this.detail) return
+        fixedName = name
+        this.detail = detail
+        socket?.let { old ->
+            socket = null
+            old.close(1000, null)
+        }
+        if (users > 0) open()
     }
 
     /** Signed in again, to another account or server: the old connection goes, a new one opens. */
@@ -172,6 +192,7 @@ class ConnectClient(
             .addQueryParameter("id", me)
             .addQueryParameter("name", fixedName ?: deviceName())
             .addQueryParameter("kind", kind)
+            .apply { detail?.let { addQueryParameter("detail", it) } }
             .build()
         val request = Request.Builder().url(url).header("Authorization", "Bearer $token").build()
         socket = http.newWebSocket(request, object : WebSocketListener() {

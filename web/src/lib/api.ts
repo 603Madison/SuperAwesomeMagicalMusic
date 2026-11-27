@@ -1,7 +1,7 @@
 import type {
   ArtistView, ChannelView, NowView, StationTracks, PersonalNow, PersonalStation, Heard, ListenResult, ListenStatus,
-  AdminSettings, AuthConfig, KindsResponse, LidarrRequest, Listen, LyricsView, Wrapped, Playlist, PlaylistSummary,
-  ResolvedStream, SearchResults, ArtistPage, AlbumPage, ServerSettings, SessionInfo, SourceView, Track, User, OidcSettings,
+  AdminSettings, AuthConfig, KindsResponse, LidarrRequest, Listen, LyricsView, Wrapped, Playlist, PlaylistPerson, PlaylistSummary,
+  ResolvedStream, SearchResults, ArtistPage, AlbumPage, ServerSettings, SessionInfo, SourcePlaylist, SourceView, Track, User, OidcSettings,
   DeviceRequest,
 } from "./types";
 import { rememberRadioNow, type RadioNow } from "./radioNow";
@@ -81,9 +81,14 @@ export const api = {
   lidarrRequests: () => get<LidarrRequest[]>("/api/lidarr/requests"),
 
   playlists: () => get<PlaylistSummary[]>("/api/playlists"),
+  /** The people on the server, to share playlists with. */
+  people: () => get<PlaylistPerson[]>("/api/people"),
+  sharePlaylist: (id: string, userId: string) => post<PlaylistSummary>(`/api/playlists/${q(id)}/members`, { userId }),
+  /** Stops sharing it with [userId] (its owner), or leaves it (yourself). */
+  unsharePlaylist: (id: string, userId: string) => del<unknown>(`/api/playlists/${q(id)}/members/${q(userId)}`),
   playlist: (id: string) => get<Playlist>(`/api/playlists/${q(id)}`),
   createPlaylist: (name: string, tracks: Track[] = []) => post<Playlist>("/api/playlists", { name, tracks }),
-  importPlaylist: (from: { url?: string; text?: string; name?: string }) =>
+  importPlaylist: (from: { url?: string; text?: string; name?: string; source?: string; playlist?: string }) =>
     post<{ playlist: Playlist; found: number; missing: string[]; note?: string }>("/api/playlists/import", from),
   renamePlaylist: (id: string, name: string, description?: string) => patch<PlaylistSummary>(`/api/playlists/${q(id)}`, { name, description }),
   deletePlaylist: (id: string) => del<unknown>(`/api/playlists/${q(id)}`),
@@ -99,6 +104,7 @@ export const api = {
 
   sourceKinds: () => get<KindsResponse>("/api/sources/kinds"),
   sources: () => get<SourceView[]>("/api/sources"),
+  sourcePlaylists: (id: string) => get<SourcePlaylist[]>(`/api/sources/${q(id)}/playlists`),
   addSource: (kind: string, name: string, scope: "global" | "personal", fields: Record<string, unknown>) =>
     post<SourceView>("/api/sources", { kind, name, scope, fields }),
   updateSource: (id: string, change: { name?: string; enabled?: boolean; fields?: Record<string, unknown> }) =>

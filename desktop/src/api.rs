@@ -9,6 +9,11 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+mod account;
+mod library;
+pub use account::*;
+pub use library::*;
+
 // ---- What the server sends ----
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -163,6 +168,30 @@ pub struct User {
     pub display_name: String,
     #[serde(default)]
     pub role: String,
+    /// The admin made at first start, which can always sign in with its password.
+    #[serde(default)]
+    pub break_glass: bool,
+    /// Turned off by an admin (can't sign in).
+    #[serde(default)]
+    pub disabled: bool,
+    /// Signs in through single sign-on.
+    #[serde(default)]
+    pub oidc: bool,
+    #[serde(default)]
+    pub has_password: bool,
+    #[serde(default)]
+    pub last_login_at: Option<i64>,
+}
+
+impl User {
+    pub fn is_admin(&self) -> bool {
+        self.role == "ADMIN"
+    }
+
+    /// Their name, or their username when they have none.
+    pub fn name(&self) -> &str {
+        if self.display_name.is_empty() { &self.username } else { &self.display_name }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -269,6 +298,48 @@ pub struct PlaylistSummary {
     /// Goes up with every change (reordering says which it changed).
     #[serde(default)]
     pub revision: i64,
+    /// Whether it's this person's own (false: someone shared it with them).
+    #[serde(default = "yes")]
+    pub mine: bool,
+    /// Whose it is, when it's someone else's.
+    #[serde(default)]
+    pub owner: Option<PlaylistPerson>,
+    /// The people it's shared with (besides its owner): they add, remove and reorder songs too.
+    #[serde(default)]
+    pub members: Vec<PlaylistPerson>,
+}
+
+/// Someone a playlist is shared with, or who shares it (anyone on the server, to share with).
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlaylistPerson {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub name: String,
+}
+
+impl PlaylistPerson {
+    /// Their name, or their username when they have none.
+    pub fn shown(&self) -> &str {
+        if self.name.is_empty() { &self.username } else { &self.name }
+    }
+}
+
+impl PlaylistSummary {
+    /// "Shared by Maddie", or "Shared with Sam and Alex", for a shared playlist.
+    pub fn shared_note(&self) -> Option<String> {
+        if !self.mine {
+            return self.owner.as_ref().map(|o| format!("Shared by {}", o.shown()));
+        }
+        let names: Vec<&str> = self.members.iter().map(PlaylistPerson::shown).collect();
+        match names.len() {
+            0 => None,
+            1 => Some(format!("Shared with {}", names[0])),
+            n => Some(format!("Shared with {} and {}", names[..n - 1].join(", "), names[n - 1])),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -277,6 +348,9 @@ pub struct PlaylistEntry {
     #[serde(default)]
     pub entry_id: String,
     pub track: Track,
+    /// Who added it, on a shared playlist.
+    #[serde(default)]
+    pub added_by: Option<PlaylistPerson>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -297,6 +371,41 @@ pub struct ResolvedStream {
     /// from where asked.
     #[serde(default = "yes")]
     pub seekable: bool,
+    /// The copy's bitrate, when the server knows it.
+    #[serde(default)]
+    pub kbps: Option<i32>,
+    /// Whether it fits the quality cap asked for.
+    #[serde(default = "yes")]
+    pub within_cap: bool,
+    /// Its loudness gain (Jellyfin's normalization), for even volume.
+    #[serde(default)]
+    pub gain_db: Option<f64>,
+    /// Made smaller (or converted) on the server.
+    #[serde(default)]
+    pub transcoded: bool,
+    /// Its format, as a file extension ("flac", "opus").
+    #[serde(default)]
+    pub extension: String,
+}
+
+/// A song's lyrics: timed lines (synced) or plain ones, and where they're from.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LyricsView {
+    #[serde(default)]
+    pub lines: Vec<LyricLine>,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub synced: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LyricLine {
+    #[serde(default)]
+    pub time_ms: Option<i64>,
+    #[serde(default)]
+    pub text: String,
 }
 
 fn yes() -> bool {
@@ -304,6 +413,7 @@ fn yes() -> bool {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SourceView {
     pub id: String,
     pub kind: String,
@@ -311,6 +421,19 @@ pub struct SourceView {
     pub enabled: bool,
     #[serde(default)]
     pub hidden: bool,
+    #[serde(default)]
+    pub name: String,
+    /// "global" (shared by the admins) or "personal".
+    #[serde(default)]
+    pub scope: String,
+    #[serde(default)]
+    pub editable: bool,
+    /// What's saved, but its secrets (the server's address, the username…).
+    #[serde(default)]
+    pub settings: serde_json::Map<String, serde_json::Value>,
+    /// The secrets that are set, by name (their values are never sent).
+    #[serde(default)]
+    pub secrets_set: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -424,6 +547,9 @@ pub struct PersonalStation {
 pub struct DjLine {
     pub id: String,
     pub text: String,
+    /// When it's said, on the station's clock.
+    #[serde(default, rename = "atMs")]
+    pub at_ms: i64,
 }
 
 /// This app's id when it tunes in to one of the person's own stations (new each time it starts).
@@ -458,8 +584,19 @@ pub struct PersonalNow {
     pub thumb: Option<String>,
     #[serde(default)]
     pub next: Vec<NowView>,
+    /// What it played before.
+    #[serde(default)]
+    pub recent: Vec<NowView>,
     #[serde(default)]
     pub dj: Option<DjLine>,
+    /// A line for the DJ to say on tuning in.
+    #[serde(default)]
+    pub welcome: Option<String>,
+    /// The server's clock, and how far behind it the station is heard.
+    #[serde(default)]
+    pub server_time: i64,
+    #[serde(default)]
+    pub heard_delay_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -728,10 +865,6 @@ impl Api {
         Ok(response.bytes().await?.to_vec())
     }
 
-    pub async fn history(&self) -> Result<Vec<Listen>> {
-        self.get("/api/history?limit=200").await
-    }
-
     pub async fn add_listens(&self, listens: Vec<Listen>) -> Result<serde_json::Value> {
         self.post("/api/history", json!({ "listens": listens })).await
     }
@@ -754,6 +887,23 @@ impl Api {
             enc(id)
         ))
         .await
+    }
+
+    /// What the channel played before [at_ms] (its last few hours).
+    pub async fn channel_recent(&self, source: &str, kind: &str, id: &str, at_ms: i64) -> Result<Vec<NowView>> {
+        self.get(&format!(
+            "/api/live/sxm/{}/recent?type={}&id={}&at={at_ms}",
+            enc(source),
+            enc(kind),
+            enc(id)
+        ))
+        .await
+    }
+
+    /// The song's lyrics, from its library or LRCLIB (none: no lines).
+    pub async fn lyrics(&self, track: &Track) -> Result<LyricsView> {
+        let found: Option<LyricsView> = self.post("/api/lyrics", json!({ "track": track })).await?;
+        Ok(found.unwrap_or_default())
     }
 
     pub async fn personal_stations(&self) -> Result<Vec<PersonalStation>> {
@@ -782,8 +932,15 @@ impl Api {
         .map(|_| ())
     }
 
-    pub async fn radio_search(&self, source: &str, query: &str) -> Result<Vec<Track>> {
-        self.get(&format!("/api/live/radio/{}/search?q={}", enc(source), enc(query))).await
+    /// Thumbs a Pandora station's song: UP, DOWN or NONE, [elapsed_ms] into it.
+    pub async fn station_thumb(&self, source: &str, station: &str, song: &str, thumb: &str, elapsed_ms: i64) -> Result<()> {
+        self.send::<serde_json::Value>(
+            Method::POST,
+            &format!("/api/live/sxm/{}/station-track/{}/{}/thumb", enc(source), enc(station), enc(song)),
+            Some(json!({ "thumb": thumb, "elapsedMs": elapsed_ms })),
+        )
+        .await
+        .map(|_| ())
     }
 
     /// What's on a radio station: "Artist - Title", and the song in full where the station says

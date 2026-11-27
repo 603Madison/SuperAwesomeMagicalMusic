@@ -105,7 +105,7 @@ fun Route.radioRoutes(services: Services) {
         val fromHeard = heard?.let(transmitter::songsFrom).orEmpty()
         val playing = fromHeard.firstOrNull() ?: transmitter.current
         val after = fromHeard.drop(1)
-        // What's lined up, with when each should start (each song's length, less the crossfade).
+        // What's lined up, with when each should start (each song's length).
         val current = transmitter.current
         var at = current?.let { it.startMs + it.durationMs } ?: serverTime
         val next = after.map(::onAirView) + transmitter.lined.map { song ->
