@@ -23,6 +23,7 @@ import com.music.mini.R
 import com.music.mini.net.Api
 import com.music.mini.net.CodeSignIn
 import com.music.mini.net.DeviceStart
+import com.music.mini.orchestrator.OrchestratorSignIn
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -35,8 +36,13 @@ class ServerScreen : Screen() {
     private lateinit var status: TextView
     private var checking: Job? = null
 
+    /** "Continue as Maddie": only there when someone is signed in to SuperAwesomeMagicalOrchestrator on this phone. */
+    private lateinit var continueAs: TextView
+    private var continuing: Job? = null
+
     override fun create(context: Context): View {
         val c = context
+        continueAs = c.button("") { continueWithOrchestrator() }.apply { visibility = View.GONE }
         field = EditText(c).apply {
             setText(mini.prefs.lastServer.removePrefix("https://"))
             hint = "music.example.com"
@@ -53,6 +59,7 @@ class ServerScreen : Screen() {
         }
         status = c.label("", 15f)
         val column = c.column(
+            continueAs,
             c.label("Your server's address", 16f, bold = true),
             field,
             c.label("Like music.example.com. No need to type https://", 14f, muted = true),
@@ -60,11 +67,54 @@ class ServerScreen : Screen() {
             status,
         )
         column.setPadding(c.dp(8), c.dp(8), c.dp(8), c.dp(8))
-        (column.getChildAt(3).layoutParams as LinearLayout.LayoutParams).topMargin = c.dp(8)
+        (column.getChildAt(4).layoutParams as LinearLayout.LayoutParams).topMargin = c.dp(8)
+        (continueAs.layoutParams as LinearLayout.LayoutParams).bottomMargin = c.dp(8)
         return ScrollView(c).apply { addView(column) }
     }
 
-    override fun defaultFocus(): View = field
+    override fun defaultFocus(): View = if (continueAs.visibility == View.VISIBLE) continueAs else field
+
+    override fun onShown(first: Boolean) {
+        super.onShown(first)
+        // Quietly, once: as whoever is signed in to the orchestrator here. Otherwise its row, if there's anyone.
+        if (first) continuing = scope.launch { took(mini.orchestrator.opened()) }
+    }
+
+    private fun continueWithOrchestrator() {
+        if (continuing?.isActive == true) return
+        continuing = scope.launch { took(mini.orchestrator.tapped()) }
+    }
+
+    /** What came of asking the orchestrator: signed in, its page to open, or just the row as it now is. */
+    private fun took(outcome: OrchestratorSignIn.Outcome) {
+        when (outcome) {
+            is OrchestratorSignIn.Outcome.SignedIn -> {
+                mini.tell("Signed in as ${outcome.name}")
+                host.restart(HomeScreen())
+                return
+            }
+            is OrchestratorSignIn.Outcome.Approve -> host.askOrchestrator(outcome.page) { yes ->
+                if (yes) continuing = scope.launch { took(mini.orchestrator.approved()) } else {
+                    mini.orchestrator.unavailable()
+                    showRow()
+                }
+            }
+            OrchestratorSignIn.Outcome.Shown -> Unit
+        }
+        showRow()
+    }
+
+    private fun showRow() {
+        val row = mini.orchestrator.row
+        val wasShown = continueAs.visibility == View.VISIBLE
+        continueAs.visibility = if (row == null) View.GONE else View.VISIBLE
+        continueAs.text = row?.let { listOfNotNull(it.label, it.place).joinToString("\n") }.orEmpty()
+        when {
+            // It just appeared, and nothing's been typed: the highlight goes to it (one press of OK signs in).
+            row != null && !wasShown && field.text.toString() == mini.prefs.lastServer.removePrefix("https://") -> continueAs.requestFocus()
+            row == null && wasShown -> field.requestFocus()
+        }
+    }
 
     override fun onKey(keyCode: Int, event: KeyEvent): Boolean {
         if (field.hasFocus() && (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {

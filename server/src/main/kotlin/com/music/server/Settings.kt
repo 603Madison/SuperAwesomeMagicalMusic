@@ -32,6 +32,11 @@ data class ServerSettings(
     val publicUrl: String = "",
     /** Whether accounts other than the break-glass admin may sign in with a password. */
     val localLogin: Boolean = true,
+    /**
+     * SuperAwesomeMagicalOrchestrator's address, e.g. https://orchestrator.example.com: apps on a
+     * device signed in there sign in here with its tickets. Blank: none of that exists.
+     */
+    val orchestratorUrl: String = "",
     /** Whether users may add their own sources (their own Jellyfin, SiriusXM account…). */
     val allowPersonalSources: Boolean = true,
     /** Whether the server learns the libraries' songs (Jellyfin, Subsonic), so Listen can recognise them. */

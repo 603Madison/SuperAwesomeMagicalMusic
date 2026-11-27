@@ -26,6 +26,12 @@ interface Host {
 
     /** The title and soft-key labels changed. */
     fun refreshChrome()
+
+    /**
+     * Opens SuperAwesomeMagicalOrchestrator's page asking whether Mini may sign in as the person;
+     * [answered] hears whether they said yes (false too when the page couldn't be opened).
+     */
+    fun askOrchestrator(page: android.content.Intent, answered: (Boolean) -> Unit)
 }
 
 /**

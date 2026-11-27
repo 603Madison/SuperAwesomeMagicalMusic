@@ -11,6 +11,11 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.faketouch" android:required="false" />
 
+    <queries>
+        <!-- SuperAwesomeMagicalOrchestrator, to sign in as whoever is signed in there. -->
+        <package android:name="app.superawesomemagical.orchestrator" />
+    </queries>
+
     <!-- Home servers are often plain HTTP on the home network. -->
     <application
         android:name=".MiniApp"

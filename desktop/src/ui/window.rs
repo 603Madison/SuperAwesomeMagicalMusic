@@ -548,6 +548,24 @@ pub fn preferences(ctx: &Rc<Ctx>) {
     playback.add(&levelling);
     crate::ui::settings::more_playback(&playback);
     page.add(&playback);
+
+    let devices = adw::PreferencesGroup::builder().title("Your other devices").build();
+    let share = adw::SwitchRow::builder()
+        .title("Show what I'm playing on my other devices")
+        .subtitle("Through SuperAwesomeMagicalOrchestrator on this computer, so you can carry on elsewhere")
+        .active(ctx.config.borrow().share_playing)
+        .build();
+    share.connect_active_notify(move |row| {
+        let ctx = crate::ui::ctx();
+        {
+            let mut config = ctx.config.borrow_mut();
+            config.share_playing = row.is_active();
+            config.save();
+        }
+        ctx.say_playing();
+    });
+    devices.add(&share);
+    page.add(&devices);
     page.set_title("General");
     page.set_icon_name(Some("samm-settings-symbolic"));
 

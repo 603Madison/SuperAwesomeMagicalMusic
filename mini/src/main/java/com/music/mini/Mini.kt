@@ -6,6 +6,7 @@ import android.os.Build
 import android.widget.Toast
 import com.music.mini.net.Api
 import com.music.mini.net.CodeSignIn
+import com.music.mini.orchestrator.OrchestratorSignIn
 import com.music.mini.playback.ControllerPlayer
 import com.music.mini.playback.MiniPlayer
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +39,9 @@ class Mini(private val context: Context) {
     val api = Api(http, { prefs.server }, { prefs.token })
 
     fun codeSignIn() = CodeSignIn(api)
+
+    /** Signing in as whoever is signed in to SuperAwesomeMagicalOrchestrator on this phone. Tests swap it for their own. */
+    var orchestrator = OrchestratorSignIn(OrchestratorSignIn.onThisPhone(context), api, prefs)
 
     var player: MiniPlayer = ControllerPlayer(context) { prefs.server }
 

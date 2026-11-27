@@ -6,6 +6,7 @@ mod connect;
 mod leveller;
 mod mic;
 mod mpris;
+mod orchestrator;
 mod player;
 mod rt;
 mod ui;

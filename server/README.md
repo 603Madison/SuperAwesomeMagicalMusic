@@ -188,6 +188,7 @@ Environment variables (all optional):
 | `SAMM_DATA_DIR` | `/data` | Where everything is kept. |
 | `SAMM_PORT` | `8080` | |
 | `SAMM_PUBLIC_URL` | | The address people use, e.g. `https://music.example.com`. Needed for single sign-on behind a proxy. |
+| `SAMM_ORCHESTRATOR_URL` | | SuperAwesomeMagicalOrchestrator's address, e.g. `https://orchestrator.example.com`: apps on devices signed in there sign in here by themselves (see below). Also on the admin page; set here, it wins at every start. |
 | `SAMM_TRUST_PROXY` | `false` | Believe `X-Forwarded-*` headers (only behind your own reverse proxy). |
 | `SAMM_PROXIES` | `1` | How many proxies in a row are in front, each adding to `X-Forwarded-For` (Cloudflare, then your own proxy: `2`). Used to tell visitors apart when slowing down password guessing. |
 | `SAMM_CLIENT_IP_HEADER` | | A header the proxy in front sets to the visitor's address, used instead: `CF-Connecting-IP` behind Cloudflare. Only when every way in goes through it. |
@@ -288,6 +289,27 @@ Cloudflare, check that bot protection isn't blocking `/mcp`.
   work once and expire after ten minutes; the device holds a long secret of its own, and only
   someone signed in can allow it, after seeing the device's name. Wrong codes are limited per
   person and address, like wrong passwords, and devices asking too often are told to slow down.
+- Signing in through SuperAwesomeMagicalOrchestrator (only when its address is set: **Admin ›
+  Server › Orchestrator address**, or `SAMM_ORCHESTRATOR_URL`; otherwise `POST /api/auth/orchestrator`
+  answers 404 and nothing changes). An app on a device signed in there asks the orchestrator's
+  agent for a ticket for the app `music` and posts `{ticket, deviceName?}`; it gets what an app
+  sign-in returns. `GET /api/auth/config` says `"orchestrator": true`. The ticket is a short-lived
+  JWT the orchestrator signs (ES256), checked against the keys it publishes
+  (`<orchestrator>/api/orchestrator/keys`): signature, issuer, audience (this server's public
+  address, or the address the request came to), app, dates, and that it hasn't been used before.
+  Whose account:
+  1. The ticket carries the person's subject at the identity provider, and that's this server's
+     own provider (single sign-on is on, same scheme, host and port as its issuer): the account
+     with that subject, by the same rules as single sign-on here (the allowed group, the admin
+     group, a new account if that's on), from the ticket's groups and name.
+  2. Otherwise the account with the ticket's username, if it's an ordinary one: not the
+     break-glass admin, not turned off, not tied to an identity provider.
+  3. Otherwise 401 ("That sign-in didn't work here. Sign in the usual way.").
+
+  Refusals are logged with the reason and count against the address like wrong passwords. The
+  orchestrator's keys are fetched from the address the admin set (often on the home network),
+  without following redirects, 256 KB at most. Admins can try an address with
+  `POST /api/admin/orchestrator/test` `{url}` → `{ok, message}` (the admin page's **Test**).
 - Speakers can't sign in, so the addresses they play from (`/api/speakers/stream/…`) carry a
   signed pass instead: one song or station, one person, a short time. Changing any of it breaks
   the signature; it isn't a sign-in and opens nothing else; it stops working when the person's

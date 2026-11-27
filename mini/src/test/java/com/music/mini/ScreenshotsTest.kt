@@ -5,6 +5,9 @@ import android.graphics.Canvas
 import android.view.KeyEvent
 import com.music.mini.R
 import com.music.mini.net.User
+import com.music.mini.orchestrator.OrchestratorAgent
+import com.music.mini.orchestrator.OrchestratorLink
+import com.music.mini.orchestrator.OrchestratorSignIn
 import com.music.mini.ui.CodeScreen
 import com.music.mini.ui.MainActivity
 import okhttp3.mockwebserver.Dispatcher
@@ -118,5 +121,31 @@ class ScreenshotsTest {
         activity.restart(CodeScreen(base, "Home Music"))
         waitFor("the code") { (activity.top as? CodeScreen)?.started != null }
         save("6-code")
+    }
+
+    @Test
+    fun `sign-in, with someone signed in to SuperAwesomeMagicalOrchestrator on the phone`() {
+        // The orchestrator can't yet be told from an impostor: the row says where it would sign in, and waits.
+        mini.orchestrator = OrchestratorSignIn(
+            object : OrchestratorAgent {
+                override fun status() = OrchestratorLink.Status(true, "https://orchestrator.example.com", "maddie", "Maddie")
+                override fun signIn() = OrchestratorLink.SignIn.Ticket("https://music.example.com", "a.ticket", confirm = true, certificate = "c3rt")
+                override fun confirmed(ticket: OrchestratorLink.SignIn.Ticket) = Unit
+            },
+            mini.api, mini.prefs,
+        )
+        controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        fun row(): android.widget.TextView? {
+            val found = ArrayList<android.view.View>()
+            activity.window.decorView.findViewsWithText(found, "Continue as Maddie", android.view.View.FIND_VIEWS_WITH_TEXT)
+            return found.filterIsInstance<android.widget.TextView>().firstOrNull { it.isShown }
+        }
+        waitFor("the row") { mini.orchestrator.row?.place != null && row() != null }
+        assertEquals("Continue as Maddie\nat music.example.com", row()!!.text.toString())
+        // Nothing was handed in: the ticket waits for a press.
+        assertEquals(false, mini.prefs.signedIn)
+        // Up from the address: the highlight is on the row.
+        activity.press(KeyEvent.KEYCODE_DPAD_UP)
+        save("7-continue-as")
     }
 }

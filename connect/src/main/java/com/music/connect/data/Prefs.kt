@@ -47,6 +47,13 @@ data class Settings(
     val boldText: Boolean = false,
     /** The colours (unless the wallpaper's are used). */
     val palette: Palette = Palette.AURORA,
+    /**
+     * The person signed out themselves: the app doesn't sign straight back in through
+     * SuperAwesomeMagicalOrchestrator until they sign in again, by any means.
+     */
+    val signedOutOnPurpose: Boolean = false,
+    /** Tell SuperAwesomeMagicalOrchestrator on this phone what's playing, so other devices can carry on with it. */
+    val sharePlaying: Boolean = true,
 ) {
     val signedIn: Boolean get() = server.isNotEmpty() && token != null
 
@@ -83,11 +90,20 @@ class Prefs(private val context: Context) {
         it[TOKEN] = token
         it[USER] = ApiJson.encodeToString(User.serializer(), user)
         it[SERVER_NAME] = serverName
+        it.remove(SIGNED_OUT_ON_PURPOSE)
     }
 
-    suspend fun signOut() = context.store.edit {
+    /** [onPurpose]: the person asked to (rather than the server ending the sign-in). */
+    suspend fun signOut(onPurpose: Boolean = true) {
+        // What the person agreed to with the orchestrator goes with the sign-in.
+        com.music.connect.orchestrator.OrchestratorLink.forget(context)
+        signOutHere(onPurpose)
+    }
+
+    private suspend fun signOutHere(onPurpose: Boolean) = context.store.edit {
         it.remove(TOKEN)
         it.remove(USER)
+        if (onPurpose) it[SIGNED_OUT_ON_PURPOSE] = true
     }
 
     suspend fun update(transform: (Settings) -> Settings) = context.store.edit { prefs ->
@@ -105,6 +121,7 @@ class Prefs(private val context: Context) {
         prefs[WALLPAPER_COLORS] = next.wallpaperColors
         prefs[BOLD_TEXT] = next.boldText
         prefs[PALETTE] = next.palette.name
+        prefs[SHARE_PLAYING] = next.sharePlaying
         next.user?.let { prefs[USER] = ApiJson.encodeToString(User.serializer(), it) }
     }
 
@@ -126,6 +143,8 @@ class Prefs(private val context: Context) {
         wallpaperColors = prefs[WALLPAPER_COLORS] ?: false,
         boldText = prefs[BOLD_TEXT] ?: false,
         palette = Palette.entries.firstOrNull { it.name == prefs[PALETTE] } ?: Palette.AURORA,
+        signedOutOnPurpose = prefs[SIGNED_OUT_ON_PURPOSE] ?: false,
+        sharePlaying = prefs[SHARE_PLAYING] ?: true,
     )
 
     private companion object {
@@ -146,5 +165,7 @@ class Prefs(private val context: Context) {
         val WALLPAPER_COLORS = booleanPreferencesKey("wallpaper_colors")
         val BOLD_TEXT = booleanPreferencesKey("bold_text")
         val PALETTE = stringPreferencesKey("palette")
+        val SIGNED_OUT_ON_PURPOSE = booleanPreferencesKey("signed_out_on_purpose")
+        val SHARE_PLAYING = booleanPreferencesKey("share_playing")
     }
 }

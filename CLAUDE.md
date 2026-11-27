@@ -37,6 +37,20 @@ when the request doesn't mention one:
    `cargo deb --no-build` and `cargo generate-rpm` (Rust, and `libgtk-4-dev libadwaita-1-dev
    libgstreamer1.0-dev libssl-dev` to build; see `desktop/README.md`).
 
+## Signing in through SuperAwesomeMagicalOrchestrator
+
+`POST /api/auth/orchestrator` (when `ServerSettings.orchestratorUrl` is set; app id `music`).
+`server/.../auth/OrchestratorTickets.kt` and the apps' `orchestrator/OrchestratorLink.kt` (in
+`connect/` and `mini/`) are the family's kits, kept in SAM-DeviceOrchestrator (only the package
+line differs: change them there and copy); its `docs/PROTOCOL.md` is the contract. The account is
+found by the same rules as single sign-on (`ssoAccount` in `AuthRoutes.kt`); never the break-glass
+admin. The keys are fetched with `Services.orchestratorHttp` (no redirects, a small answer): use it
+for nothing else. On Android a ticket the kit marks `confirm` is never used without a tap on the
+button showing its server; signing out on purpose stays signed out. The desktop app asks the agent
+over D-Bus (`desktop/src/orchestrator.rs`, gio only). "Carry on": `connect`'s `PlayingActivity` and
+the desktop's `Playing` tell the orchestrator what's playing (once per song, again every ten
+minutes, behind a setting); Mini and Standalone never do.
+
 ## Signing
 
 Every release must be signed with the same key, or installed copies can't be updated without

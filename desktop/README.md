@@ -8,6 +8,13 @@ view, no Chromium: a 5 MB program that starts at once.
 
 - **Sign in** with your server's address, then your password or your server's single sign-on (it
   opens your browser, which hands the sign-in back to the app).
+- **Signed in already**, where you're signed in to SuperAwesomeMagicalOrchestrator on this
+  computer (SuperAwesomeMagicalLinux has it in Settings): the app asks its agent on the session bus
+  and signs in as you when it starts, and the sign-in page offers **Continue as (you)**. Signing
+  out here stays signed out. Without the orchestrator nothing changes, and nothing more needs
+  installing.
+- **Carry on elsewhere**: while music plays, the orchestrator is told the song, so your other
+  devices can offer it. Preferences › **Show what I'm playing on my other devices** turns it off.
 - **Search** artists, albums and songs from your library and every service on your server, with
   artist and album pages, Play on the top result, and **Listen** a click away.
 - **Your playlists**, from every device. Make, import (a Spotify, Apple Music, Tidal, Deezer,
@@ -89,6 +96,11 @@ cargo build --release
 cargo deb --no-build       # target/debian/*.deb (cargo install cargo-deb)
 cargo generate-rpm         # target/generate-rpm/*.rpm (cargo install cargo-generate-rpm)
 ```
+
+Signing in through SuperAwesomeMagicalOrchestrator can be tried for real with
+`SAMM_ORCHESTRATOR_E2E=1 cargo test signs_in_through_a_real_agent -- --nocapture`, on a session bus
+where its agent is signed in and its server lists `music` (SAM-DeviceOrchestrator's
+`linux/tests/e2e.sh` shows how to set one up).
 
 The release workflow's `desktop` job builds both packages on Ubuntu 24.04 and adds them to each
 GitHub release. The version in `Cargo.toml` is the project's version (`versionName` in

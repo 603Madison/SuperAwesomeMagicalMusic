@@ -33,6 +33,11 @@ pub struct Config {
     pub bold_text: bool,
     /// Repeat: off, all or one.
     pub repeat: String,
+    /// The person signed out themselves: the app doesn't sign straight back in through
+    /// SuperAwesomeMagicalOrchestrator until they sign in again, by any means.
+    pub signed_out_on_purpose: bool,
+    /// Tell SuperAwesomeMagicalOrchestrator on this desktop what's playing, so other devices can carry on with it.
+    pub share_playing: bool,
     /// On the person's own stations, the DJ talks (off: what it says is only shown).
     pub dj_voice: bool,
     /// Even out volume between songs (as the web player's levelling).
@@ -59,6 +64,8 @@ impl Default for Config {
             style: "system".into(),
             bold_text: false,
             repeat: "off".into(),
+            signed_out_on_purpose: false,
+            share_playing: true,
             dj_voice: true,
             levelling: true,
             device_id: String::new(),

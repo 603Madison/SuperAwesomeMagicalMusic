@@ -129,6 +129,30 @@ class MainActivity : Activity(), Host {
         }
     }
 
+    private var orchestratorAnswer: ((Boolean) -> Unit)? = null
+
+    override fun askOrchestrator(page: android.content.Intent, answered: (Boolean) -> Unit) {
+        orchestratorAnswer = answered
+        try {
+            @Suppress("DEPRECATION") // a plain Activity: no result launchers here
+            startActivityForResult(page, ASK_ORCHESTRATOR)
+        } catch (e: android.content.ActivityNotFoundException) {
+            orchestratorAnswer = null
+            answered(false)
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != ASK_ORCHESTRATOR) return
+        val answered = orchestratorAnswer ?: return
+        orchestratorAnswer = null
+        // Said no there: nothing changes here (the row stays, to change their mind).
+        if (resultCode == RESULT_OK) answered(true)
+    }
+
     // ---- the stack of screens ----
 
     override fun push(screen: Screen) {
@@ -232,6 +256,7 @@ class MainActivity : Activity(), Host {
     }
 
     private companion object {
+        const val ASK_ORCHESTRATOR = 41
         val NAVIGATION = setOf(
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,

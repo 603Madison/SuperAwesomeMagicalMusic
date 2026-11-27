@@ -95,10 +95,11 @@ class SignIn(private val context: Context, private val api: ServerApi, private v
         throw ServerException(0, "The code expired. Get a new one.")
     }
 
-    private fun deviceName(): String = listOf(Build.MANUFACTURER.replaceFirstChar { it.uppercase() }, Build.MODEL)
-        .distinct().joinToString(" ").take(60)
-
     companion object {
+        /** How the server lists this phone among the person's sign-ins. */
+        fun deviceName(): String = listOf(Build.MANUFACTURER.orEmpty().replaceFirstChar { it.uppercase() }, Build.MODEL.orEmpty())
+            .distinct().joinToString(" ").trim().take(60)
+
         private val random = SecureRandom()
 
         fun token(bytes: Int): String = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(bytes).also(random::nextBytes))

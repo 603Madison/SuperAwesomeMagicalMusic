@@ -14,7 +14,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -22,6 +27,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,13 +51,18 @@ import com.music.connect.R
 import com.music.connect.net.AuthConfig
 import com.music.connect.net.DeviceStart
 import com.music.connect.net.ServerApi
+import com.music.connect.orchestrator.OrchestratorSignIn
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/** Sign-in: the server's address, then single sign-on in a browser tab, or a password. */
+/**
+ * Sign-in: the server's address, then single sign-on in a browser tab, or a password.
+ * [orchestratorOffer]: what the orchestrator's button says, for drawing the screen in tests
+ * (otherwise as [OrchestratorSignIn] has it).
+ */
 @Composable
-fun SignInScreen(finishing: Boolean, error: String?) {
+fun SignInScreen(finishing: Boolean, error: String?, orchestratorOffer: OrchestratorSignIn.Offer? = null) {
     val c = appContainer()
     val scope = rememberCoroutineScope()
     var address by rememberSaveable { mutableStateOf(c.settings.value.server.removePrefix("https://")) }
@@ -63,6 +75,21 @@ fun SignInScreen(finishing: Boolean, error: String?) {
     // Signing in with a code typed on another device: the code, once the server has given one.
     var code by remember { mutableStateOf<DeviceStart?>(null) }
     var codeSignIn by remember { mutableStateOf<Job?>(null) }
+    // "Continue as Maddie", when someone is signed in to SuperAwesomeMagicalOrchestrator on this phone.
+    val orchestrator = orchestratorOffer ?: c.orchestratorSignIn.offer.collectAsState().value
+    // The orchestrator's page asking whether this app may sign in as them: yes, and the app asks again.
+    val approval = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) c.orchestratorSignIn.approved(c.scope)
+    }
+    LaunchedEffect(Unit) {
+        c.orchestratorSignIn.approvals.collect { page ->
+            try {
+                approval.launch(page)
+            } catch (e: android.content.ActivityNotFoundException) {
+                c.orchestratorSignIn.unavailable()
+            }
+        }
+    }
 
     Backdrop {
     Column(
@@ -87,6 +114,8 @@ fun SignInScreen(finishing: Boolean, error: String?) {
             Text("Finishing signing in…")
             return@Column
         }
+        // Above the usual ways: one tap, as whoever is signed in to the orchestrator here.
+        if (codeSignIn == null) OrchestratorButton(orchestrator.label, orchestrator.place) { c.orchestratorSignIn.tapped(c.scope) }
         val current = config
         if (current == null) {
             OutlinedTextField(
@@ -180,6 +209,23 @@ fun SignInScreen(finishing: Boolean, error: String?) {
         }
     }
     }
+}
+
+/**
+ * "Continue as Maddie" ([label]; null: no button), with the server it signs in to under it
+ * ([place], "at music.example.com") when the person is being asked to agree to it.
+ */
+@Composable
+fun OrchestratorButton(label: String?, place: String?, onClick: () -> Unit) {
+    if (label == null) return
+    Button(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(18.dp))
+        Column(Modifier.padding(start = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(label, textAlign = TextAlign.Center)
+            place?.let { Text(it, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center) }
+        }
+    }
+    Text("or", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /** The code to type on another device, while the app waits for it to be allowed there. */
