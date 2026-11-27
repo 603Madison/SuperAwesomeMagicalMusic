@@ -136,7 +136,7 @@ fn show(state: &Shared) {
     });
     if can_add {
         let add = crate::ui::widgets::button(
-            Some("list-add-symbolic"),
+            Some("samm-plus-symbolic"),
             if s.scope == Scope::Global {
                 "Add a shared source"
             } else {
@@ -224,7 +224,7 @@ fn source_row(state: &Shared, source: &SourceView) -> adw::ActionRow {
         row.add_suffix(&holder);
     }
     if source.kind != "YOUTUBE_MUSIC" {
-        let test = icon_button("network-transmit-receive-symbolic", "Test");
+        let test = icon_button("samm-zap-symbolic", "Test");
         let id = source.id.clone();
         test.connect_clicked(move |button| {
             let Some(api) = ctx().api() else { return };
@@ -241,13 +241,13 @@ fn source_row(state: &Shared, source: &SourceView) -> adw::ActionRow {
         row.add_suffix(&test);
     }
     if own && let Some(spec) = s.kinds.as_ref().and_then(|k| k.spec(&source.kind)).cloned() {
-        let edit = icon_button("document-edit-symbolic", "Edit");
+        let edit = icon_button("samm-pencil-symbolic", "Edit");
         let (st, source) = (state.clone(), source.clone());
         edit.connect_clicked(move |_| source_dialog(&st, spec.clone(), Some(source.clone())));
         row.add_suffix(&edit);
     }
     if own {
-        let remove = icon_button("user-trash-symbolic", "Remove");
+        let remove = icon_button("samm-trash-2-symbolic", "Remove");
         let (st, source) = (state.clone(), source.clone());
         remove.connect_clicked(move |button| {
             let detail = format!(
@@ -324,7 +324,7 @@ fn pick_kind(state: &Shared) {
             row.set_subtitle_lines(0);
             row.set_activatable(true);
             row.add_prefix(&letter(&spec.label, &spec.kind));
-            row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+            row.add_suffix(&gtk::Image::from_icon_name("samm-chevron-right-symbolic"));
             let (st, d) = (state.clone(), dialog.clone());
             row.connect_activated(move |_| {
                 d.close();

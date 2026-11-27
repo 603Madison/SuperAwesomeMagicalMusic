@@ -80,10 +80,10 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
         .valign(gtk::Align::Center)
         .build();
     let buttons = gtk::Box::builder().spacing(8).halign(gtk::Align::Center).build();
-    let shuffle = icon_button("media-playlist-shuffle-symbolic", "Shuffle what's next");
-    let previous = icon_button("media-skip-backward-symbolic", "Previous (Ctrl+←)");
-    let play_icon = gtk::Image::from_icon_name("media-playback-start-symbolic");
-    play_icon.set_pixel_size(22);
+    let shuffle = icon_button("samm-shuffle-symbolic", "Shuffle what's next");
+    let previous = icon_button("samm-skip-back-symbolic", "Previous (Ctrl+←)");
+    let play_icon = gtk::Image::from_icon_name("samm-play-symbolic");
+    play_icon.set_pixel_size(26);
     let spinner = gtk::Spinner::builder().spinning(true).build();
     let play_face = gtk::Stack::new();
     play_face.add_named(&play_icon, Some("icon"));
@@ -95,11 +95,13 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
         .build();
     play.add_css_class("suggested-action");
     play.add_css_class("play-button");
-    let next = icon_button("media-skip-forward-symbolic", "Next (Ctrl+→)");
-    let repeat = icon_button("media-playlist-repeat-symbolic", "Repeat: off");
+    let next = icon_button("samm-skip-forward-symbolic", "Next (Ctrl+→)");
+    previous.add_css_class("skip");
+    next.add_css_class("skip");
+    let repeat = icon_button("samm-repeat-symbolic", "Repeat: off");
     // On one of the person's own stations or a Pandora station: thumbs for the song.
-    let thumb_down = icon_button("samm-thumb-down-symbolic", "Thumbs down (never play it again)");
-    let thumb_up = icon_button("samm-thumb-up-symbolic", "Thumbs up (more like this)");
+    let thumb_down = icon_button("samm-thumbs-down-symbolic", "Thumbs down (never play it again)");
+    let thumb_up = icon_button("samm-thumbs-up-symbolic", "Thumbs up (more like this)");
     for (button, direction) in [(&thumb_down, "DOWN"), (&thumb_up, "UP")] {
         button.set_visible(false);
         let player = player.clone();
@@ -143,7 +145,7 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
         .valign(gtk::Align::Center)
         .build();
     let star = gtk::ToggleButton::builder()
-        .icon_name("non-starred-symbolic")
+        .icon_name("samm-heart-symbolic")
         .tooltip_text("Favourite")
         .valign(gtk::Align::Center)
         .visible(false)
@@ -161,7 +163,7 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
         .build();
     let queue_popover = gtk::Popover::builder().child(&queue_scroll).build();
     let queue_button = gtk::MenuButton::builder()
-        .icon_name("view-list-symbolic")
+        .icon_name("samm-list-music-symbolic")
         .tooltip_text("Queue")
         .popover(&queue_popover)
         .valign(gtk::Align::Center)
@@ -169,7 +171,7 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
     queue_button.add_css_class("flat");
     queue_button.add_css_class("circular");
     let sleep_button = gtk::MenuButton::builder()
-        .icon_name("weather-clear-night-symbolic")
+        .icon_name("samm-moon-symbolic")
         .tooltip_text("Sleep timer")
         .menu_model(&sleep_menu(false))
         .valign(gtk::Align::Center)
@@ -177,10 +179,10 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
     sleep_button.add_css_class("flat");
     sleep_button.add_css_class("circular");
     sleep_button.insert_action_group("sleep", Some(&sleep_actions()));
-    let lyrics = icon_button("audio-input-microphone-symbolic", "Lyrics");
+    let lyrics = icon_button("samm-mic-vocal-symbolic", "Lyrics");
     lyrics.connect_clicked(|_| crate::ui::now_playing::show_lyrics());
     let devices = crate::ui::devices::devices_button();
-    let mute = icon_button("audio-volume-high-symbolic", "Mute");
+    let mute = icon_button("samm-volume-2-symbolic", "Mute");
     let volume = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.01);
     volume.set_width_request(110);
     volume.set_draw_value(false);
@@ -259,9 +261,9 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
     let q = quiet_star.clone();
     star.connect_toggled(move |b| {
         b.set_icon_name(if b.is_active() {
-            "starred-symbolic"
+            "samm-heart-filled-symbolic"
         } else {
-            "non-starred-symbolic"
+            "samm-heart-symbolic"
         });
         if q.get() {
             return;
@@ -351,9 +353,9 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
             fill_queue(&queue_list, state, &queue_popover);
         }
         play_icon.set_icon_name(Some(if state.playing {
-            "media-playback-pause-symbolic"
+            "samm-pause-symbolic"
         } else {
-            "media-playback-start-symbolic"
+            "samm-play-symbolic"
         }));
         play_face.set_visible_child_name(if state.loading && state.playing { "loading" } else { "icon" });
         play.set_tooltip_text(Some(if state.playing { "Pause (Ctrl+P)" } else { "Play (Ctrl+P)" }));
@@ -363,9 +365,9 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
         next.set_tooltip_text(Some(if personal { "Skip this song" } else { "Next (Ctrl+→)" }));
         shuffle.set_sensitive(state.index.is_some_and(|i| i + 2 < state.queue.len()));
         let (icon, said) = match state.repeat {
-            Repeat::Off => ("media-playlist-repeat-symbolic", "Repeat: off"),
-            Repeat::All => ("media-playlist-repeat-symbolic", "Repeat: all"),
-            Repeat::One => ("media-playlist-repeat-song-symbolic", "Repeat: this song"),
+            Repeat::Off => ("samm-repeat-symbolic", "Repeat: off"),
+            Repeat::All => ("samm-repeat-symbolic", "Repeat: all"),
+            Repeat::One => ("samm-repeat-1-symbolic", "Repeat: this song"),
         };
         repeat.set_icon_name(icon);
         repeat.set_tooltip_text(Some(said));
@@ -393,10 +395,10 @@ pub fn player_bar() -> (gtk::Widget, Vec<gtk::Widget>) {
             volume.set_value(state.volume);
         }
         mute.set_icon_name(match state.volume {
-            v if v <= 0.0 => "audio-volume-muted-symbolic",
-            v if v < 0.34 => "audio-volume-low-symbolic",
-            v if v < 0.67 => "audio-volume-medium-symbolic",
-            _ => "audio-volume-high-symbolic",
+            v if v <= 0.0 => "samm-volume-x-symbolic",
+            v if v < 0.34 => "samm-volume-1-symbolic",
+            v if v < 0.67 => "samm-volume-1-symbolic",
+            _ => "samm-volume-2-symbolic",
         });
         mute.set_tooltip_text(Some(if state.volume <= 0.0 { "Unmute" } else { "Mute" }));
         // A live channel or station: its star.

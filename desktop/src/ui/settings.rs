@@ -43,7 +43,7 @@ pub fn add_pages(dialog: &adw::PreferencesDialog) {
     crate::ui::style::ensure();
     let sources = adw::PreferencesPage::builder()
         .title("Sources")
-        .icon_name("folder-music-symbolic")
+        .icon_name("samm-music-symbolic")
         .name("sources")
         .build();
     let group = adw::PreferencesGroup::builder()
@@ -56,7 +56,7 @@ pub fn add_pages(dialog: &adw::PreferencesDialog) {
 
     let account = adw::PreferencesPage::builder()
         .title("Account")
-        .icon_name("avatar-default-symbolic")
+        .icon_name("samm-user-symbolic")
         .name("account")
         .build();
     let you = adw::PreferencesGroup::builder().title("Account").build();
@@ -194,9 +194,9 @@ fn password_change() -> gtk::Box {
 
 fn session_icon(session: &SessionInfo) -> &'static str {
     match session.kind.as_str() {
-        "APP" => "phone-symbolic",
-        k if k.starts_with("MCP") => "applications-science-symbolic",
-        _ => "computer-symbolic",
+        "APP" => "samm-smartphone-symbolic",
+        k if k.starts_with("MCP") => "samm-bot-symbolic",
+        _ => "samm-laptop-symbolic",
     }
 }
 
@@ -234,7 +234,7 @@ fn show_devices(into: &gtk::Box) {
                 } else {
                     "Sign out this device"
                 };
-                let out = icon_button("system-log-out-symbolic", tooltip);
+                let out = icon_button("samm-log-out-symbolic", tooltip);
                 let (id, row_for, list_for) = (session.id.clone(), row.clone(), list.clone());
                 out.connect_clicked(move |button| {
                     let Some(api) = ctx().api() else { return };
@@ -251,11 +251,11 @@ fn show_devices(into: &gtk::Box) {
         holder.append(&list);
         let buttons = gtk::Box::builder().spacing(8).build();
         // A flip phone, or anything awkward to type a password on, shows a code to type here.
-        let link = crate::ui::widgets::button(Some("phone-symbolic"), "Sign in a device with a code", "tonal");
+        let link = crate::ui::widgets::button(Some("samm-smartphone-symbolic"), "Sign in a device with a code", "tonal");
         let devices = holder.clone();
         link.connect_clicked(move |button| link_device(button, devices.clone()));
         buttons.append(&link);
-        let out = crate::ui::widgets::button(Some("system-log-out-symbolic"), "Sign out here", "ghost");
+        let out = crate::ui::widgets::button(Some("samm-log-out-symbolic"), "Sign out here", "ghost");
         out.connect_clicked(|button| {
             if let Some(dialog) = button.ancestor(adw::Dialog::static_type()).and_downcast::<adw::Dialog>() {
                 dialog.close();
@@ -325,7 +325,7 @@ fn link_device(near: &gtk::Button, devices: gtk::Box) {
             .margin_end(28)
             .build();
         let icon = gtk::Image::builder()
-            .icon_name("phone-symbolic")
+            .icon_name("samm-smartphone-symbolic")
             .pixel_size(36)
             .halign(gtk::Align::Center)
             .build();
@@ -568,7 +568,7 @@ fn show_connector(into: &gtk::Box, devices: gtk::Box) {
         list.append(&everyone);
         into.append(&list);
     }
-    let make = crate::ui::widgets::button(Some("applications-science-symbolic"), "Make a connector link", "tonal");
+    let make = crate::ui::widgets::button(Some("samm-bot-symbolic"), "Make a connector link", "tonal");
     make.set_halign(gtk::Align::Start);
     into.append(&make);
     let holder = into.clone();
@@ -584,7 +584,7 @@ fn show_connector(into: &gtk::Box, devices: gtk::Box) {
                 let text = gtk::Label::builder().label(&url).selectable(true).wrap(true).max_width_chars(40).wrap_mode(gtk::pango::WrapMode::Char).xalign(0.0).hexpand(true).build();
                 text.add_css_class("copy-text");
                 row.append(&text);
-                let copy = crate::ui::widgets::button(Some("edit-copy-symbolic"), "Copy", "ghost");
+                let copy = crate::ui::widgets::button(Some("samm-copy-symbolic"), "Copy", "ghost");
                 copy.set_valign(gtk::Align::Center);
                 copy.connect_clicked(move |b| {
                     if let Some(display) = gdk::Display::default() {

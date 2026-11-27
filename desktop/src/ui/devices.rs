@@ -13,14 +13,12 @@ use crate::connect::{Device, hub};
 use crate::ui::ctx;
 use crate::ui::widgets::{artwork, duration};
 
-/// A monitor and a speaker, as the web player's devices button.
-pub const DEVICES_ICON: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="#2e3436" d="M1 2h8.5v1.5H1zm0 6.5h8.5V10H1zM1 2h1.5v8H1zm7 0h1.5v8H8zM3 11.5h4.5V13H3zm7.5-8.5H15v1.25h-4.5zm0 9.75H15V14h-4.5zm0-9.75h1.25v11H10.5zm3.25 0H15v11h-1.25z"/><circle fill="#2e3436" cx="12.75" cy="9.5" r="1"/><circle fill="#2e3436" cx="12.75" cy="6" r=".6"/></svg>"##;
 
 fn kind_icon(kind: &str) -> &'static str {
     match kind {
-        "phone" => "phone-symbolic",
-        "speaker" => "audio-speakers-symbolic",
-        _ => "computer-symbolic",
+        "phone" => "samm-smartphone-symbolic",
+        "speaker" => "samm-speaker-symbolic",
+        _ => "samm-laptop-symbolic",
     }
 }
 
@@ -57,7 +55,7 @@ pub fn devices_button() -> gtk::MenuButton {
     column.append(&list);
     let popover = gtk::Popover::builder().child(&column).build();
     let button = gtk::MenuButton::builder()
-        .icon_name("samm-devices-symbolic")
+        .icon_name("samm-monitor-speaker-symbolic")
         .tooltip_text("Play on a device")
         .popover(&popover)
         .valign(gtk::Align::Center)
@@ -156,7 +154,7 @@ fn fill_devices(list: &gtk::ListBox) -> Vec<Option<String>> {
         Some((title, _, _)) if here.playing => format!("{title} · playing"),
         _ => "Plays here".into(),
     };
-    let (row, _) = device_row("computer-symbolic", "This computer", &here_note, here.playing);
+    let (row, _) = device_row("samm-laptop-symbolic", "This computer", &here_note, here.playing);
     row.set_tooltip_text(Some("Play here"));
     list.append(&row);
     targets.push(Some(me));
@@ -177,9 +175,9 @@ fn fill_devices(list: &gtk::ListBox) -> Vec<Option<String>> {
         if let Some(state) = device.state.as_ref().filter(|s| s.track.is_some()) {
             let toggle = gtk::Button::builder()
                 .icon_name(if state.playing {
-                    "media-playback-pause-symbolic"
+                    "samm-pause-symbolic"
                 } else {
-                    "media-playback-start-symbolic"
+                    "samm-play-symbolic"
                 })
                 .tooltip_text(if state.playing { "Pause" } else { "Play" })
                 .valign(gtk::Align::Center)
@@ -256,7 +254,7 @@ pub fn remote_bar() -> gtk::Widget {
     let title = make("now-title");
     let artist = make("now-artist");
     let on_line = gtk::Box::builder().spacing(6).build();
-    let on_icon = gtk::Image::from_icon_name("computer-symbolic");
+    let on_icon = gtk::Image::from_icon_name("samm-laptop-symbolic");
     on_icon.set_pixel_size(13);
     let on_label = make("now-detail");
     on_line.append(&on_icon);
@@ -275,14 +273,14 @@ pub fn remote_bar() -> gtk::Widget {
         .valign(gtk::Align::Center)
         .build();
     let buttons = gtk::Box::builder().spacing(8).halign(gtk::Align::Center).build();
-    let previous = icon_button("media-skip-backward-symbolic", "Previous");
+    let previous = icon_button("samm-skip-back-symbolic", "Previous");
     let play = gtk::Button::builder()
-        .icon_name("media-playback-start-symbolic")
+        .icon_name("samm-play-symbolic")
         .valign(gtk::Align::Center)
         .build();
     play.add_css_class("suggested-action");
     play.add_css_class("play-button");
-    let next = icon_button("media-skip-forward-symbolic", "Next");
+    let next = icon_button("samm-skip-forward-symbolic", "Next");
     buttons.append(&previous);
     buttons.append(&play);
     buttons.append(&next);
@@ -322,7 +320,7 @@ pub fn remote_bar() -> gtk::Widget {
             hub.transfer(&hub.me());
         }
     });
-    let mute = icon_button("audio-volume-high-symbolic", "Volume");
+    let mute = icon_button("samm-volume-2-symbolic", "Volume");
     let volume = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.01);
     volume.set_width_request(110);
     volume.set_draw_value(false);
@@ -415,9 +413,9 @@ pub fn remote_bar() -> gtk::Widget {
             shown_art.replace(Some(track.artwork_url.clone()));
         }
         play.set_icon_name(if state.playing {
-            "media-playback-pause-symbolic"
+            "samm-pause-symbolic"
         } else {
-            "media-playback-start-symbolic"
+            "samm-play-symbolic"
         });
         play.set_tooltip_text(Some(if state.playing { "Pause" } else { "Play" }));
         previous.set_sensitive(!state.live);
@@ -435,9 +433,9 @@ pub fn remote_bar() -> gtk::Widget {
             volume.set_value(state.volume);
         }
         mute.set_icon_name(match state.volume {
-            v if v <= 0.0 => "audio-volume-muted-symbolic",
-            v if v < 0.5 => "audio-volume-low-symbolic",
-            _ => "audio-volume-high-symbolic",
+            v if v <= 0.0 => "samm-volume-x-symbolic",
+            v if v < 0.5 => "samm-volume-1-symbolic",
+            _ => "samm-volume-2-symbolic",
         });
         shown.replace(Some(device));
     };
@@ -489,7 +487,7 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(playing_on(&device), "Midnight Signal · Velvet Satellites · playing");
-        assert_eq!(kind_icon("speaker"), "audio-speakers-symbolic");
-        assert_eq!(kind_icon("web"), "computer-symbolic");
+        assert_eq!(kind_icon("speaker"), "samm-speaker-symbolic");
+        assert_eq!(kind_icon("web"), "samm-laptop-symbolic");
     }
 }

@@ -17,10 +17,10 @@ use crate::ui::widgets::button;
 /// Import and New playlist, beside the Playlists page's title.
 pub fn header_actions() -> gtk::Box {
     let row = gtk::Box::builder().spacing(8).valign(gtk::Align::Center).build();
-    let import = button(Some("document-open-symbolic"), "Import", "tonal");
+    let import = button(Some("samm-download-symbolic"), "Import", "tonal");
     import.connect_clicked(|_| import_dialog());
     row.append(&import);
-    let new = button(Some("list-add-symbolic"), "New playlist", "suggested");
+    let new = button(Some("samm-plus-symbolic"), "New playlist", "suggested");
     new.connect_clicked(|_| new_playlist());
     row.append(&new);
     row
@@ -102,7 +102,7 @@ fn import_dialog() {
         Some("One a line, like “Artist - Title”; or a CSV export (from Exportify, TuneMyMusic, Soundiiz…) with title and artist columns: choose the file, or paste it. For Qobuz and other services, export the playlist with TuneMyMusic or Soundiiz."),
         &songs_scroll,
     ));
-    let pick = button(Some("document-open-symbolic"), "Choose a file (CSV or text)", "tonal");
+    let pick = button(Some("samm-file-up-symbolic"), "Choose a file (CSV or text)", "tonal");
     pick.set_halign(gtk::Align::Start);
     {
         let (songs, name, f) = (songs.clone(), name.clone(), form.clone());
@@ -459,7 +459,7 @@ pub fn share_dialog(summary: &PlaylistSummary, changed: Rc<dyn Fn()>) {
                 lists.append(&crate::ui::forms::small_heading("Shared with"));
                 let list = boxed_list();
                 for m in members.borrow().iter() {
-                    list.append(&row(m, "Remove", "window-close-symbolic", "ghost", false));
+                    list.append(&row(m, "Remove", "samm-x-symbolic", "ghost", false));
                 }
                 lists.append(&list);
             }
@@ -477,7 +477,7 @@ pub fn share_dialog(summary: &PlaylistSummary, changed: Rc<dyn Fn()>) {
                     } else {
                         let list = boxed_list();
                         for p in others {
-                            list.append(&row(p, "Share", "list-add-symbolic", "tonal", true));
+                            list.append(&row(p, "Share", "samm-plus-symbolic", "tonal", true));
                         }
                         lists.append(&list);
                     }
@@ -592,7 +592,7 @@ pub fn missing_note(id: &str, missing: usize, changed: Rc<dyn Fn(Playlist)>) -> 
         .hexpand(true)
         .build();
     row.append(&label);
-    let again = button(Some("system-search-symbolic"), "Look for them again", "tonal");
+    let again = button(Some("samm-search-symbolic"), "Look for them again", "tonal");
     again.set_valign(gtk::Align::Center);
     let id = id.to_string();
     again.connect_clicked(move |b| {

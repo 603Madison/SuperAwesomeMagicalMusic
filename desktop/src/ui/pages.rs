@@ -11,6 +11,7 @@ use crate::api::{AlbumSummary, Playlist, PlaylistSummary, SearchResults, TopResu
 use crate::rt::bg;
 use crate::ui::ctx;
 use crate::ui::widgets::{
+    CARD_ART,
     ListStyle, PlaylistEdit, add_actions, artwork, button, card, card_grid, card_with, duration, heading, mosaic, nav_page, page_box,
     page_title, play_buttons, playlist_menu, scrolled, status, track_list, track_list_styled,
 };
@@ -31,7 +32,7 @@ fn clear(container: &gtk::Box) {
 
 fn search_start() -> gtk::Box {
     status(
-        "system-search-symbolic",
+        "samm-search-symbolic",
         "Search all your music",
         "Artists, albums and songs from your library and every service on your server.",
     )
@@ -82,7 +83,7 @@ pub fn search_page() -> adw::NavigationPage {
             match found {
                 Ok(found) => show_results(&results, &query, found),
                 Err(e) => {
-                    results.append(&status("dialog-warning-symbolic", "Couldn't search", &e.to_string()));
+                    results.append(&status("samm-triangle-alert-symbolic", "Couldn't search", &e.to_string()));
                     ctx().failed(&e);
                 }
             }
@@ -97,7 +98,7 @@ pub fn search_page() -> adw::NavigationPage {
 fn show_results(into: &gtk::Box, query: &str, found: SearchResults) {
     if found.top.is_none() && found.songs.is_empty() && found.artists.is_empty() && found.albums.is_empty() {
         into.append(&status(
-            "edit-find-symbolic",
+            "samm-search-symbolic",
             &format!("Nothing found for “{query}”"),
             "Try other words, or check your sources in Preferences.",
         ));
@@ -146,7 +147,7 @@ fn show_results(into: &gtk::Box, query: &str, found: SearchResults) {
         let grid = card_grid();
         for artist in found.artists {
             let (id, name) = (artist.id.clone(), artist.name.clone());
-            grid.append(&card(artist.artwork_url.as_deref(), 150, true, &artist.name, "Artist", move || {
+            grid.append(&card(artist.artwork_url.as_deref(), CARD_ART, true, &artist.name, "Artist", move || {
                 ctx().open_artist(Some(&id), &name)
             }));
         }
@@ -181,7 +182,7 @@ fn top_result(top: TopResult, songs: Rc<Vec<Track>>) -> gtk::Widget {
     button.add_css_class("top-result");
     // Play, in its corner, as on the web: the artist's popular songs, the album, or the song.
     let play = gtk::Button::builder()
-        .icon_name("media-playback-start-symbolic")
+        .icon_name("samm-play-symbolic")
         .tooltip_text(format!("Play {title}"))
         .halign(gtk::Align::End)
         .valign(gtk::Align::End)
@@ -259,7 +260,7 @@ fn album_grid(albums: &[AlbumSummary]) -> gtk::FlowBox {
             Some(year) => format!("{year} · {}", album.artist),
             None => album.artist.clone(),
         };
-        grid.append(&card(album.artwork_url.as_deref(), 160, false, &album.title, &under, move || {
+        grid.append(&card(album.artwork_url.as_deref(), CARD_ART, false, &album.title, &under, move || {
             ctx().open_album(Some(&id), &title, &artist)
         }));
     }
@@ -305,7 +306,7 @@ fn add_all_button(tracks: &[Track]) -> gtk::MenuButton {
     let group = gio::SimpleActionGroup::new();
     add_actions(&group, keepable.clone());
     let content = gtk::Box::builder().spacing(8).build();
-    content.append(&gtk::Image::from_icon_name("list-add-symbolic"));
+    content.append(&gtk::Image::from_icon_name("samm-plus-symbolic"));
     content.append(&gtk::Label::new(Some("Add to playlist")));
     let button = gtk::MenuButton::builder().child(&content).menu_model(&playlist_menu("all")).build();
     button.add_css_class("pill");
@@ -415,7 +416,7 @@ pub fn album_page(id: Option<String>, title: String, artist: String) -> adw::Nav
 pub fn playlists_page() -> adw::NavigationPage {
     let content = page_box();
     let top = gtk::Box::builder().spacing(12).build();
-    let title = page_title("Playlists", "Yours, on every device: made here, on the web or on your phone.");
+    let title = page_title("Playlists", "");
     title.set_hexpand(true);
     top.append(&title);
     // Import, and New playlist.
@@ -431,7 +432,7 @@ pub fn playlists_page() -> adw::NavigationPage {
         |into, playlists| {
             if playlists.is_empty() {
                 into.append(&status(
-                    "view-list-bullet-symbolic",
+                    "samm-list-music-symbolic",
                     "No playlists yet",
                     "Make one, or import one from Spotify, Apple Music, Tidal, Deezer, YouTube and more. Songs are found in your own sources.",
                 ));
@@ -439,15 +440,11 @@ pub fn playlists_page() -> adw::NavigationPage {
             }
             let grid = card_grid();
             for playlist in playlists {
-                let mut line = count(playlist.count as usize, "song");
-                if let Some(note) = playlist.shared_note() {
-                    line = note;
-                } else if playlist.duration_ms > 0 {
-                    line.push_str(&format!(" · {}", duration(playlist.duration_ms)));
-                }
+                // As the web's cards: who shares it, else how many songs.
+                let line = playlist.shared_note().unwrap_or_else(|| count(playlist.count as usize, "song"));
                 let (id, name) = (playlist.id.clone(), playlist.name.clone());
                 grid.append(&card_with(
-                    &mosaic(&playlist.artwork, 160),
+                    &mosaic(&playlist.artwork, CARD_ART),
                     false,
                     &playlist.name,
                     &line,
@@ -540,7 +537,7 @@ fn show_playlist(into: &gtk::Box, playlist: Playlist, page: glib::WeakRef<adw::N
     buttons.append(&queue);
     // Someone else's shared playlist: its songs are everyone's, but sharing, renaming and deleting are its owner's.
     if summary.mine {
-        let share = button(Some("system-users-symbolic"), "Share", "ghost");
+        let share = button(Some("samm-users-symbolic"), "Share", "ghost");
         let (s, r) = (summary.clone(), reload.clone());
         share.connect_clicked(move |_| {
             let r = r.clone();
@@ -553,12 +550,12 @@ fn show_playlist(into: &gtk::Box, playlist: Playlist, page: glib::WeakRef<adw::N
             )
         });
         buttons.append(&share);
-        let rename = button(Some("document-edit-symbolic"), "Rename", "ghost");
+        let rename = button(Some("samm-pencil-symbolic"), "Rename", "ghost");
         let (holder, p, s) = (into.clone(), page.clone(), summary.clone());
         rename.connect_clicked(move |_| rename_playlist(&s, holder.clone(), p.clone()));
         buttons.append(&rename);
     }
-    let export = button(Some("document-save-symbolic"), "Export CSV", "ghost");
+    let export = button(Some("samm-file-down-symbolic"), "Export CSV", "ghost");
     export.set_tooltip_text(Some(
         "Save it as a CSV file (Exportify's columns), for a spreadsheet or another service",
     ));
@@ -566,12 +563,12 @@ fn show_playlist(into: &gtk::Box, playlist: Playlist, page: glib::WeakRef<adw::N
     export.connect_clicked(move |_| export_playlist(&s));
     buttons.append(&export);
     if summary.mine {
-        let delete = button(Some("user-trash-symbolic"), "Delete", "ghost");
+        let delete = button(Some("samm-trash-2-symbolic"), "Delete", "ghost");
         let s = summary.clone();
         delete.connect_clicked(move |_| delete_playlist(&s));
         buttons.append(&delete);
     } else {
-        let leave = button(Some("system-log-out-symbolic"), "Leave", "ghost");
+        let leave = button(Some("samm-log-out-symbolic"), "Leave", "ghost");
         let s = summary.clone();
         leave.connect_clicked(move |_| crate::ui::playlists::leave(&s));
         buttons.append(&leave);
@@ -583,7 +580,7 @@ fn show_playlist(into: &gtk::Box, playlist: Playlist, page: glib::WeakRef<adw::N
     into.append(&hero(mosaic(&summary.artwork, 200), kind, &summary.name, &line, &buttons));
     if tracks.is_empty() {
         into.append(&status(
-            "view-list-bullet-symbolic",
+            "samm-list-music-symbolic",
             "This playlist is empty",
             "Add songs from a song's menu (⋯, then Add to playlist), here, on the web or on your phone.",
         ));

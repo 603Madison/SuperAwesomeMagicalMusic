@@ -20,8 +20,6 @@ use crate::ui::widgets::{artwork, cover_url, duration, track_key, track_menu};
 
 /// Scrolling the lyrics by hand stops them following the song for a while.
 const HAND_SCROLL_PAUSE: Duration = Duration::from_secs(4);
-/// An "i" in a circle, as the web player's Details button.
-pub const INFO_ICON: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="#2e3436" d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1zm0 1.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11zM7.25 7h1.5v4.5h-1.5z"/><circle fill="#2e3436" cx="8" cy="5" r=".9"/></svg>"##;
 
 /// The page's colour when the cover has none to give: the app's own, as on dark.
 const DEFAULT_ACCENT: &str = "#cfbdff";
@@ -378,7 +376,8 @@ fn css(accent: &str) -> String {
 .np-live-bar trough {{ min-height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.22); }}
 .np-live-bar progress {{ min-height: 4px; border-radius: 999px; background: white; }}
 .np-transport > button {{ min-width: 44px; min-height: 44px; border-radius: 9999px; }}
-.np-transport > button.np-play {{ min-width: 64px; min-height: 64px; background: white; color: #140d18; }}
+.np-transport > button {{ -gtk-icon-size: 26px; }}
+.np-transport > button.np-play {{ min-width: 68px; min-height: 68px; background: white; color: #140d18; -gtk-icon-size: 30px; }}
 .np-transport > button.np-play:hover {{ background: #f0ecf6; }}
 .np-transport > button:disabled {{ opacity: 0.3; }}
 .np-tabs {{ background: rgba(255, 255, 255, 0.08); border-radius: 999px; padding: 4px; }}
@@ -573,7 +572,7 @@ impl Np {
         cover_frame.set_overflow(gtk::Overflow::Hidden);
         cover_frame.add_css_class("np-art");
         let placeholder = gtk::Image::builder()
-            .icon_name("folder-music-symbolic")
+            .icon_name("samm-music-symbolic")
             .pixel_size(96)
             .hexpand(true)
             .build();
@@ -625,13 +624,13 @@ impl Np {
         titles.append(&title);
         titles.append(&artist);
         let actions = gtk::Box::builder().spacing(2).valign(gtk::Align::Center).build();
-        let thumb_down = icon_button("samm-thumb-down-symbolic", "Thumbs down (never play it again)");
-        let thumb_up = icon_button("samm-thumb-up-symbolic", "Thumbs up (more like this)");
+        let thumb_down = icon_button("samm-thumbs-down-symbolic", "Thumbs down (never play it again)");
+        let thumb_up = icon_button("samm-thumbs-up-symbolic", "Thumbs up (more like this)");
         for (b, direction) in [(&thumb_down, "DOWN"), (&thumb_up, "UP")] {
             b.connect_clicked(move |_| ctx().player.thumb(direction));
         }
         let star = gtk::ToggleButton::builder()
-            .icon_name("non-starred-symbolic")
+            .icon_name("samm-heart-symbolic")
             .tooltip_text("Add to favourites")
             .valign(gtk::Align::Center)
             .build();
@@ -668,7 +667,7 @@ impl Np {
         live_song.append(&live_bar);
         live_song.append(&live_length);
         let dj = gtk::Box::builder().spacing(8).visible(false).build();
-        dj.append(&gtk::Image::from_icon_name("audio-input-microphone-symbolic"));
+        dj.append(&gtk::Image::from_icon_name("samm-mic-symbolic"));
         let dj_text = label("", "np-dj");
         dj_text.set_wrap(true);
         dj.append(&dj_text);
@@ -700,16 +699,16 @@ impl Np {
         progress.append(&total);
         let transport = gtk::Box::builder().spacing(28).halign(gtk::Align::Center).build();
         transport.add_css_class("np-transport");
-        let previous = icon_button("media-skip-backward-symbolic", "Previous");
+        let previous = icon_button("samm-skip-back-filled-symbolic", "Previous");
         previous.connect_clicked(|_| ctx().player.previous());
         let play = gtk::Button::builder()
-            .icon_name("media-playback-start-symbolic")
+            .icon_name("samm-play-filled-symbolic")
             .tooltip_text("Play")
             .build();
         play.add_css_class("circular");
         play.add_css_class("np-play");
         play.connect_clicked(|_| ctx().player.toggle());
-        let next = icon_button("media-skip-forward-symbolic", "Next");
+        let next = icon_button("samm-skip-forward-filled-symbolic", "Next");
         next.connect_clicked(|_| ctx().player.next());
         transport.append(&previous);
         transport.append(&play);
@@ -807,7 +806,7 @@ impl Np {
 
         // Nothing playing.
         let empty = crate::ui::widgets::status(
-            "folder-music-symbolic",
+            "samm-music-symbolic",
             "Nothing playing",
             "Pick something to play, and it shows here.",
         );
@@ -848,16 +847,16 @@ impl Np {
         overlay.add_css_class("np");
 
         let header = adw::HeaderBar::builder().show_title(false).build();
-        let fullscreen = icon_button("view-fullscreen-symbolic", "Full screen");
+        let fullscreen = icon_button("samm-maximize-2-symbolic", "Full screen");
         fullscreen.connect_clicked(|b| {
             let window = ctx().window.clone();
             if window.is_fullscreen() {
                 window.unfullscreen();
-                b.set_icon_name("view-fullscreen-symbolic");
+                b.set_icon_name("samm-maximize-2-symbolic");
                 b.set_tooltip_text(Some("Full screen"));
             } else {
                 window.fullscreen();
-                b.set_icon_name("view-restore-symbolic");
+                b.set_icon_name("samm-minimize-2-symbolic");
                 b.set_tooltip_text(Some("Leave full screen"));
             }
         });
@@ -961,9 +960,9 @@ impl Np {
         np.star.connect_toggled(move |b| {
             let Some(np) = weak.upgrade() else { return };
             b.set_icon_name(if b.is_active() {
-                "starred-symbolic"
+                "samm-heart-filled-symbolic"
             } else {
-                "non-starred-symbolic"
+                "samm-heart-symbolic"
             });
             b.set_tooltip_text(Some(if b.is_active() {
                 "Favourite (click to remove)"
@@ -1157,9 +1156,9 @@ impl Np {
             self.cover_frame.remove_css_class("playing");
         }
         self.play.set_icon_name(if state.playing {
-            "media-playback-pause-symbolic"
+            "samm-pause-filled-symbolic"
         } else {
-            "media-playback-start-symbolic"
+            "samm-play-filled-symbolic"
         });
         self.play.set_tooltip_text(Some(if state.playing { "Pause" } else { "Play" }));
         self.previous.set_sensitive(!shown.live);
@@ -1558,7 +1557,7 @@ pub fn queue_view(state: &State, on_jump: Option<Rc<dyn Fn()>>) -> gtk::Box {
     view.append(&head);
     let Some(index) = state.index.filter(|i| *i < state.queue.len()) else {
         view.append(&crate::ui::widgets::status(
-            "view-list-symbolic",
+            "samm-list-music-symbolic",
             "The queue is empty",
             "Play something from search or a playlist.",
         ));
@@ -1612,17 +1611,17 @@ fn queue_row(track: &Track, index: usize, current: bool, count: usize) -> gtk::L
     text.append(&artist);
     line.append(&text);
     if current {
-        let playing = gtk::Image::from_icon_name("media-playback-start-symbolic");
+        let playing = gtk::Image::from_icon_name("samm-play-symbolic");
         playing.add_css_class("accent");
         line.append(&playing);
     } else {
-        let up = icon_button("go-up-symbolic", "Move up");
+        let up = icon_button("samm-chevron-up-symbolic", "Move up");
         up.set_sensitive(index > 0);
         up.connect_clicked(move |_| ctx().player.move_item(index, index - 1));
-        let down = icon_button("go-down-symbolic", "Move down");
+        let down = icon_button("samm-chevron-down-symbolic", "Move down");
         down.set_sensitive(index + 1 < count);
         down.connect_clicked(move |_| ctx().player.move_item(index, index + 1));
-        let remove = icon_button("window-close-symbolic", "Remove from the queue");
+        let remove = icon_button("samm-x-symbolic", "Remove from the queue");
         remove.connect_clicked(move |_| ctx().player.remove(index));
         line.append(&up);
         line.append(&down);

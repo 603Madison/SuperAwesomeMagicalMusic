@@ -23,7 +23,7 @@ fn find(widget: &gtk::Widget, class: &str) -> Option<gtk::Widget> {
 
 pub fn listen_button() -> gtk::Button {
     let button = gtk::Button::builder()
-        .icon_name("audio-input-microphone-symbolic")
+        .icon_name("samm-mic-symbolic")
         .tooltip_text("Listen: what's playing around you?")
         .valign(gtk::Align::Center)
         .build();

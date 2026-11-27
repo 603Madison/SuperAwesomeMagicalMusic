@@ -22,48 +22,55 @@ struct Section {
 const SECTIONS: &[Section] = &[
     Section {
         title: "Search",
-        icon: "system-search-symbolic",
+        icon: "samm-search-symbolic",
         make: pages::search_page,
     },
     Section {
         title: "Now playing",
-        icon: "media-optical-cd-audio-symbolic",
+        icon: "samm-disc-3-symbolic",
         make: crate::ui::now_playing::page,
     },
     Section {
         title: "Radio",
-        icon: "network-wireless-signal-excellent-symbolic",
+        icon: "samm-radio-symbolic",
         make: crate::ui::radio::radio_page,
     },
     Section {
         title: "Listen",
-        icon: "audio-input-microphone-symbolic",
+        icon: "samm-audio-lines-symbolic",
         make: crate::ui::listen::listen_page,
     },
     Section {
         title: "Playlists",
-        icon: "view-list-bullet-symbolic",
+        icon: "samm-list-music-symbolic",
         make: pages::playlists_page,
     },
     Section {
         title: "History",
-        icon: "document-open-recent-symbolic",
+        icon: "samm-history-symbolic",
         make: crate::ui::history::history_page,
     },
     Section {
         title: "Wrapped",
-        icon: "starred-symbolic",
+        icon: "samm-sparkles-symbolic",
         make: crate::ui::wrapped::wrapped_page,
+    },
+    // Opens Preferences (the web player's Settings page) rather than a page of its own.
+    Section {
+        title: SETTINGS,
+        icon: "samm-settings-symbolic",
+        make: pages::search_page,
     },
     // Admins only (always last, so the rows match the sections).
     Section {
         title: ADMIN,
-        icon: "security-high-symbolic",
+        icon: "samm-shield-symbolic",
         make: crate::ui::admin::admin_page,
     },
 ];
 
 const ADMIN: &str = "Admin";
+const SETTINGS: &str = "Settings";
 
 thread_local! {
     /// Fills the sidebar's radio and playlists again (after a change elsewhere).
@@ -141,7 +148,8 @@ pub fn music_view() -> (gtk::Widget, adw::NavigationView) {
     let admin = ctx().config.borrow().user.as_ref().is_some_and(crate::api::User::is_admin);
     for section in SECTIONS.iter().filter(|s| admin || s.title != ADMIN) {
         let row = gtk::Box::builder().spacing(14).build();
-        row.append(&gtk::Image::from_icon_name(section.icon));
+        // The web player's 20px icons.
+        row.append(&gtk::Image::builder().icon_name(section.icon).pixel_size(20).build());
         row.append(&gtk::Label::new(Some(section.title)));
         list.append(&row);
     }
@@ -214,6 +222,12 @@ pub fn music_view() -> (gtk::Widget, adw::NavigationView) {
             return;
         }
         let index = row.index() as usize;
+        if SECTIONS.get(index).is_some_and(|s| s.title == SETTINGS) {
+            // Preferences open over the page that's showing, which stays marked.
+            preferences(&ctx());
+            glib::idle_add_local_once(mark_sidebar);
+            return;
+        }
         if let Some(section) = SECTIONS.get(index) {
             let page = (section.make)();
             page.set_widget_name(&format!("section:{index}"));
@@ -365,7 +379,7 @@ fn main_menu() -> gtk::MenuButton {
     account.append(Some("Sign out"), Some("app.sign-out"));
     menu.append_section(None, &account);
     gtk::MenuButton::builder()
-        .icon_name("open-menu-symbolic")
+        .icon_name("samm-menu-symbolic")
         .menu_model(&menu)
         .tooltip_text("Menu")
         .primary(true)
@@ -535,7 +549,7 @@ pub fn preferences(ctx: &Rc<Ctx>) {
     crate::ui::settings::more_playback(&playback);
     page.add(&playback);
     page.set_title("General");
-    page.set_icon_name(Some("preferences-system-symbolic"));
+    page.set_icon_name(Some("samm-settings-symbolic"));
 
     dialog.add(&page);
     // Sources, and the account (signing out included).
@@ -574,7 +588,7 @@ pub fn load_into<T: 'static>(
             Ok(value) => show(&holder, value),
             Err(e) => {
                 holder.append(&crate::ui::widgets::status(
-                    "dialog-warning-symbolic",
+                    "samm-triangle-alert-symbolic",
                     "Couldn't load this",
                     &e.to_string(),
                 ));

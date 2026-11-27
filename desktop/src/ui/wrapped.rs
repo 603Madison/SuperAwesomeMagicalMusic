@@ -166,7 +166,7 @@ pub fn wrapped_page() -> adw::NavigationPage {
                 let data = match result {
                     Ok(data) => data,
                     Err(e) => {
-                        holder.append(&status("dialog-warning-symbolic", "Couldn't load this", &e.to_string()));
+                        holder.append(&status("samm-triangle-alert-symbolic", "Couldn't load this", &e.to_string()));
                         return ctx().failed(&e);
                     }
                 };
@@ -199,7 +199,7 @@ pub fn wrapped_page() -> adw::NavigationPage {
 fn show(into: &gtk::Box, data: Rc<Wrapped>) {
     if data.listens == 0 {
         into.append(&status(
-            "starred-symbolic",
+            "samm-heart-filled-symbolic",
             &format!("Nothing to wrap for {} yet", data.year),
             "Songs you listen to for a while, and songs heard on live radio, build up your year here.",
         ));
@@ -236,7 +236,7 @@ fn show(into: &gtk::Box, data: Rc<Wrapped>) {
             let (title, artist) = (album.title.clone(), album.artist.clone());
             grid.append(&card(
                 album.artwork_url.as_deref(),
-                150,
+                crate::ui::widgets::CARD_ART,
                 false,
                 &album.title,
                 &format!("{} · {} min", album.artist, num(album.minutes)),
@@ -412,7 +412,7 @@ fn hero(data: &Rc<Wrapped>) -> gtk::Box {
     if !data.personality.name.is_empty() {
         let chip = gtk::Box::builder().spacing(6).halign(gtk::Align::Start).margin_top(6).build();
         chip.add_css_class("wrapped-chip");
-        chip.append(&gtk::Image::from_icon_name("starred-symbolic"));
+        chip.append(&gtk::Image::from_icon_name("samm-heart-filled-symbolic"));
         chip.append(&gtk::Label::new(Some(&data.personality.name)));
         text.append(&chip);
     }
@@ -422,14 +422,14 @@ fn hero(data: &Rc<Wrapped>) -> gtk::Box {
         .spacing(10)
         .valign(gtk::Align::End)
         .build();
-    let story = button(Some("media-playback-start-symbolic"), "Play your story", "plain");
+    let story = button(Some("samm-play-symbolic"), "Play your story", "plain");
     story.remove_css_class("tonal");
     story.add_css_class("light");
     let d = data.clone();
     story.connect_clicked(move |_| play_story(d.clone()));
     actions.append(&story);
     if !data.top_songs.is_empty() {
-        let save = button(Some("list-add-symbolic"), "Save top songs as a playlist", "plain");
+        let save = button(Some("samm-plus-symbolic"), "Save top songs as a playlist", "plain");
         save.remove_css_class("tonal");
         save.add_css_class("clear");
         let d = data.clone();
@@ -673,7 +673,7 @@ fn slides(data: &Wrapped) -> Vec<gtk::Box> {
     let when = when_of(data).to_uppercase();
 
     let s = slide();
-    s.append(&gtk::Image::builder().icon_name("starred-symbolic").pixel_size(48).build());
+    s.append(&gtk::Image::builder().icon_name("samm-heart-filled-symbolic").pixel_size(48).build());
     s.append(&text(&when, "story-eyebrow"));
     s.append(&text("Your year in music", "story-big"));
     s.append(&text("Let's look back at what you played.", "story-text"));
@@ -914,12 +914,12 @@ fn play_story(data: Rc<Wrapped>) {
         .margin_end(16)
         .build();
     let pause = gtk::Button::builder()
-        .icon_name("media-playback-pause-symbolic")
+        .icon_name("samm-pause-symbolic")
         .tooltip_text("Pause")
         .build();
     pause.add_css_class("circular");
     let close = gtk::Button::builder()
-        .icon_name("window-close-symbolic")
+        .icon_name("samm-x-symbolic")
         .tooltip_text("Close")
         .build();
     close.add_css_class("circular");
@@ -928,14 +928,14 @@ fn play_story(data: Rc<Wrapped>) {
     frame.append(&controls);
     let middle = gtk::Box::builder().vexpand(true).build();
     let back = gtk::Button::builder()
-        .icon_name("go-previous-symbolic")
+        .icon_name("samm-chevron-left-symbolic")
         .tooltip_text("Previous")
         .valign(gtk::Align::Center)
         .margin_start(16)
         .build();
     back.add_css_class("circular");
     let next = gtk::Button::builder()
-        .icon_name("go-next-symbolic")
+        .icon_name("samm-chevron-right-symbolic")
         .tooltip_text("Next")
         .valign(gtk::Align::Center)
         .margin_end(16)
@@ -949,14 +949,14 @@ fn play_story(data: Rc<Wrapped>) {
     // On the last slide: save, again, done.
     let actions = gtk::Box::builder().spacing(10).halign(gtk::Align::Center).margin_bottom(24).build();
     if !data.top_songs.is_empty() {
-        let save = button(Some("list-add-symbolic"), "Save top songs as a playlist", "plain");
+        let save = button(Some("samm-plus-symbolic"), "Save top songs as a playlist", "plain");
         save.remove_css_class("tonal");
         save.add_css_class("light");
         let d = data.clone();
         save.connect_clicked(move |_| save_top_songs(&d));
         actions.append(&save);
     }
-    let again = button(Some("view-refresh-symbolic"), "Watch again", "plain");
+    let again = button(Some("samm-rotate-ccw-symbolic"), "Watch again", "plain");
     actions.append(&again);
     let done = button(None, "Done", "plain");
     actions.append(&done);
@@ -1054,9 +1054,9 @@ fn play_story(data: Rc<Wrapped>) {
             let now = !paused.get();
             paused.set(now);
             pause.set_icon_name(if now {
-                "media-playback-start-symbolic"
+                "samm-play-symbolic"
             } else {
-                "media-playback-pause-symbolic"
+                "samm-pause-symbolic"
             });
             pause.set_tooltip_text(Some(if now { "Play" } else { "Pause" }));
         }

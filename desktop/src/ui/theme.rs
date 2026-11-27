@@ -292,6 +292,8 @@ window, tooltip {{ font-size: 11.25pt; }}
 
 /* Buttons, as the web player's: pills, grey ("tonal") and text-only in the theme's colour ("ghost"). */
 button.pill, menubutton.pill > button {{ min-height: 40px; padding: 0 18px; border-radius: 999px; font-weight: {w600}; }}
+/* Icons in buttons at the web's 18px. */
+button.pill image, menubutton.pill image, .track-list button image {{ -gtk-icon-size: 18px; }}
 button.tonal, menubutton.tonal > button {{ background: {surface4}; color: {text}; }}
 button.tonal:hover, menubutton.tonal > button:hover {{ background: mix({surface4}, {primary}, 0.2); }}
 button.ghost {{ background: none; color: {primary}; box-shadow: none; }}
@@ -329,8 +331,14 @@ button.ghost:hover {{ background: alpha({primary}, 0.12); }}
 .player-bar .now-title {{ font-weight: {w600}; }}
 .player-bar .now-artist {{ color: {muted}; font-size: 0.86em; }}
 .player-bar .now-detail {{ color: {faint}; font-size: 0.75em; }}
+/* Its buttons, as the web's: 38px circles in the muted colour, 18px icons (22px to skip, 26px to play). */
+.player-bar button.circular, .player-bar menubutton > button.circular {{ min-width: 38px; min-height: 38px; padding: 0; color: {muted}; }}
+.player-bar button.circular:hover, .player-bar menubutton > button.circular:hover {{ background: {surface3}; color: {text}; }}
+.player-bar image {{ -gtk-icon-size: 18px; }}
+.player-bar button.skip image {{ -gtk-icon-size: 22px; }}
 .player-bar button.on, .player-bar menubutton.on > button {{ color: {primary}; }}
-.play-button {{ min-width: 48px; min-height: 48px; border-radius: 9999px; padding: 0; }}
+.play-button {{ min-width: 48px; min-height: 48px; border-radius: 9999px; padding: 0; background: {primary}; color: {on_primary}; }}
+.play-button:hover {{ filter: brightness(1.08); }}
 .time {{ color: {faint}; font-size: 0.75em; }}
 .live-pill {{ background: {accent_container}; color: {accent}; border-radius: 6px; padding: 1px 7px; font-size: 0.72em; font-weight: 800; }}
 

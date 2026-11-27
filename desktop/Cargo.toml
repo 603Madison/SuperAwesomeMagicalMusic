@@ -1,6 +1,6 @@
 [package]
 name = "superawesomemagicalmusic"
-version = "1.35.0"
+version = "1.35.1"
 edition = "2024"
 description = "Your SuperAwesomeMagicalMusic server on the Linux desktop"
 license = "GPL-3.0-only"
@@ -53,6 +53,8 @@ assets = [
     ["data/icons/hicolor/128x128/apps/*", "usr/share/icons/hicolor/128x128/apps/", "644"],
     ["data/icons/hicolor/256x256/apps/*", "usr/share/icons/hicolor/256x256/apps/", "644"],
     ["data/icons/hicolor/512x512/apps/*", "usr/share/icons/hicolor/512x512/apps/", "644"],
+    # The web player's icons, built in: their licence.
+    ["data/icons/lucide/LICENSE", "usr/share/doc/superawesomemagicalmusic/LICENSE.lucide-icons", "644"],
 ]
 
 # `cargo generate-rpm`: the package for Fedora (40 and later) and others with dnf.
@@ -71,6 +73,7 @@ assets = [
     { source = "data/icons/hicolor/128x128/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", dest = "/usr/share/icons/hicolor/128x128/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", mode = "644" },
     { source = "data/icons/hicolor/256x256/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", dest = "/usr/share/icons/hicolor/256x256/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", mode = "644" },
     { source = "data/icons/hicolor/512x512/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", dest = "/usr/share/icons/hicolor/512x512/apps/io.github._603madison.SuperAwesomeMagicalMusic.png", mode = "644" },
+    { source = "data/icons/lucide/LICENSE", dest = "/usr/share/doc/superawesomemagicalmusic/LICENSE.lucide-icons", mode = "644", doc = true },
 ]
 
 # Besides the libraries it links (found in the binary): GStreamer's plug-ins for HLS, AAC, FLAC and Opus.

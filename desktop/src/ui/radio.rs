@@ -15,6 +15,7 @@ use crate::rt::bg;
 use crate::ui::ctx;
 use crate::ui::forms::{clear, note, run};
 use crate::ui::widgets::{
+    CARD_ART,
     artwork, card_grid, card_with, heading, loading, nav_page, page_box, page_title, plain_row, scrolled, status, track_key,
 };
 
@@ -147,7 +148,7 @@ impl Radio {
 }
 
 fn show_star(button: &gtk::Button, on: bool) {
-    button.set_icon_name(if on { "starred-symbolic" } else { "non-starred-symbolic" });
+    button.set_icon_name(if on { "samm-heart-filled-symbolic" } else { "samm-heart-symbolic" });
     button.set_tooltip_text(Some(if on { "Favourite (click to remove)" } else { "Add to favourites" }));
 }
 
@@ -197,10 +198,7 @@ fn segmented(choices: &[(&str, &str)], stack: &gtk::Stack, first: &str) -> gtk::
 pub fn radio_page() -> adw::NavigationPage {
     crate::ui::style::ensure();
     let content = page_box();
-    content.append(&page_title(
-        "Radio",
-        "SiriusXM, local and internet radio, and your favourite stations.",
-    ));
+    content.append(&page_title("Radio", ""));
     let made_for_you = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(8).build();
     content.append(&made_for_you);
     let section = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(8).build();
@@ -230,7 +228,7 @@ pub fn radio_page() -> adw::NavigationPage {
             let (favourites, sources, personal) = match result {
                 Ok(found) => found,
                 Err(e) => {
-                    tabs.append(&status("dialog-warning-symbolic", "Couldn't load this", &e.to_string()));
+                    tabs.append(&status("samm-triangle-alert-symbolic", "Couldn't load this", &e.to_string()));
                     return ctx().failed(&e);
                 }
             };
@@ -287,7 +285,7 @@ fn show_tabs(radio: &Rc<Radio>, into: &gtk::Box, sources: Vec<SourceView>) {
                 None => {
                     for holder in [&channels, &stations] {
                         holder.append(&status(
-                            "network-wireless-signal-excellent-symbolic",
+                            "samm-radio-symbolic",
                             "No SiriusXM account",
                             "Add your SiriusXM streaming account in Preferences › Sources to hear its channels and Pandora artist stations here.",
                         ));
@@ -309,7 +307,7 @@ fn show_tabs(radio: &Rc<Radio>, into: &gtk::Box, sources: Vec<SourceView>) {
     match local {
         Some(source) => local_radio(radio, &local_box, &source, tuner),
         None => local_box.append(&status(
-            "audio-speakers-symbolic",
+            "samm-speaker-symbolic",
             "Radio is off",
             "An admin can add the Radio source in Admin › Shared sources.",
         )),
@@ -333,7 +331,7 @@ fn show_made_for_you(radio: &Rc<Radio>, into: &gtk::Box, stations: Vec<PersonalS
         .build();
     for station in stations {
         let content = gtk::Box::builder().spacing(14).build();
-        content.append(&artwork(station.track.artwork_url.as_deref(), 72, false));
+        content.append(&artwork(station.track.artwork_url.as_deref(), 84, false));
         let text = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(3)
@@ -346,19 +344,20 @@ fn show_made_for_you(radio: &Rc<Radio>, into: &gtk::Box, stations: Vec<PersonalS
                 .xalign(0.0)
                 .wrap(lines > 1)
                 .lines(lines)
-                .max_width_chars(24)
+                // Narrow enough for three across, as on the web.
+                .max_width_chars(16)
                 .ellipsize(gtk::pango::EllipsizeMode::End)
                 .build();
             l.add_css_class(class);
             l
         };
-        text.append(&label(&station.name, "personal-name", 1));
+        text.append(&label(&station.name, "personal-name", 2));
         let tagline = if station.ready {
             station.tagline.clone()
         } else {
             "Play some music, and it fills up with what you love".into()
         };
-        text.append(&label(&tagline, "personal-tagline", 2));
+        text.append(&label(&tagline, "personal-tagline", 3));
         if let Some(on) = &station.on_air {
             text.append(&label(&format!("On air: {} · {}", on.title, on.artist), "personal-on", 1));
         }
@@ -397,7 +396,7 @@ fn show_favourites(radio: &Rc<Radio>) {
     let grid = card_grid();
     for station in favourites {
         let t = station.clone();
-        let cover = starred_cover(&artwork(station.artwork_url.as_deref(), 136, false), &radio.star(&station));
+        let cover = starred_cover(&artwork(station.artwork_url.as_deref(), CARD_ART, false), &radio.star(&station));
         let card = card_with(cover.upcast_ref(), false, &station.title, &station.artist, move || {
             play_favourite(&t)
         });
@@ -455,7 +454,7 @@ fn siriusxm_channels(radio: &Rc<Radio>, into: &gtk::Box, source: &SourceView) {
                 }
             }
             if by_category.is_empty() && !channels.borrow().is_empty() {
-                list.append(&status("edit-find-symbolic", "No channels match", "Try another word."));
+                list.append(&status("samm-search-symbolic", "No channels match", "Try another word."));
             }
             for (category, channels) in by_category {
                 list.append(&heading(&category));
@@ -471,7 +470,7 @@ fn siriusxm_channels(radio: &Rc<Radio>, into: &gtk::Box, source: &SourceView) {
                     row.set_subtitle_lines(1);
                     row.add_prefix(&artwork(channel.track.artwork_url.as_deref(), 44, false));
                     if channel.locked {
-                        row.add_suffix(&gtk::Image::from_icon_name("system-lock-screen-symbolic"));
+                        row.add_suffix(&gtk::Image::from_icon_name("samm-lock-symbolic"));
                         row.set_tooltip_text(Some("Not in your SiriusXM plan"));
                         row.add_css_class("is-off");
                     } else {
@@ -495,7 +494,7 @@ fn siriusxm_channels(radio: &Rc<Radio>, into: &gtk::Box, source: &SourceView) {
         }
         Err(e) => {
             clear(&holder);
-            holder.append(&status("dialog-warning-symbolic", "Couldn't load the channels", &e.to_string()));
+            holder.append(&status("samm-triangle-alert-symbolic", "Couldn't load the channels", &e.to_string()));
         }
     });
     let s = show.clone();
@@ -535,7 +534,7 @@ fn pandora_stations(radio: &Rc<Radio>, into: &gtk::Box, source: &SourceView) {
                 Err(e) => return ctx().failed(&e),
             };
             if artists.is_empty() {
-                results.append(&status("edit-find-symbolic", "No stations found", "Try the artist's full name."));
+                results.append(&status("samm-search-symbolic", "No stations found", "Try the artist's full name."));
                 return;
             }
             let grid = card_grid();
@@ -543,7 +542,7 @@ fn pandora_stations(radio: &Rc<Radio>, into: &gtk::Box, source: &SourceView) {
                 let sub = if artist.station_id.is_some() { "Pandora station" } else { "Artist" };
                 let (a, src) = (artist.clone(), source.id.clone());
                 let cover = starred_cover(
-                    &artwork(artist.artwork_url.as_deref(), 160, false),
+                    &artwork(artist.artwork_url.as_deref(), CARD_ART, false),
                     &station_star(&radio, &source, &artist),
                 );
                 grid.append(&card_with(cover.upcast_ref(), false, &artist.name, sub, move || {
@@ -669,7 +668,7 @@ fn local_radio(radio: &Rc<Radio>, into: &gtk::Box, source: &SourceView, tuner: b
         .build();
     entry.add_css_class("search-field");
     row.append(&entry);
-    let near = crate::ui::widgets::button(Some("find-location-symbolic"), "Near me", "tonal");
+    let near = crate::ui::widgets::button(Some("samm-map-pin-symbolic"), "Near me", "tonal");
     near.set_valign(gtk::Align::Center);
     row.append(&near);
     into.append(&row);
@@ -701,7 +700,7 @@ fn local_radio(radio: &Rc<Radio>, into: &gtk::Box, source: &SourceView, tuner: b
                         show_stations(&radio, &results, stations);
                     }
                     Err(e) => {
-                        results.append(&status("dialog-warning-symbolic", "Couldn't find stations", &e.to_string()));
+                        results.append(&status("samm-triangle-alert-symbolic", "Couldn't find stations", &e.to_string()));
                         ctx().failed(&e);
                     }
                 }
@@ -750,14 +749,15 @@ fn local_radio(radio: &Rc<Radio>, into: &gtk::Box, source: &SourceView, tuner: b
 fn show_stations(radio: &Rc<Radio>, into: &gtk::Box, stations: Vec<Track>) {
     if stations.is_empty() {
         into.append(&status(
-            "edit-find-symbolic",
+            "samm-search-symbolic",
             "No stations found",
             "Try another name, a city or a genre.",
         ));
         return;
     }
+    // A plain list on the page, as the web lists stations.
     let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
-    list.add_css_class("boxed-list");
+    list.add_css_class("track-list");
     for station in stations {
         let sub = match station.album.as_deref().filter(|a| !a.is_empty()) {
             Some(album) => format!("{} · {album}", station.artist),

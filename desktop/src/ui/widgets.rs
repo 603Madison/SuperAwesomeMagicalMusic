@@ -63,7 +63,7 @@ pub fn artwork(url: Option<&str>, size: i32, round: bool) -> gtk::Widget {
         frame.add_css_class("round");
     }
     let image = gtk::Image::builder()
-        .icon_name("folder-music-symbolic")
+        .icon_name("samm-music-symbolic")
         .pixel_size((size / 3).max(16))
         .width_request(size)
         .height_request(size)
@@ -295,7 +295,7 @@ pub fn button(icon: Option<&str>, label: &str, kind: &str) -> gtk::Button {
 pub fn play_buttons(tracks: Rc<Vec<Track>>) -> gtk::Box {
     let row = gtk::Box::builder().spacing(8).margin_top(6).build();
     let playable: Vec<Track> = tracks.iter().filter(|t| !t.is_missing()).cloned().collect();
-    let play = button(Some("media-playback-start-symbolic"), "Play", "suggested");
+    let play = button(Some("samm-play-symbolic"), "Play", "suggested");
     play.set_sensitive(!playable.is_empty());
     let all = playable.clone();
     play.connect_clicked(move |_| ctx().player.play_tracks(all.clone(), 0));
@@ -357,9 +357,9 @@ fn mark(entry: &Marked, shown: &(Option<String>, bool)) -> bool {
         row.remove_css_class("current");
     }
     icon.set_icon_name(Some(if current && shown.1 {
-        "media-playback-pause-symbolic"
+        "samm-pause-symbolic"
     } else {
-        "media-playback-start-symbolic"
+        "samm-play-symbolic"
     }));
     true
 }
@@ -483,7 +483,7 @@ fn track_row(track: &Track, index: usize, style: &ListStyle) -> gtk::ListBoxRow 
         .child(&artwork(track.artwork_url.as_deref(), 44, false))
         .build();
     let icon = gtk::Image::builder()
-        .icon_name("media-playback-start-symbolic")
+        .icon_name("samm-play-symbolic")
         .pixel_size(18)
         .width_request(44)
         .height_request(44)
@@ -767,7 +767,7 @@ pub fn track_menu(track: &Track, index: usize, playlist: Option<&PlaylistEdit>) 
         menu.append_section(None, &own);
     }
     let button = gtk::MenuButton::builder()
-        .icon_name("view-more-horizontal-symbolic")
+        .icon_name("samm-ellipsis-symbolic")
         .menu_model(&menu)
         .valign(gtk::Align::Center)
         .tooltip_text("More")
@@ -813,6 +813,9 @@ pub fn mosaic(urls: &[String], size: i32) -> gtk::Widget {
     grid.upcast()
 }
 
+/// A card's cover: the smallest of the web player's (its columns are at least 180px).
+pub const CARD_ART: i32 = 180;
+
 /// A card (cover, title, a line under it) in a grid of them.
 pub fn card(art: Option<&str>, size: i32, round: bool, title: &str, subtitle: &str, on_click: impl Fn() + 'static) -> gtk::Button {
     card_with(&artwork(art, size, round), round, title, subtitle, on_click)
@@ -820,7 +823,9 @@ pub fn card(art: Option<&str>, size: i32, round: bool, title: &str, subtitle: &s
 
 /// A card with its own cover (a playlist's mosaic).
 pub fn card_with(cover: &gtk::Widget, round: bool, title: &str, subtitle: &str, on_click: impl Fn() + 'static) -> gtk::Button {
-    let content = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).build();
+    let content = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(8).build();
+    // The cover's left edge in line with the title, as on the web (artists' round ones centred).
+    cover.set_halign(if round { gtk::Align::Center } else { gtk::Align::Start });
     content.append(cover);
     let name = gtk::Label::builder()
         .label(title)
@@ -853,8 +858,9 @@ pub fn card_grid() -> gtk::FlowBox {
         .homogeneous(true)
         .min_children_per_line(2)
         .max_children_per_line(8)
-        .column_spacing(8)
-        .row_spacing(8)
+        // The web's 20px between cards.
+        .column_spacing(20)
+        .row_spacing(12)
         .valign(gtk::Align::Start)
         .build()
 }

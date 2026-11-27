@@ -51,7 +51,7 @@ fn show_people(into: &gtk::Box) {
         let users = match result {
             Ok(users) => users,
             Err(e) => {
-                into.append(&status("dialog-warning-symbolic", "Couldn't load this", &e.to_string()));
+                into.append(&status("samm-triangle-alert-symbolic", "Couldn't load this", &e.to_string()));
                 return ctx().failed(&e);
             }
         };
@@ -60,7 +60,7 @@ fn show_people(into: &gtk::Box) {
             list.append(&person_row(user, &into));
         }
         into.append(&list);
-        let add = button(Some("list-add-symbolic"), "Add a person", "tonal");
+        let add = button(Some("samm-plus-symbolic"), "Add a person", "tonal");
         add.set_halign(gtk::Align::Start);
         let holder = into.clone();
         add.connect_clicked(move |_| add_person(holder.clone()));
@@ -195,7 +195,7 @@ fn person_menu(user: &User, people: &gtk::Box) -> gtk::MenuButton {
         menu.append_section(None, &danger);
     }
     let button = gtk::MenuButton::builder()
-        .icon_name("view-more-horizontal-symbolic")
+        .icon_name("samm-ellipsis-symbolic")
         .menu_model(&menu)
         .valign(gtk::Align::Center)
         .tooltip_text(format!("More for {}", user.username))
@@ -304,7 +304,7 @@ fn show_server(into: &gtk::Box) {
             Ok(admin) => server_form(&into, Rc::new(admin)),
             Err(e) => {
                 into.append(&status(
-                    "dialog-warning-symbolic",
+                    "samm-triangle-alert-symbolic",
                     "Couldn't load the server's settings",
                     &e.to_string(),
                 ));
@@ -406,7 +406,7 @@ fn server_form(into: &gtk::Box, admin: Rc<AdminSettings>) {
         .build();
     uri.add_css_class("copy-text");
     copy_row.append(&uri);
-    let copy = button(Some("edit-copy-symbolic"), "Copy", "ghost");
+    let copy = button(Some("samm-copy-symbolic"), "Copy", "ghost");
     copy.set_valign(gtk::Align::Center);
     let redirect = admin.redirect_uri.clone();
     copy.connect_clicked(move |_| {

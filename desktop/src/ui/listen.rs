@@ -28,7 +28,7 @@ pub fn listen_page() -> adw::NavigationPage {
         .halign(gtk::Align::Center)
         .margin_top(12)
         .build();
-    let icon = gtk::Image::from_icon_name("audio-input-microphone-symbolic");
+    let icon = gtk::Image::from_icon_name("samm-mic-symbolic");
     icon.set_pixel_size(56);
     let big = gtk::Button::builder().child(&icon).halign(gtk::Align::Center).tooltip_text("Listen").build();
     big.add_css_class("listen-button");
@@ -208,12 +208,12 @@ fn found(answer: &ListenResult, recorded: Instant) -> gtk::Widget {
     let actions = gtk::Box::builder().spacing(8).margin_top(8).build();
     match &answer.song {
         Some(song) => {
-            let play = button(Some("media-playback-start-symbolic"), "Play", "suggested");
+            let play = button(Some("samm-play-symbolic"), "Play", "suggested");
             let s = song.clone();
             play.connect_clicked(move |_| ctx().player.play_tracks(vec![s.clone()], 0));
             actions.append(&play);
             if let Some(at) = answer.position_ms {
-                let from_here = button(Some("media-skip-forward-symbolic"), "Play from here", "tonal");
+                let from_here = button(Some("samm-skip-forward-symbolic"), "Play from here", "tonal");
                 let s = song.clone();
                 from_here.connect_clicked(move |_| {
                     // Where the song is now: where it was when recording stopped, and the time since.
@@ -259,13 +259,13 @@ fn heard_row(item: &Heard, forget: impl Fn(String) + 'static) -> gtk::Widget {
     text.append(&artist);
     row.append(&text);
     if let Some(song) = item.song.clone() {
-        let play = gtk::Button::builder().icon_name("media-playback-start-symbolic").tooltip_text("Play").valign(gtk::Align::Center).build();
+        let play = gtk::Button::builder().icon_name("samm-play-symbolic").tooltip_text("Play").valign(gtk::Align::Center).build();
         play.add_css_class("flat");
         play.add_css_class("circular");
         play.connect_clicked(move |_| ctx().player.play_tracks(vec![song.clone()], 0));
         row.append(&play);
     }
-    let remove = gtk::Button::builder().icon_name("window-close-symbolic").tooltip_text("Remove").valign(gtk::Align::Center).build();
+    let remove = gtk::Button::builder().icon_name("samm-x-symbolic").tooltip_text("Remove").valign(gtk::Align::Center).build();
     remove.add_css_class("flat");
     remove.add_css_class("circular");
     let id = item.id.clone();

@@ -4,6 +4,7 @@ mod admin;
 mod dj;
 mod forms;
 mod history;
+mod icons;
 mod devices;
 mod listen;
 mod listen_start;
@@ -182,9 +183,6 @@ impl Ctx {
     }
 }
 
-/// Thumbs for the songs on a personal station: not every icon theme has them, so the app brings its own.
-const THUMB_UP: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="#2e3436" d="M1 7h3v8H1zm4 0 3-6c1.1 0 2 .9 2 2v3h3.5c.9 0 1.6.8 1.5 1.7l-.9 5.6c-.1.8-.8 1.7-1.6 1.7H5z"/></svg>"##;
-
 /// The app's icon when it isn't installed (run from the build, or the icon theme's cache is
 /// old), and the icons it brings itself.
 fn register_icon() {
@@ -194,18 +192,11 @@ fn register_icon() {
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
-    let down = THUMB_UP.replace("<path ", r#"<path transform="rotate(180 8 8)" "#);
-    let icons = [
-        ("samm-thumb-up-symbolic.svg", THUMB_UP),
-        ("samm-thumb-down-symbolic.svg", down.as_str()),
-        ("samm-devices-symbolic.svg", devices::DEVICES_ICON),
-        ("samm-info-symbolic.svg", now_playing::INFO_ICON),
-    ];
     // In the hicolor theme's layout (its scalable/apps), where GTK takes them as symbolic icons
     // and draws them in the text's colour; loose in the folder they'd keep their own grey.
     let themed = dir.join("hicolor").join("scalable").join("apps");
     let mut ok = std::fs::create_dir_all(&themed).is_ok();
-    for (name, svg) in icons {
+    for (name, svg) in icons::ICONS {
         ok &= std::fs::write(themed.join(name), svg).is_ok();
     }
     if !theme.has_icon(crate::APP_ID) {
@@ -322,7 +313,7 @@ pub fn activate(app: &adw::Application) {
     dj::start();
     style::ensure();
     // "Song info" in every song's menu: the same details as Now playing's Details button.
-    widgets::set_song_info(|track| now_playing::track_info(track));
+    widgets::set_song_info(now_playing::track_info);
     window.present();
 }
 

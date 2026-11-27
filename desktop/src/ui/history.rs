@@ -45,7 +45,7 @@ fn by_day(listens: &[Listen], today: &glib::DateTime) -> Vec<(String, Vec<Track>
 /// A banner to the year's Wrapped.
 fn wrapped_banner() -> gtk::Button {
     let row = gtk::Box::builder().spacing(14).build();
-    row.append(&gtk::Image::builder().icon_name("starred-symbolic").pixel_size(22).build());
+    row.append(&gtk::Image::builder().icon_name("samm-heart-filled-symbolic").pixel_size(22).build());
     let text = gtk::Box::builder().orientation(gtk::Orientation::Vertical).hexpand(true).build();
     let year = glib::DateTime::now_local().map(|d| d.year()).unwrap_or_default();
     let title = gtk::Label::builder().label(format!("Your {year} Wrapped")).xalign(0.0).build();
@@ -59,7 +59,7 @@ fn wrapped_banner() -> gtk::Button {
     sub.add_css_class("banner-sub");
     text.append(&sub);
     row.append(&text);
-    row.append(&gtk::Image::from_icon_name("go-next-symbolic"));
+    row.append(&gtk::Image::from_icon_name("samm-chevron-right-symbolic"));
     let button = gtk::Button::builder().child(&row).margin_bottom(8).build();
     button.add_css_class("wrapped-banner");
     button.connect_clicked(|_| crate::ui::window::show_section("Wrapped"));
@@ -91,7 +91,7 @@ pub fn history_page() -> adw::NavigationPage {
             clear_button.set_visible(!all.is_empty());
             if all.is_empty() {
                 holder.append(&status(
-                    "document-open-recent-symbolic",
+                    "samm-history-symbolic",
                     "Nothing yet",
                     "Songs show up here once you've listened to a good part of them, on any device.",
                 ));
@@ -133,7 +133,7 @@ pub fn history_page() -> adw::NavigationPage {
                     Err(e) => {
                         if before.is_none() {
                             clear(&holder);
-                            holder.append(&status("dialog-warning-symbolic", "Couldn't load this", &e.to_string()));
+                            holder.append(&status("samm-triangle-alert-symbolic", "Couldn't load this", &e.to_string()));
                         }
                         ctx().failed(&e);
                     }
