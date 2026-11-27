@@ -40,7 +40,7 @@ view, no Chromium: a 5 MB program that starts at once.
 - **Even out volume** (Preferences): your library's loudness values where it has them, else
   gentle levelling as it plays, with a limiter.
 - What you play counts toward your **history and Wrapped**, live radio included.
-- **The family's look**: Lexend, rounded cards over a soft glow of the theme, as the web player and
+- **The family's look**: Lexend, the web player's icons ([Lucide](https://lucide.dev), ISC licence), rounded cards over a soft glow of the theme, as the web player and
   the phone app have it, with the same **themes**: Aurora (purple and green, the default), Violet,
   Ocean and Ember, each light or dark (or as the system is), and **Bold text**.
 - **Preferences**, as the web player's Settings: Appearance (theme, light or dark, bold text), the
